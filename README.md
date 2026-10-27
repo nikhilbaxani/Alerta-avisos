@@ -67,7 +67,7 @@ npm run start -- -p 3112 & node scripts/e2e.mjs   # prueba extremo a extremo con
 
 - **Local por diseño**: las llamadas contienen datos de salud y localización; los modelos se ejecutan en la sala, sin nube. El servidor no guarda nada.
 - **Humano en el bucle**: clasificar llamadas de emergencia es alto riesgo en la Ley de IA europea (obligaciones desde dic-2027). La zona gris nunca se resuelve sola, cada fusión automática se puede deshacer con «Separar» y cada decisión explica por qué.
-- **Registro**: la consola guarda un registro de decisiones en memoria (auditoría); su exportación está en el tablero de mejoras.
+- **Registro**: el botón «Exportar registro» descarga en JSON cada decisión (automática o del operador), su puntuación, su motivo y las respuestas enviadas.
 - Todos los datos del escenario son ficticios.
 
 ## Alcance

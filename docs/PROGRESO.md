@@ -42,3 +42,9 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 ## 2026-10-28T02:20 · T20, T21 · hechas
 - README (arranque en 2 comandos, GPU, arquitectura, privacidad/Ley de IA) y `docs/PITCH.md` (guion 3 min, 6 diapositivas, preguntas del jurado, tabla de fuentes). Cifras solo de MEMORIA §3.
 - Siguiente: T22 (verificar-mvp, etiqueta `mvp-v1`).
+
+## 2026-10-28T03:00 · X03 y T22 · hechas — MVP presentable
+- X03: botón «Exportar registro» (JSON de auditoría); probado en `scripts/e2e.mjs`.
+- T22 (verificación hecha por el orquestador, sin subagente): instalación limpia (`rm -rf node_modules .next && npm install && npm run build`) OK; `npm run lint`, `npm test` (27) y `npm run eval` en verde (7 incidentes, 0 fusiones incorrectas, 2 preguntas, E1 2.º); sin `https://` externos en `app/ components/ lib/ data/`; `node scripts/e2e.mjs` OK (ámbar con M/D, árabe, Separar, exportar, 0 errores de consola, móvil sin scroll horizontal); capturas `docs/capturas/final-*.png` miradas; cifras de PITCH ⊆ MEMORIA §3.
+- Pendiente para Nick: probar la IA real (`bash scripts/setup-modelos.sh`; luego `npm run eval -- --live`). No se ha probado con GPU.
+- Siguiente: X01 (escenario apagón), X02 (métrica con/sin copiloto).
