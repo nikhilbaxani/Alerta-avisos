@@ -81,6 +81,8 @@ export interface IncidentSnapshot {
   keywords: string[];
   risks: RiskTag[];
   summary: string;
+  /** Textos de ubicación mencionados en las llamadas (para agrupar por dirección). */
+  locations?: string[];
   provisional?: boolean;
 }
 

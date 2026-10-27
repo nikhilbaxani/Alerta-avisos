@@ -4,7 +4,7 @@ Estados: `[ ]` pendiente · `[~]` en curso · `[x]` hecha y verificada · `[!]` 
 Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[x]`**. Solo se marca `[x]` cuando pasa su verificación. Una tarea por commit.
 
 ## Fase 0: Cimientos
-- [~] T01 Proyecto Next.js 15 + TS funcionando · agente: `backend-ia` · deps: —
+- [x] T01 Proyecto Next.js 15 + TS funcionando · agente: `backend-ia` · deps: —
   - package.json con scripts `dev`, `build`, `start`, `lint` (tsc --noEmit), `test` (vitest), `eval` (tsx scripts/eval.ts). Alias `@/*` con `"paths": {"@/*": ["./*"]}` **sin `baseUrl`** (TypeScript reciente lo rechaza). Mantener `lib/types.ts` y `data/scenario-dana-malaga.ts` tal cual.
   - `.gitignore` (node_modules, .next, .env.local, public/audio/*.wav), `.env.example` según MEMORIA §7.
   - Verificación: `npm install && npm run lint && npm run build` sin errores.
@@ -13,12 +13,12 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
   - Verificación: build OK; captura con Playwright en `docs/capturas/T02.png`.
 
 ## Fase 1: Núcleo (sin interfaz)
-- [ ] T03 `lib/cluster.ts` según MEMORIA §9 + tests · agente: `backend-ia` · deps: T01
+- [x] T03 `lib/cluster.ts` según MEMORIA §9 + tests · agente: `backend-ia` · deps: T01
   - Funciones puras: `haversine`, `tokens`, `overlap`, `scoreCandidates`, `decide`, `newInfo`. Constantes de umbral exportadas.
   - Tests en `tests/cluster.test.ts` con los casos de §9 (A2, F1 ask, B2 ask, D≠B, A4 menor, E1 nuevo).
   - Verificación: `npm test` en verde.
-- [ ] T04 `lib/priority.ts` + etiquetas en `lib/labels.ts` (MEMORIA §8 y §10) + tests · agente: `backend-ia` · deps: T03
-- [ ] T05 `scripts/eval.ts`: simula el escenario completo con extracciones mock y un operador que siempre acierta en la zona gris · agente: `qa-verificador` · deps: T03, T04
+- [x] T04 `lib/priority.ts` + etiquetas en `lib/labels.ts` (MEMORIA §8 y §10) + tests · agente: `backend-ia` · deps: T03
+- [x] T05 `scripts/eval.ts`: simula el escenario completo con extracciones mock y un operador que siempre acierta en la zona gris · agente: `qa-verificador` · deps: T03, T04
   - Imprime una tabla llamada→decisión→incidente y métricas: incidentes finales, fusiones incorrectas, preguntas al operador, pureza y completitud frente a `gold`, y posición de E1 en la cola.
   - Objetivo: 7 incidentes, 0 fusiones incorrectas, ≤2 preguntas, E1 en el top 2. Si no se cumple, abrir tarea de ajuste (no tocar `gold`).
   - Verificación: `npm run eval` sale con código 0 solo si se cumplen los objetivos.
