@@ -8,7 +8,7 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
   - package.json con scripts `dev`, `build`, `start`, `lint` (tsc --noEmit), `test` (vitest), `eval` (tsx scripts/eval.ts). Alias `@/*` con `"paths": {"@/*": ["./*"]}` **sin `baseUrl`** (TypeScript reciente lo rechaza). Mantener `lib/types.ts` y `data/scenario-dana-malaga.ts` tal cual.
   - `.gitignore` (node_modules, .next, .env.local, public/audio/*.wav), `.env.example` según MEMORIA §7.
   - Verificación: `npm install && npm run lint && npm run build` sin errores.
-- [ ] T02 Página mínima con fuente Archivo local y tokens de color · agente: `frontend-consola` · deps: T01
+- [x] T02 Página mínima con fuente Archivo local y tokens de color · agente: `frontend-consola` · deps: T01
   - `app/layout.tsx`, `app/globals.css` con variables de MEMORIA §12, `@fontsource-variable/archivo/wdth.css`. Sin peticiones de red externas.
   - Verificación: build OK; captura con Playwright en `docs/capturas/T02.png`.
 
@@ -32,13 +32,13 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
   - Verificación: arrancar `npm run dev` y lanzar con curl F1 tras A1–A4 (debe responder `ask`), más tests de integración con fetch al handler.
 
 ## Fase 3: Consola del operador
-- [ ] T08 Estado y reproductor del escenario (`lib/useConsole.ts`: reducer, reloj, velocidades, cola en serie, incidentes provisionales, acciones Mismo/Distinto/Separar) · agente: `frontend-consola` · deps: T07
-- [ ] T09 Mapa SVG de Málaga (`components/MapView.tsx`, MEMORIA §12) con anillos, puntos y la animación de fusión · agente: `frontend-consola` · deps: T08
-- [ ] T10 Cola de llamadas (izquierda) y barra superior con contador y motor activo · agente: `frontend-consola` · deps: T08
-- [ ] T11 Panel derecho: cola de prioridad y detalle del incidente (original | traducción, riesgos, aviso de información nueva, llamadas, Separar) · agente: `frontend-consola` · deps: T08
-- [ ] T12 Banner de decisión ámbar (Mismo incidente / Incidente distinto, atajos M/D, motivo y opinión del juez) · agente: `frontend-consola` · deps: T08, T09
-- [ ] T13 Respuesta traducida: frases rápidas (tabla §11), texto libre con IA local y "Reproducir al llamante" con speechSynthesis · agente: `frontend-consola` · deps: T11
-- [ ] T14 Responsive (apilado en móvil), foco visible, reduced-motion, contraste · agente: `frontend-consola` · deps: T09–T13
+- [x] T08 Estado y reproductor del escenario (`lib/useConsole.ts`: reducer, reloj, velocidades, cola en serie, incidentes provisionales, acciones Mismo/Distinto/Separar) · agente: `frontend-consola` · deps: T07
+- [x] T09 Mapa SVG de Málaga (`components/MapView.tsx`, MEMORIA §12) con anillos, puntos y la animación de fusión · agente: `frontend-consola` · deps: T08
+- [x] T10 Cola de llamadas (izquierda) y barra superior con contador y motor activo · agente: `frontend-consola` · deps: T08
+- [x] T11 Panel derecho: cola de prioridad y detalle del incidente (original | traducción, riesgos, aviso de información nueva, llamadas, Separar) · agente: `frontend-consola` · deps: T08
+- [x] T12 Banner de decisión ámbar (Mismo incidente / Incidente distinto, atajos M/D, motivo y opinión del juez) · agente: `frontend-consola` · deps: T08, T09
+- [x] T13 Respuesta traducida: frases rápidas (tabla §11), texto libre con IA local y "Reproducir al llamante" con speechSynthesis · agente: `frontend-consola` · deps: T11
+- [x] T14 Responsive (apilado en móvil), foco visible, reduced-motion, contraste · agente: `frontend-consola` · deps: T09–T13
 
 ## Fase 4: IA real y audio
 - [ ] T15 `docker-compose.gpu.yml` (Ollama + speaches con CUDA) + `scripts/setup-modelos.sh` (descarga modelos según VRAM, MEMORIA §7) · agente: `backend-ia` · deps: T07

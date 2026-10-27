@@ -16,3 +16,9 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Qué se hizo: `lib/config|ai|prompts|sanitize|process.ts` y rutas `/api/process|status|translate|transcribe`. Sin `LLM_BASE_URL` usa el `mock`; el juez de zona gris solo opina.
 - Verificación: 27 tests (incluye cliente LLM simulado con ```json y F1→ask), curl real a `/api/status` y `/api/process`, build OK.
 - Siguiente: T02 y consola (T08–T14).
+
+## 2026-10-28T01:10 · T02, T08–T14 · hechas
+- Qué se hizo: consola completa en `components/` + `lib/useConsole.ts` (reloj, velocidades ×1/×4/×10, cola serie con plan B local si falla `/api/process`, incidentes provisionales, Mismo/Distinto/Separar), mapa SVG con zoom Bahía/Centro/Campanillas y animación de fusión, cola de prioridad, detalle con original | castellano, aviso de información nueva, frases rápidas con voz (`speechSynthesis`) y texto libre solo con IA local, atajos M y D, responsive (apilado en móvil), `prefers-reduced-motion`.
+- Verificación: lint, build, 27 tests y eval en verde; `scripts/shot.mjs` (Playwright) pasa el escenario completo a ×10 resolviendo F1 y B2 con teclado, sin errores de consola; capturas miradas en `docs/capturas/` (escritorio 1440×900 y móvil 390×844). Correcciones tras mirarlas: mapa demasiado pequeño → zoom por zonas y tamaños escalados; polígono del mar; etiqueta cortada; mapa móvil cuadrado.
+- Decisiones: ver DECISIONES (estética de consola en claro).
+- Siguiente: T19 revisión visual a fondo; T16 audio; T20/T21 docs.
