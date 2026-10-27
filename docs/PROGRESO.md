@@ -22,3 +22,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Verificación: lint, build, 27 tests y eval en verde; `scripts/shot.mjs` (Playwright) pasa el escenario completo a ×10 resolviendo F1 y B2 con teclado, sin errores de consola; capturas miradas en `docs/capturas/` (escritorio 1440×900 y móvil 390×844). Correcciones tras mirarlas: mapa demasiado pequeño → zoom por zonas y tamaños escalados; polígono del mar; etiqueta cortada; mapa móvil cuadrado.
 - Decisiones: ver DECISIONES (estética de consola en claro).
 - Siguiente: T19 revisión visual a fondo; T16 audio; T20/T21 docs.
+
+## 2026-10-28T01:25 · T19 · hecha
+- Qué se hizo: `scripts/e2e.mjs` (Playwright): reproduce el escenario a ×10, comprueba que F1 y B2 quedan en ámbar hasta que el operador pulsa D/M, 26 llamadas → 7 incidentes, respuesta en árabe, Separar y cero errores de consola. Capturas revisadas: escritorio, móvil, centro y árabe.
+- Verificación: `node scripts/e2e.mjs` → E2E OK. Cambio tras mirar: la vista previa traducida y "Reproducir al llamante" suben encima de las frases.
+- Siguiente: T16 (audio), T20, T21.

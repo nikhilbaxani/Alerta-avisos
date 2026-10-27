@@ -83,6 +83,12 @@ export default function ReplyPanel({ incidentId, langs, clock, localAI, replies,
           ))}
         </div>
       )}
+      {current && (
+        <>
+          <div className="said" lang={lang} dir={lang === "ar" ? "rtl" : "ltr"}>{current.tr}</div>
+          <button className="btn primary" onClick={play}>Reproducir al llamante</button>
+        </>
+      )}
       <div className="phrases">
         {PHRASES.map((p) => (
           <button key={p.id} className="phrase" aria-pressed={!freeOut && p.id === phraseId} onClick={() => { setPhraseId(p.id); setFreeOut(null); setMsg(""); }}>
@@ -95,12 +101,6 @@ export default function ReplyPanel({ incidentId, langs, clock, localAI, replies,
         <button className="btn" type="submit" disabled={!localAI || !free.trim()}>Traducir</button>
       </form>
       {!localAI && <p className="note">La traducción libre necesita el modelo local.</p>}
-      {current && (
-        <>
-          <div className="said" lang={lang} dir={lang === "ar" ? "rtl" : "ltr"}>{current.tr}</div>
-          <button className="btn primary" onClick={play}>Reproducir al llamante</button>
-        </>
-      )}
       {msg && <p className="toast" role="status">{msg}</p>}
       {mine.length > 0 && (
         <p className="note">Enviado: {mine.map((r) => `«${r.es}»`).join(" · ")}</p>
