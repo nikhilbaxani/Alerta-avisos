@@ -11,3 +11,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Verificación: `npm run lint`, `npm run build`, `npm test` (18 tests), `npm run eval` → 7 incidentes, 0 fusiones incorrectas, 2 preguntas (F1 y B2), E1 2.º.
 - Decisiones: ver DECISIONES (locations, dolor_pecho, medición de E1).
 - Siguiente: T06/T07 (IA y API), T02 y consola.
+
+## 2026-10-28T00:25 · T06, T07 · hechas
+- Qué se hizo: `lib/config|ai|prompts|sanitize|process.ts` y rutas `/api/process|status|translate|transcribe`. Sin `LLM_BASE_URL` usa el `mock`; el juez de zona gris solo opina.
+- Verificación: 27 tests (incluye cliente LLM simulado con ```json y F1→ask), curl real a `/api/status` y `/api/process`, build OK.
+- Siguiente: T02 y consola (T08–T14).

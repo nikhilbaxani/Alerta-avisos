@@ -24,9 +24,9 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
   - Verificación: `npm run eval` sale con código 0 solo si se cumplen los objetivos.
 
 ## Fase 2: Servidor e IA local
-- [ ] T06 `lib/config.ts` + `lib/ai.ts` (cliente compatible con OpenAI: chatJSON, transcribe, con timeouts y reintento) + `lib/prompts.ts` (MEMORIA §11) + saneado de la extracción · agente: `backend-ia` · deps: T01
+- [x] T06 `lib/config.ts` + `lib/ai.ts` (cliente compatible con OpenAI: chatJSON, transcribe, con timeouts y reintento) + `lib/prompts.ts` (MEMORIA §11) + saneado de la extracción · agente: `backend-ia` · deps: T01
   - Tests del saneado y del parseo de JSON (con ```json, basura alrededor, vocabularios inválidos).
-- [ ] T07 `POST /api/process`, `GET /api/status`, `POST /api/translate`, `POST /api/transcribe` · agente: `backend-ia` · deps: T03, T06
+- [x] T07 `POST /api/process`, `GET /api/status`, `POST /api/translate`, `POST /api/transcribe` · agente: `backend-ia` · deps: T03, T06
   - Modo simulado si no hay `LLM_BASE_URL`: usa `mock` del escenario. STT solo si existe `public/audio/<id>.wav` y `STT_BASE_URL`.
   - Juez de zona gris solo con IA local; nunca convierte `ask` en `merge`.
   - Verificación: arrancar `npm run dev` y lanzar con curl F1 tras A1–A4 (debe responder `ask`), más tests de integración con fetch al handler.
