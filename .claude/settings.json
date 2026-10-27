@@ -1,0 +1,60 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(python3 *)",
+      "Bash(pip install *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git tag *)",
+      "Bash(curl http://localhost*)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(docker compose *)",
+      "Bash(ffmpeg *)"
+    ],
+    "deny": [
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(sudo *)",
+      "Bash(rm -rf / *)",
+      "Bash(rm -rf ~*)",
+      "Bash(npm publish *)",
+      "Bash(npm i -g *)",
+      "Bash(npm install -g *)",
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Edit(./data/scenario-dana-malaga.ts)",
+      "Write(./data/scenario-dana-malaga.ts)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-continuar.sh\"" }
+        ]
+      }
+    ]
+  }
+}
