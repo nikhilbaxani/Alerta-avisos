@@ -1,6 +1,6 @@
-import { SCENARIO_END } from "@/lib/useConsole";
+import { scenarioEnd } from "@/lib/useConsole";
 import type { ConsoleState, EngineStatus, Speed } from "@/lib/useConsole";
-import { scenario } from "@/data/scenario-dana-malaga";
+import { SCENARIOS } from "@/data/scenarios";
 import { mmss } from "./format";
 
 interface Props {
@@ -12,18 +12,21 @@ interface Props {
   onSpeed: (v: Speed) => void;
   onReset: () => void;
   onExport: () => void;
+  onScenario: (id: string) => void;
 }
 
-export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, onReset, onExport }: Props) {
+export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, onReset, onExport, onScenario }: Props) {
   const done = Object.values(s.recs).filter((r) => r.status === "done").length;
   const incidents = s.engine.incidents.length;
   const freed = Math.max(0, done - incidents);
-  const finished = s.clock >= SCENARIO_END + 1;
+  const finished = s.clock >= scenarioEnd(s.scenarioId) + 1;
   return (
     <header className="topbar">
       <div className="topbar-row">
         <span className="brand">Copiloto 112</span>
-        <span className="scn">{scenario.name}</span>
+        <select className="scn-select" value={s.scenarioId} onChange={(e) => onScenario(e.target.value)} aria-label="Escenario">
+          {SCENARIOS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
         <span className="clock" aria-label="Tiempo del escenario">T+{mmss(s.clock)}</span>
         <div className="controls" role="group" aria-label="Controles del escenario">
           {s.running ? (

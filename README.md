@@ -13,6 +13,8 @@ npm run dev        # http://localhost:3000
 
 Pulsa **Iniciar** (velocidad ×4 o ×10). Verás 26 llamadas en 6 idiomas convertirse en 7 incidentes. Dos veces la consola se para en **ámbar** y pregunta: `M` = mismo incidente, `D` = incidente distinto. En el modo simulado la agrupación y la prioridad **se calculan igual** con el algoritmo real; solo la extracción de cada llamada viene del guion. La demo no hace ninguna petición externa (mapa SVG propio, fuente instalada con npm).
 
+El selector de la barra superior cambia entre dos escenarios: **DANA en Málaga** (26 llamadas, 6 idiomas) y **Apagón en Málaga** (16 llamadas: ascensores, semáforos, oxígeno domiciliario y una residencia sin luz), para ver que el sistema generaliza.
+
 ## Qué enseña la demo
 
 1. **Agrupar**: 26 llamadas → 7 incidentes. El contador de «líneas liberadas» sube.
@@ -57,6 +59,7 @@ navegador (consola) ── POST /api/process ──▶ servidor Next.js (sin est
 
 ```bash
 npm run build && npm test && npm run eval     # compilación, 27 tests, evaluación sobre el escenario
+npm run eval:apagon                           # evaluación del escenario del apagón (6 incidentes, 1 pregunta)
 npm run eval -- --live                        # lo mismo con el LLM local (se salta si no hay LLM_BASE_URL)
 npm run start -- -p 3112 & node scripts/e2e.mjs   # prueba extremo a extremo con Playwright
 ```

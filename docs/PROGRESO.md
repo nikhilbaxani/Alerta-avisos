@@ -48,3 +48,7 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - T22 (verificación hecha por el orquestador, sin subagente): instalación limpia (`rm -rf node_modules .next && npm install && npm run build`) OK; `npm run lint`, `npm test` (27) y `npm run eval` en verde (7 incidentes, 0 fusiones incorrectas, 2 preguntas, E1 2.º); sin `https://` externos en `app/ components/ lib/ data/`; `node scripts/e2e.mjs` OK (ámbar con M/D, árabe, Separar, exportar, 0 errores de consola, móvil sin scroll horizontal); capturas `docs/capturas/final-*.png` miradas; cifras de PITCH ⊆ MEMORIA §3.
 - Pendiente para Nick: probar la IA real (`bash scripts/setup-modelos.sh`; luego `npm run eval -- --live`). No se ha probado con GPU.
 - Siguiente: X01 (escenario apagón), X02 (métrica con/sin copiloto).
+
+## 2026-10-28T03:40 · X01 · hecha
+- Escenario 2 «Apagón en Málaga» (`data/scenario-apagon-malaga.ts`, 16 llamadas, 4 idiomas, 6 incidentes) + registro `data/scenarios.ts` + selector en la barra superior. Tipo nuevo `ascensor`.
+- Verificación: `npm run eval:apagon` → 6 incidentes, 0 fusiones incorrectas, 1 pregunta (M1, segundo ascensor a ~560 m), J1 (oxígeno) 1.º; 30 tests; e2e recorre ambos escenarios; captura `docs/capturas/X01-apagon.png`.

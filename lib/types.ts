@@ -28,6 +28,7 @@ export const INCIDENT_TYPES = [
   "medica",
   "incendio",
   "accidente",
+  "ascensor",
   "otro",
 ] as const;
 export type IncidentType = (typeof INCIDENT_TYPES)[number];

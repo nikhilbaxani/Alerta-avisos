@@ -1,4 +1,4 @@
-import { scenario } from "@/data/scenario-dana-malaga";
+import { getScenario } from "@/data/scenarios";
 import { applyDecision, confirmDifferent, confirmSame, initialState, processCall } from "@/lib/engine";
 import type { EngineCall } from "@/lib/engine";
 import { getConfig, llmEnabled } from "@/lib/config";
@@ -8,6 +8,9 @@ import type { Decision } from "@/lib/types";
 import { priorityOf, rankIncidents } from "@/lib/priority";
 
 const live = process.argv.includes("--live");
+const scnArg = process.argv.find((a) => a.startsWith("--scenario="))?.split("=")[1];
+const scenario = getScenario(scnArg === "apagon" ? "apagon-malaga" : "dana-malaga");
+const isDana = scenario.id === "dana-malaga";
 const cfg = getConfig();
 if (live && !llmEnabled(cfg)) {
   console.log("AVISO: --live necesita LLM_BASE_URL (p. ej. http://localhost:11434/v1). Evaluación en vivo omitida.");
@@ -72,18 +75,19 @@ for (const inc of state.incidents) {
 const nGold = new Set(Object.values(gold)).size;
 const split = Object.values(goldToInc).filter((s) => s.size > 1).length;
 const ranking = rankIncidents(state.incidents, calls[calls.length - 1].t);
-// Puesto de E1 en la cola 30 s después de llegar (momento de la demo).
-const e1Call = calls.find((c) => c.id === "E1")!;
+// Puesto de la llamada crítica (E1 infarto / J1 oxígeno) en la cola 30 s después de llegar.
+const critId = isDana ? "E1" : "J1";
+const e1Call = calls.find((c) => c.id === critId)!;
 const tDemo = e1Call.t + 30;
 const snap = [...history].reverse().find((h) => h.t <= tDemo)!.state;
-const e1Pos = rankIncidents(snap.incidents, tDemo).findIndex((i) => i.id === snap.assignment["E1"]) + 1;
+const e1Pos = rankIncidents(snap.incidents, tDemo).findIndex((i) => i.id === snap.assignment[critId]) + 1;
 
 console.log("\nPrioridad final:");
 ranking.forEach((i, n) =>
   console.log(`${n + 1}. ${i.id} [${[...new Set(i.callIds.map((x) => gold[x]))].join("")}] ${priorityOf(i, calls[calls.length - 1].t).toFixed(0)} ${i.summary.slice(0, 60)}`),
 );
 console.log(
-  `\nIncidentes: ${state.incidents.length} (objetivo ${nGold}) · gold repartidos: ${split} · fusiones incorrectas: ${wrongMerges} · preguntas: ${questions} · E1 en puesto ${e1Pos} (T+${tDemo}s)`,
+  `\nIncidentes: ${state.incidents.length} (objetivo ${nGold}) · gold repartidos: ${split} · fusiones incorrectas: ${wrongMerges} · preguntas: ${questions} · ${critId} en puesto ${e1Pos} (T+${tDemo}s)`,
 );
 const ok = state.incidents.length === nGold && split === 0 && wrongMerges === 0 && questions <= 2 && e1Pos >= 1 && e1Pos <= 2;
 console.log(ok ? "EVAL OK" : "EVAL FALLA");

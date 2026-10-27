@@ -53,6 +53,6 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 - [x] T22 Verificación final del MVP (skill `verificar-mvp`) y etiqueta git `mvp-v1` · agente: `qa-verificador` · deps: T01–T21 (T15–T18 pueden estar `[!]` si no hay GPU; el modo simulado debe ser perfecto)
 
 ## Mejoras si sobra tiempo (solo con T22 en `[x]`)
-- [ ] X01 Escenario 2: apagón (llamadas sin luz, ascensores y semáforos) para enseñar generalización
+- [x] X01 Escenario 2: apagón (llamadas sin luz, ascensores y semáforos) para enseñar generalización
 - [ ] X02 Métrica en vivo "tiempo hasta atender la llamada crítica" con y sin copiloto (simulación de una cola de operadores)
 - [x] X03 Exportar el registro de decisiones (JSON) para auditoría según la Ley de IA

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "eval": "tsx scripts/eval.ts"
+    "eval": "tsx scripts/eval.ts",
+    "eval:apagon": "tsx scripts/eval.ts --scenario=apagon"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",

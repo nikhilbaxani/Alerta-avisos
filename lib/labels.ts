@@ -27,6 +27,7 @@ export const TYPE_LABELS: Record<IncidentType, string> = {
   medica: "Emergencia médica",
   incendio: "Incendio",
   accidente: "Accidente de tráfico",
+  ascensor: "Personas atrapadas en ascensor",
   otro: "Otro",
 };
 

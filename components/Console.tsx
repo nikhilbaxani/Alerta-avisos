@@ -49,6 +49,7 @@ export default function Console() {
         onSpeed={(speed: Speed) => dispatch({ type: "speed", speed })}
         onReset={() => dispatch({ type: "reset" })}
         onExport={exportLog}
+        onScenario={(id) => dispatch({ type: "scenario", id })}
       />
       <main className="main">
         <CallQueue s={s} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />

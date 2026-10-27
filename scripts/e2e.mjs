@@ -50,6 +50,20 @@ const log = JSON.parse(await (await import("node:fs/promises")).readFile(await d
 const kinds = new Set(log.eventos.map((e) => e.kind));
 if (log.llamadas.length !== 26 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
 
+// Escenario 2: apagón (una sola pregunta, M1).
+const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+p2.on("pageerror", (e) => errors.push(e.message));
+await p2.goto(url);
+await p2.getByLabel("Escenario", { exact: true }).selectOption("apagon-malaga");
+await p2.getByRole("button", { name: "Velocidad por 10" }).click();
+await p2.getByRole("button", { name: "Iniciar", exact: true }).click();
+await p2.getByText(/¿La llamada M1 es el mismo incidente/).waitFor({ timeout: 30000 });
+await p2.keyboard.press("d");
+await p2.getByText(/16 de 16/).waitFor({ timeout: 30000 });
+await p2.waitForTimeout(1500);
+if (!/16 llamadas → 6 incidentes/.test((await p2.locator(".counters").innerText()).replace(/\s+/g, " "))) fail("apagón: contadores");
+await p2.screenshot({ path: "docs/capturas/X01-apagon.png" });
+
 // Inicio vacío y móvil sin scroll horizontal.
 const empty = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await empty.goto(url);

@@ -1,4 +1,4 @@
-import { scenario } from "@/data/scenario-dana-malaga";
+import { getScenario } from "@/data/scenarios";
 import { callMeta } from "@/lib/useConsole";
 import type { ConsoleState } from "@/lib/useConsole";
 import { mmss } from "./format";
@@ -18,7 +18,7 @@ export default function CallQueue({ s, sttUp, onSelect, onLive }: Props) {
   const list = [...s.arrived].reverse();
   return (
     <section className="col calls-col" aria-label="Cola de llamadas">
-      <div className="col-head"><span>Llamadas</span><span>{s.arrived.length} de {scenario.calls.length}</span></div>
+      <div className="col-head"><span>Llamadas</span><span>{s.arrived.length} de {getScenario(s.scenarioId).calls.length}</span></div>
       <LivePanel s={s} sttUp={sttUp} onCall={onLive} />
       {list.length === 0 ? (
         <p className="empty">Pulsa Iniciar para reproducir el escenario. Las llamadas aparecerán aquí según entran.</p>

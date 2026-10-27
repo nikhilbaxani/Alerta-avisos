@@ -28,3 +28,12 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 ## 2026-10-28 · Consola en claro con estética de terminal
 - Decisión: se mantiene el diseño claro de MEMORIA §12, con detalles de consola (datos en cifras tabulares, reloj T+mm:ss, etiquetas de estado) pero sin tema oscuro.
 - Motivo: MEMORIA lo fija; el usuario pidió formato panel de control/consola, que cubre la estructura de tres zonas.
+
+## 2026-10-28 · Tipo `ascensor` en el vocabulario cerrado
+- Decisión: se añade `ascensor` a `INCIDENT_TYPES` (etiqueta «Personas atrapadas en ascensor») para el escenario del apagón (X01). No cambia ningún caso de la DANA.
+- Motivo: «Otro» no dice nada al operador y los ascensores son el caso típico de un apagón.
+- Descartado: dejarlo en `otro` (la agrupación funcionaba, pero la cola era ilegible).
+
+## 2026-10-28 · Segundo escenario en archivo aparte
+- Decisión: `data/scenario-apagon-malaga.ts` y `data/scenarios.ts` (registro). El archivo de la DANA no se toca. Los ids de llamada no se repiten entre escenarios (A–G frente a H–M).
+- Motivo: la API busca el mock por `callId` en todos los escenarios y las reglas prohíben editar el escenario original.

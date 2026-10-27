@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { scenario } from "@/data/scenario-dana-malaga";
+import { findCall } from "@/data/scenarios";
 import { chatJSON, transcribe } from "@/lib/ai";
 import { decide } from "@/lib/cluster";
 import { llmEnabled, sttEnabled } from "@/lib/config";
@@ -45,7 +45,7 @@ async function judge(cfg: AppConfig, d: Decision, summary: string, incidents: In
 
 export async function processCall(cfg: AppConfig, input: ProcessInput): Promise<ProcessResult> {
   const t0 = Date.now();
-  const known = input.callId ? scenario.calls.find((c) => c.id === input.callId) : undefined;
+  const known = input.callId ? findCall(input.callId) : undefined;
   let transcript = input.transcript ?? known?.transcript ?? "";
   let sttMs = 0;
 

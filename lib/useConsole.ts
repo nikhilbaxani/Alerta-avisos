@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { scenario } from "@/data/scenario-dana-malaga";
+import { DEFAULT_SCENARIO_ID, getScenario } from "@/data/scenarios";
 import { decide } from "@/lib/cluster";
 import {
   applyDecision,
@@ -15,8 +15,8 @@ import type { EngineCall, EngineState } from "@/lib/engine";
 import type { Aml, Decision, ProcessResult } from "@/lib/types";
 
 export type Speed = 1 | 4 | 10;
-export const SCENARIO_END = Math.max(...scenario.calls.map((c) => c.t));
-const SCENARIO_CALLS = [...scenario.calls].sort((a, b) => a.t - b.t);
+const sortedCalls = (id: string) => [...getScenario(id).calls].sort((a, b) => a.t - b.t);
+export const scenarioEnd = (id: string) => Math.max(...getScenario(id).calls.map((c) => c.t));
 
 export interface CallRec {
   id: string;
@@ -38,7 +38,7 @@ export interface CallMeta {
 }
 
 export const callMeta = (s: ConsoleState, id: string): CallMeta | undefined =>
-  s.live[id] ?? SCENARIO_CALLS.find((c) => c.id === id);
+  s.live[id] ?? sortedCalls(s.scenarioId).find((c) => c.id === id);
 
 export interface Fx {
   key: string;
@@ -64,6 +64,7 @@ export interface AuditEntry {
 
 export interface ConsoleState {
   epoch: number;
+  scenarioId: string;
   clock: number;
   running: boolean;
   speed: Speed;
@@ -81,8 +82,9 @@ export interface ConsoleState {
   live: Record<string, CallMeta>;
 }
 
-const init = (epoch = 0): ConsoleState => ({
+const init = (epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleState => ({
   epoch,
+  scenarioId,
   clock: 0,
   running: false,
   speed: 4,
@@ -105,6 +107,7 @@ type Action =
   | { type: "pause" }
   | { type: "speed"; speed: Speed }
   | { type: "reset" }
+  | { type: "scenario"; id: string }
   | { type: "begin"; id: string }
   | { type: "processed"; epoch: number; id: string; result: ProcessResult }
   | { type: "live"; call: CallMeta; result: ProcessResult }
@@ -151,11 +154,12 @@ function applyResult(s: ConsoleState, src: CallMeta, result: ProcessResult): Con
 function reducer(s: ConsoleState, a: Action): ConsoleState {
   switch (a.type) {
     case "tick": {
-      const clock = Math.min(s.clock + a.dt, SCENARIO_END + 1);
-      const due = SCENARIO_CALLS.filter((c) => c.t <= clock && !s.recs[c.id]);
+      const end = scenarioEnd(s.scenarioId);
+      const clock = Math.min(s.clock + a.dt, end + 1);
+      const due = sortedCalls(s.scenarioId).filter((c) => c.t <= clock && !s.recs[c.id]);
       const recs = { ...s.recs };
       for (const c of due) recs[c.id] = { id: c.id, t: c.t, status: "queued" };
-      const running = clock >= SCENARIO_END + 1 ? false : s.running;
+      const running = clock >= end + 1 ? false : s.running;
       return {
         ...s,
         clock,
@@ -166,13 +170,15 @@ function reducer(s: ConsoleState, a: Action): ConsoleState {
       };
     }
     case "play":
-      return s.clock >= SCENARIO_END + 1 ? s : { ...s, running: true };
+      return s.clock >= scenarioEnd(s.scenarioId) + 1 ? s : { ...s, running: true };
     case "pause":
       return { ...s, running: false };
     case "speed":
       return { ...s, speed: a.speed };
     case "reset":
-      return { ...init(s.epoch + 1), speed: s.speed };
+      return { ...init(s.epoch + 1, s.scenarioId), speed: s.speed };
+    case "scenario":
+      return { ...init(s.epoch + 1, a.id), speed: s.speed };
     case "begin":
       return {
         ...s,
@@ -189,7 +195,7 @@ function reducer(s: ConsoleState, a: Action): ConsoleState {
       };
     case "processed": {
       if (a.epoch !== s.epoch) return s;
-      return applyResult(s, SCENARIO_CALLS.find((c) => c.id === a.id)!, a.result);
+      return applyResult(s, sortedCalls(s.scenarioId).find((c) => c.id === a.id)!, a.result);
     }
     case "live": {
       const meta = { ...a.call, t: Math.round(s.clock), live: true };
@@ -267,7 +273,7 @@ export function useConsole() {
     const id = s.queue[0];
     const epoch = s.epoch;
     dispatch({ type: "begin", id });
-    const src = SCENARIO_CALLS.find((c) => c.id === id)!;
+    const src = sortedCalls(ref.current.scenarioId).find((c) => c.id === id)!;
     const incidents = ref.current.engine.incidents.map(snapshot);
     (async () => {
       try {

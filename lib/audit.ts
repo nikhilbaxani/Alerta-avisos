@@ -5,6 +5,7 @@ export function buildAuditLog(s: ConsoleState, engineLabel: string) {
   return {
     generado: new Date().toISOString(),
     sistema: "Copiloto 112",
+    escenario: s.scenarioId,
     motor: engineLabel,
     nota: "La IA propone; todas las decisiones en zona gris las toma el operador.",
     tiempoEscenarioSegundos: Math.round(s.clock),
