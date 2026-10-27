@@ -4,7 +4,7 @@ Estados: `[ ]` pendiente · `[~]` en curso · `[x]` hecha y verificada · `[!]` 
 Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[x]`**. Solo se marca `[x]` cuando pasa su verificación. Una tarea por commit.
 
 ## Fase 0: Cimientos
-- [ ] T01 Proyecto Next.js 15 + TS funcionando · agente: `backend-ia` · deps: —
+- [~] T01 Proyecto Next.js 15 + TS funcionando · agente: `backend-ia` · deps: —
   - package.json con scripts `dev`, `build`, `start`, `lint` (tsc --noEmit), `test` (vitest), `eval` (tsx scripts/eval.ts). Alias `@/*` con `"paths": {"@/*": ["./*"]}` **sin `baseUrl`** (TypeScript reciente lo rechaza). Mantener `lib/types.ts` y `data/scenario-dana-malaga.ts` tal cual.
   - `.gitignore` (node_modules, .next, .env.local, public/audio/*.wav), `.env.example` según MEMORIA §7.
   - Verificación: `npm install && npm run lint && npm run build` sin errores.
