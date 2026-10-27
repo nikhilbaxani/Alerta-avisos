@@ -48,8 +48,8 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 
 ## Fase 5: Presentable
 - [x] T19 Revisión visual completa con capturas (escritorio 1440×900 y móvil 390×844) en mitad del escenario y con decisión pendiente; corregir lo que falle · agente: `qa-verificador` · deps: T14
-- [ ] T20 README (qué es, cómo arrancar en modo simulado en 2 comandos, cómo activar la GPU, arquitectura, privacidad y Ley de IA) · agente: `pitch-docs` · deps: T19
-- [ ] T21 `docs/PITCH.md`: guion de 3 min (MEMORIA §14), 6 diapositivas en texto, preguntas difíciles del jurado con respuesta, y números con fuente · agente: `pitch-docs` · deps: T20
+- [x] T20 README (qué es, cómo arrancar en modo simulado en 2 comandos, cómo activar la GPU, arquitectura, privacidad y Ley de IA) · agente: `pitch-docs` · deps: T19
+- [x] T21 `docs/PITCH.md`: guion de 3 min (MEMORIA §14), 6 diapositivas en texto, preguntas difíciles del jurado con respuesta, y números con fuente · agente: `pitch-docs` · deps: T20
 - [ ] T22 Verificación final del MVP (skill `verificar-mvp`) y etiqueta git `mvp-v1` · agente: `qa-verificador` · deps: T01–T21 (T15–T18 pueden estar `[!]` si no hay GPU; el modo simulado debe ser perfecto)
 
 ## Mejoras si sobra tiempo (solo con T22 en `[x]`)

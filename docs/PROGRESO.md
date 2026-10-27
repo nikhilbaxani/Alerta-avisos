@@ -38,3 +38,7 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - T18: `npm run eval -- --live` usa el LLM real (`lib/process.ts`); sin `LLM_BASE_URL` se salta con aviso y sale con 0.
 - Verificación: `scripts/mock-ai.mjs` (servidor OpenAI-compatible falso) + `scripts/live-test.mjs` (Playwright con micrófono falso): la consola muestra «IA local», la llamada entra y se agrupa, sin errores. Captura `docs/capturas/T17-directo.png`. Falta probar con Ollama y Whisper reales (Nick: `bash scripts/setup-modelos.sh`).
 - Siguiente: T20 (README), T21 (PITCH), T22.
+
+## 2026-10-28T02:20 · T20, T21 · hechas
+- README (arranque en 2 comandos, GPU, arquitectura, privacidad/Ley de IA) y `docs/PITCH.md` (guion 3 min, 6 diapositivas, preguntas del jurado, tabla de fuentes). Cifras solo de MEMORIA §3.
+- Siguiente: T22 (verificar-mvp, etiqueta `mvp-v1`).
