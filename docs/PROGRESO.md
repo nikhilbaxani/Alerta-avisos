@@ -32,3 +32,9 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - T15: `docker-compose.gpu.yml` (Ollama + speaches CUDA) y `scripts/setup-modelos.sh` (elige modelos según VRAM; en esta máquina RTX 4070 Laptop 8 GB → `qwen2.5:7b-instruct` + `faster-whisper-small`). Verificado: `docker compose config -q` y `bash -n`. **No se han descargado imágenes ni modelos ni se ha probado la IA en vivo** (varios GB; lo debe lanzar Nick): `bash scripts/setup-modelos.sh`.
 - T16: `scripts/generate_audio.py` (Piper si hay modelos en `models/piper/`, si no edge-tts; filtro de teléfono y lluvia con ffmpeg). Probado con edge-tts en `.venv-audio/`: 26 audios en `public/audio/` (ignorados por git). Para regenerar: `python3 -m venv .venv-audio && .venv-audio/bin/pip install edge-tts && .venv-audio/bin/python scripts/generate_audio.py`.
 - Siguiente: T17 (micrófono), T18 (eval --live), T20, T21.
+
+## 2026-10-28T02:05 · T17, T18 · hechas (probadas contra IA simulada, no contra GPU)
+- T17: `components/LivePanel.tsx` (micrófono con MediaRecorder → `/api/transcribe` → `/api/process`, ubicación AML elegida de una lista; solo activo si Whisper responde en `/api/status`). Las llamadas en directo entran como `L1…` en el mismo flujo.
+- T18: `npm run eval -- --live` usa el LLM real (`lib/process.ts`); sin `LLM_BASE_URL` se salta con aviso y sale con 0.
+- Verificación: `scripts/mock-ai.mjs` (servidor OpenAI-compatible falso) + `scripts/live-test.mjs` (Playwright con micrófono falso): la consola muestra «IA local», la llamada entra y se agrupa, sin errores. Captura `docs/capturas/T17-directo.png`. Falta probar con Ollama y Whisper reales (Nick: `bash scripts/setup-modelos.sh`).
+- Siguiente: T20 (README), T21 (PITCH), T22.

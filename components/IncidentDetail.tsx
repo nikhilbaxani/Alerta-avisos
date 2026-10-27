@@ -1,5 +1,5 @@
-import { scenario } from "@/data/scenario-dana-malaga";
 import { RISK_LABELS, SEVERITY_LABELS, TYPE_LABELS, LANG_NAMES } from "@/lib/labels";
+import { callMeta } from "@/lib/useConsole";
 import type { ConsoleState, Reply } from "@/lib/useConsole";
 import ReplyPanel from "./ReplyPanel";
 import { mmss } from "./format";
@@ -54,8 +54,8 @@ export default function IncidentDetail({ s, localAI, onSplit, onReply }: Props) 
         <h3>Llamadas (original | traducción)</h3>
         <div style={{ display: "grid", gap: 8 }}>
           {inc.callIds.map((id) => {
-            const call = scenario.calls.find((c) => c.id === id)!;
-            const ex = s.calls[id]?.extraction ?? call.mock;
+            const call = callMeta(s, id)!;
+            const ex = s.calls[id]!.extraction;
             return (
               <article className="callcard" key={id}>
                 <header>

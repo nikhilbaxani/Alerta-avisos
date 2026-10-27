@@ -1,18 +1,31 @@
 import { scenario } from "@/data/scenario-dana-malaga";
+import { callMeta } from "@/lib/useConsole";
 import type { ConsoleState } from "@/lib/useConsole";
 import { mmss } from "./format";
 
-export default function CallQueue({ s, onSelect }: { s: ConsoleState; onSelect: (incidentId: string) => void }) {
+import LivePanel from "./LivePanel";
+import type { CallMeta } from "@/lib/useConsole";
+import type { ProcessResult } from "@/lib/types";
+
+interface Props {
+  s: ConsoleState;
+  sttUp: boolean;
+  onSelect: (incidentId: string) => void;
+  onLive: (c: CallMeta, r: ProcessResult) => void;
+}
+
+export default function CallQueue({ s, sttUp, onSelect, onLive }: Props) {
   const list = [...s.arrived].reverse();
   return (
     <section className="col calls-col" aria-label="Cola de llamadas">
       <div className="col-head"><span>Llamadas</span><span>{s.arrived.length} de {scenario.calls.length}</span></div>
+      <LivePanel s={s} sttUp={sttUp} onCall={onLive} />
       {list.length === 0 ? (
         <p className="empty">Pulsa Iniciar para reproducir el escenario. Las llamadas aparecerán aquí según entran.</p>
       ) : (
         <ul className="calls">
           {list.map((id) => {
-            const call = scenario.calls.find((c) => c.id === id)!;
+            const call = callMeta(s, id)!;
             const rec = s.recs[id];
             const incId = s.engine.assignment[id];
             const inc = s.engine.incidents.find((i) => i.id === incId);

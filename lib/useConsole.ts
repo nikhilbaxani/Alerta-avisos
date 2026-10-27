@@ -12,7 +12,7 @@ import {
   splitCall,
 } from "@/lib/engine";
 import type { EngineCall, EngineState } from "@/lib/engine";
-import type { Decision, ProcessResult } from "@/lib/types";
+import type { Aml, Decision, ProcessResult } from "@/lib/types";
 
 export type Speed = 1 | 4 | 10;
 export const SCENARIO_END = Math.max(...scenario.calls.map((c) => c.t));
@@ -25,6 +25,20 @@ export interface CallRec {
   result?: ProcessResult;
   error?: string;
 }
+
+/** Metadatos de una llamada (del escenario o en directo). */
+export interface CallMeta {
+  id: string;
+  t: number;
+  lang: string;
+  phone: string;
+  aml: Aml;
+  transcript: string;
+  live?: boolean;
+}
+
+export const callMeta = (s: ConsoleState, id: string): CallMeta | undefined =>
+  s.live[id] ?? SCENARIO_CALLS.find((c) => c.id === id);
 
 export interface Fx {
   key: string;
@@ -63,6 +77,8 @@ export interface ConsoleState {
   fx: Fx[];
   replies: Reply[];
   audit: AuditEntry[];
+  /** Llamadas en directo (micrófono), por id. */
+  live: Record<string, CallMeta>;
 }
 
 const init = (epoch = 0): ConsoleState => ({
@@ -80,6 +96,7 @@ const init = (epoch = 0): ConsoleState => ({
   fx: [],
   replies: [],
   audit: [],
+  live: {},
 });
 
 type Action =
@@ -90,12 +107,46 @@ type Action =
   | { type: "reset" }
   | { type: "begin"; id: string }
   | { type: "processed"; epoch: number; id: string; result: ProcessResult }
+  | { type: "live"; call: CallMeta; result: ProcessResult }
   | { type: "failed"; epoch: number; id: string; error: string }
   | { type: "decide"; incidentId: string; same: boolean }
   | { type: "split"; callId: string }
   | { type: "select"; incidentId: string | null }
   | { type: "fxDone"; key: string }
   | { type: "reply"; reply: Reply };
+
+function applyResult(s: ConsoleState, src: CallMeta, result: ProcessResult): ConsoleState {
+  const id = src.id;
+  const call: EngineCall = { id, t: src.t, aml: src.aml, extraction: result.extraction };
+  let decision: Decision = result.decision;
+  // Si el operador ha cambiado los incidentes mientras se procesaba, se recalcula en local.
+  if (decision.action !== "new" && !s.engine.incidents.some((i) => i.id === decision.incidentId)) {
+    decision = decide({ aml: call.aml, extraction: call.extraction }, s.engine.incidents.map(snapshot));
+  }
+  const engine = applyDecision(s.engine, call, decision);
+  const incidentId = engine.assignment[id];
+  const audit: AuditEntry[] = [
+    ...s.audit,
+    {
+      t: src.t,
+      kind: decision.action === "merge" ? "fusion_auto" : decision.action === "ask" ? "consulta" : "incidente_nuevo",
+      callId: id,
+      incidentId,
+      detail: decision.reason,
+    },
+  ];
+  const fx = decision.action === "merge" ? [...s.fx, { key: `${id}-${s.epoch}`, callId: id, incidentId }] : s.fx;
+  return {
+    ...s,
+    inflight: src.live ? s.inflight : null,
+    engine,
+    calls: { ...s.calls, [id]: call },
+    recs: { ...s.recs, [id]: { ...s.recs[id], status: "done", result: { ...result, decision } } },
+    audit,
+    fx,
+    selected: s.selected ?? incidentId,
+  };
+}
 
 function reducer(s: ConsoleState, a: Action): ConsoleState {
   switch (a.type) {
@@ -138,36 +189,17 @@ function reducer(s: ConsoleState, a: Action): ConsoleState {
       };
     case "processed": {
       if (a.epoch !== s.epoch) return s;
-      const src = SCENARIO_CALLS.find((c) => c.id === a.id)!;
-      const call: EngineCall = { id: a.id, t: src.t, aml: src.aml, extraction: a.result.extraction };
-      let decision: Decision = a.result.decision;
-      // Si el operador ha cambiado los incidentes mientras se procesaba, se recalcula en local.
-      if (decision.action !== "new" && !s.engine.incidents.some((i) => i.id === decision.incidentId)) {
-        decision = decide({ aml: call.aml, extraction: call.extraction }, s.engine.incidents.map(snapshot));
-      }
-      const engine = applyDecision(s.engine, call, decision);
-      const incidentId = engine.assignment[a.id];
-      const audit: AuditEntry[] = [
-        ...s.audit,
-        {
-          t: src.t,
-          kind: decision.action === "merge" ? "fusion_auto" : decision.action === "ask" ? "consulta" : "incidente_nuevo",
-          callId: a.id,
-          incidentId,
-          detail: decision.reason,
-        },
-      ];
-      const fx = decision.action === "merge" ? [...s.fx, { key: `${a.id}-${s.epoch}`, callId: a.id, incidentId }] : s.fx;
-      return {
+      return applyResult(s, SCENARIO_CALLS.find((c) => c.id === a.id)!, a.result);
+    }
+    case "live": {
+      const meta = { ...a.call, t: Math.round(s.clock), live: true };
+      const withCall: ConsoleState = {
         ...s,
-        inflight: null,
-        engine,
-        calls: { ...s.calls, [a.id]: call },
-        recs: { ...s.recs, [a.id]: { ...s.recs[a.id], status: "done", result: { ...a.result, decision } } },
-        audit,
-        fx,
-        selected: s.selected ?? incidentId,
+        live: { ...s.live, [meta.id]: meta },
+        arrived: [...s.arrived, meta.id],
+        recs: { ...s.recs, [meta.id]: { id: meta.id, t: meta.t, status: "processing" } },
       };
+      return applyResult(withCall, meta, a.result);
     }
     case "decide": {
       const prov = s.engine.incidents.find((i) => i.id === a.incidentId && i.provisional);

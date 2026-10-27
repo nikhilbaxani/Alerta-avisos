@@ -13,11 +13,15 @@ import TopBar from "./TopBar";
 export default function Console() {
   const { s, dispatch, fxDone } = useConsole();
   const [status, setStatus] = useState<EngineStatus>({ mode: "simulated", label: "Modo simulado" });
+  const [sttUp, setSttUp] = useState(false);
 
   useEffect(() => {
     fetch("/api/status")
       .then((r) => r.json())
-      .then((d) => setStatus({ mode: d.mode, label: d.label }))
+      .then((d) => {
+        setStatus({ mode: d.mode, label: d.label });
+        setSttUp(!!d.stt?.up);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -37,7 +41,7 @@ export default function Console() {
         onReset={() => dispatch({ type: "reset" })}
       />
       <main className="main">
-        <CallQueue s={s} onSelect={select} />
+        <CallQueue s={s} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
         <section className="center" aria-label="Mapa e incidentes">
           <div className="map-wrap"><MapView s={s} onSelect={select} onFxDone={fxDone} /></div>
           <div>

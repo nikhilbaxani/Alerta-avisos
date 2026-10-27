@@ -1,8 +1,20 @@
 import { scenario } from "@/data/scenario-dana-malaga";
 import { applyDecision, confirmDifferent, confirmSame, initialState, processCall } from "@/lib/engine";
 import type { EngineCall } from "@/lib/engine";
+import { getConfig, llmEnabled } from "@/lib/config";
+import { processCall as processViaApi } from "@/lib/process";
+import { snapshot } from "@/lib/engine";
+import type { Decision } from "@/lib/types";
 import { priorityOf, rankIncidents } from "@/lib/priority";
 
+const live = process.argv.includes("--live");
+const cfg = getConfig();
+if (live && !llmEnabled(cfg)) {
+  console.log("AVISO: --live necesita LLM_BASE_URL (p. ej. http://localhost:11434/v1). Evaluación en vivo omitida.");
+  process.exit(0);
+}
+
+async function main() {
 const calls = [...scenario.calls].sort((a, b) => a.t - b.t);
 const byId: Record<string, EngineCall> = {};
 const gold: Record<string, string> = {};
@@ -16,8 +28,17 @@ const history: { t: number; state: typeof state }[] = [];
 let questions = 0;
 const rows: string[] = [];
 for (const c of calls) {
-  const { state: s, decision } = processCall(state, byId[c.id]);
-  state = s;
+  let decision: Decision;
+  if (live) {
+    const r = await processViaApi(cfg, { callId: c.id, aml: c.aml, incidents: state.incidents.map(snapshot) });
+    byId[c.id] = { ...byId[c.id], extraction: r.extraction };
+    state = applyDecision(state, byId[c.id], r.decision);
+    decision = r.decision;
+  } else {
+    const r = processCall(state, byId[c.id]);
+    state = r.state;
+    decision = r.decision;
+  }
   let note = "";
   if (decision.action === "ask") {
     questions++;
@@ -67,3 +88,6 @@ console.log(
 const ok = state.incidents.length === nGold && split === 0 && wrongMerges === 0 && questions <= 2 && e1Pos >= 1 && e1Pos <= 2;
 console.log(ok ? "EVAL OK" : "EVAL FALLA");
 process.exit(ok ? 0 : 1);
+
+}
+main().catch((e) => { console.error(e); process.exit(1); });
