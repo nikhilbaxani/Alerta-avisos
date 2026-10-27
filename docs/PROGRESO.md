@@ -52,3 +52,7 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 ## 2026-10-28T03:40 · X01 · hecha
 - Escenario 2 «Apagón en Málaga» (`data/scenario-apagon-malaga.ts`, 16 llamadas, 4 idiomas, 6 incidentes) + registro `data/scenarios.ts` + selector en la barra superior. Tipo nuevo `ascensor`.
 - Verificación: `npm run eval:apagon` → 6 incidentes, 0 fusiones incorrectas, 1 pregunta (M1, segundo ascensor a ~560 m), J1 (oxígeno) 1.º; 30 tests; e2e recorre ambos escenarios; captura `docs/capturas/X01-apagon.png`.
+
+## 2026-10-28T04:10 · X02 · hecha
+- `lib/metrics.ts` (simulación de sala con N operadores: sin copiloto por orden de llegada, con copiloto primero incidentes nuevos por gravedad y duplicados a 15 s) + franja `components/SimStrip.tsx` + 3 tests. Supuestos declarados en la interfaz y en PITCH (no son datos reales). `npx tsx scripts/sim-metrics.ts` imprime la comparación por escenario y operadores.
+- Estado: T01–T22 y X01–X03 hechas, etiqueta `mvp-v1` (sobre T22). Pendiente solo lo que requiere a Nick: IA real con GPU (`bash scripts/setup-modelos.sh`, `npm run eval -- --live`).

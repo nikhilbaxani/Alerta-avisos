@@ -9,6 +9,7 @@ import DecisionBanner from "./DecisionBanner";
 import IncidentDetail from "./IncidentDetail";
 import MapView from "./MapView";
 import PriorityList from "./PriorityList";
+import SimStrip from "./SimStrip";
 import TopBar from "./TopBar";
 
 export default function Console() {
@@ -57,6 +58,7 @@ export default function Console() {
           <div className="map-wrap"><MapView s={s} onSelect={select} onFxDone={fxDone} /></div>
           <div>
             <DecisionBanner s={s} onDecide={decide} />
+            <SimStrip s={s} />
             <div className="legend" aria-hidden="true">
               <span><i style={{ background: "rgba(198,31,43,.3)", borderColor: "var(--red)" }} />Riesgo vital</span>
               <span><i style={{ background: "rgba(21,34,46,.2)" }} />Incidente</span>

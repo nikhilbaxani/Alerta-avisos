@@ -111,6 +111,12 @@ kbd { background: var(--white); color: var(--ink); border: 1px solid var(--ink);
 .decision .btn:not(.alt) kbd { background: var(--paper); }
 .no-decision { margin: 0 8px 8px; padding: 8px 14px; border: 2px dashed var(--grid); color: var(--ink-soft); border-radius: 4px; font-size: 14px; }
 
+.sim { margin: 0 8px 6px; padding: 6px 12px; background: var(--white); border: 2px solid var(--ink); border-radius: 4px; display: grid; gap: 2px; font-size: 14px; }
+.sim p { margin: 0; }
+.sim-row { display: flex; gap: 12px; align-items: center; }
+.sim select { border: 2px solid var(--ink); border-radius: 3px; background: var(--white); }
+.sim .good { color: var(--ok); }
+
 /* ---------- prioridad y detalle ---------- */
 .prio { list-style: none; margin: 0; padding: 0; }
 .prio li { border-bottom: 1px solid var(--grid); }

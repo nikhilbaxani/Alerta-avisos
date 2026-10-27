@@ -54,5 +54,5 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 
 ## Mejoras si sobra tiempo (solo con T22 en `[x]`)
 - [x] X01 Escenario 2: apagón (llamadas sin luz, ascensores y semáforos) para enseñar generalización
-- [ ] X02 Métrica en vivo "tiempo hasta atender la llamada crítica" con y sin copiloto (simulación de una cola de operadores)
+- [x] X02 Métrica en vivo "tiempo hasta atender la llamada crítica" con y sin copiloto (simulación de una cola de operadores)
 - [x] X03 Exportar el registro de decisiones (JSON) para auditoría según la Ley de IA

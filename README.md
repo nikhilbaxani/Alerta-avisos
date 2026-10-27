@@ -21,7 +21,8 @@ El selector de la barra superior cambia entre dos escenarios: **DANA en Málaga*
 2. **Información nueva**: una llamada duplicada no se descarta; si dice «hay un bebé» o «no contesta», se avisa y sube la prioridad.
 3. **La ubicación del llamante no es la del incidente**: quien llama desde otro barrio se agrupa por la dirección que menciona.
 4. **Zona gris visible**: un segundo coche atrapado a ~460 m del primero no se fusiona solo; decide el operador.
-5. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
+5. **Simulación de sala**: espera hasta atender la llamada crítica con y sin copiloto (con 1–4 operadores). Son supuestos ilustrativos (60 s por llamada nueva, 15 s por duplicado), no datos reales.
+6. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
 
 ## Activar la IA local (GPU NVIDIA)
 

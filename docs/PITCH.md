@@ -39,6 +39,8 @@
 | Traducción humana hoy: Cataluña ~50 idiomas, unos 30 s para conectar | 112 Catalunya |
 | No hemos encontrado un 112 español que agrupe duplicados automáticamente | Investigación propia (oct-2026) |
 
+> La franja «Simulación de sala» de la consola es ilustrativa: usa supuestos declarados (60 s por llamada nueva, 15 s por duplicado) y **no se debe presentar como dato medido**. Úsala para enseñar el mecanismo (los duplicados no bloquean la línea de la llamada crítica), no para citar cifras.
+
 ## Preguntas difíciles del jurado
 
 **¿Y si la IA se equivoca y fusiona dos emergencias distintas?**
