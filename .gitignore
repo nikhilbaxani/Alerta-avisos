@@ -8,3 +8,4 @@ STOP
 .claude/.estado/
 .claude/settings.local.json
 alerta-avisos-kit.zip
+.venv-audio/

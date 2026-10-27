@@ -27,3 +27,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Qué se hizo: `scripts/e2e.mjs` (Playwright): reproduce el escenario a ×10, comprueba que F1 y B2 quedan en ámbar hasta que el operador pulsa D/M, 26 llamadas → 7 incidentes, respuesta en árabe, Separar y cero errores de consola. Capturas revisadas: escritorio, móvil, centro y árabe.
 - Verificación: `node scripts/e2e.mjs` → E2E OK. Cambio tras mirar: la vista previa traducida y "Reproducir al llamante" suben encima de las frases.
 - Siguiente: T16 (audio), T20, T21.
+
+## 2026-10-28T01:40 · T15, T16 · hechas (T15 con una salvedad)
+- T15: `docker-compose.gpu.yml` (Ollama + speaches CUDA) y `scripts/setup-modelos.sh` (elige modelos según VRAM; en esta máquina RTX 4070 Laptop 8 GB → `qwen2.5:7b-instruct` + `faster-whisper-small`). Verificado: `docker compose config -q` y `bash -n`. **No se han descargado imágenes ni modelos ni se ha probado la IA en vivo** (varios GB; lo debe lanzar Nick): `bash scripts/setup-modelos.sh`.
+- T16: `scripts/generate_audio.py` (Piper si hay modelos en `models/piper/`, si no edge-tts; filtro de teléfono y lluvia con ffmpeg). Probado con edge-tts en `.venv-audio/`: 26 audios en `public/audio/` (ignorados por git). Para regenerar: `python3 -m venv .venv-audio && .venv-audio/bin/pip install edge-tts && .venv-audio/bin/python scripts/generate_audio.py`.
+- Siguiente: T17 (micrófono), T18 (eval --live), T20, T21.

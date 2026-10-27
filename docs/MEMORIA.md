@@ -102,7 +102,7 @@ STT_BASE_URL=http://localhost:8000/v1    # speaches / faster-whisper-server (vac
 STT_MODEL=Systran/faster-whisper-large-v3
 ```
 
-Modelos según VRAM (Nick aún no ha dicho qué GPU tiene): 8 GB → `qwen2.5:7b-instruct` + `whisper small`; 12–16 GB → `qwen2.5:14b-instruct` + `large-v3-turbo`; 24 GB o más → `qwen2.5:32b-instruct` + `large-v3`. Todo configurable por variables de entorno.
+Modelos según VRAM (GPU detectada en la máquina de Nick: RTX 4070 Laptop, 8 GB → perfil de 8 GB): 8 GB → `qwen2.5:7b-instruct` + `whisper small`; 12–16 GB → `qwen2.5:14b-instruct` + `large-v3-turbo`; 24 GB o más → `qwen2.5:32b-instruct` + `large-v3`. Todo configurable por variables de entorno.
 
 ## 8. Modelo de datos
 

@@ -1,0 +1,32 @@
+# IA local con GPU NVIDIA: Ollama (LLM) + speaches (Whisper, API compatible con OpenAI).
+# Uso: docker compose -f docker-compose.gpu.yml up -d   y luego   bash scripts/setup-modelos.sh
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes: ["ollama:/root/.ollama"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  speaches:
+    image: ghcr.io/speaches-ai/speaches:latest-cuda
+    ports: ["8000:8000"]
+    volumes: ["hf-cache:/home/ubuntu/.cache/huggingface/hub"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  ollama:
+  hf-cache:

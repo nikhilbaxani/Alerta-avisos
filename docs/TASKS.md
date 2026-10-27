@@ -41,8 +41,8 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 - [x] T14 Responsive (apilado en móvil), foco visible, reduced-motion, contraste · agente: `frontend-consola` · deps: T09–T13
 
 ## Fase 4: IA real y audio
-- [ ] T15 `docker-compose.gpu.yml` (Ollama + speaches con CUDA) + `scripts/setup-modelos.sh` (descarga modelos según VRAM, MEMORIA §7) · agente: `backend-ia` · deps: T07
-- [ ] T16 `scripts/generate_audio.py` (Piper o edge-tts, filtro de teléfono y lluvia, MEMORIA §13) · agente: `datos-escenario` · deps: T01
+- [x] T15 `docker-compose.gpu.yml` (Ollama + speaches con CUDA) + `scripts/setup-modelos.sh` (descarga modelos según VRAM, MEMORIA §7) · agente: `backend-ia` · deps: T07
+- [x] T16 `scripts/generate_audio.py` (Piper o edge-tts, filtro de teléfono y lluvia, MEMORIA §13) · agente: `datos-escenario` · deps: T01
 - [ ] T17 Llamada en directo: botón de micrófono (MediaRecorder) → /api/transcribe → /api/process con ubicación AML elegida de una lista · agente: `frontend-consola` · deps: T07, T08
 - [ ] T18 `npm run eval -- --live`: misma evaluación usando el LLM local en lugar de mock (se salta con aviso si no hay `LLM_BASE_URL`) · agente: `qa-verificador` · deps: T05, T07
 
