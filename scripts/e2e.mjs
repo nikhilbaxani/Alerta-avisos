@@ -44,6 +44,25 @@ await page.getByRole("button", { name: "Separar llamada A6" }).click();
 await page.waitForTimeout(300);
 if (!/8 incidentes/.test((await page.locator(".counters").innerText()).replace(/\s+/g, " "))) fail("Separar no creó un incidente");
 
+// Exportar registro (auditoría).
+const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar registro" }).click()]);
+const log = JSON.parse(await (await import("node:fs/promises")).readFile(await dl.path(), "utf8"));
+const kinds = new Set(log.eventos.map((e) => e.kind));
+if (log.llamadas.length !== 26 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
+
+// Inicio vacío y móvil sin scroll horizontal.
+const empty = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await empty.goto(url);
+await empty.getByText(/Pulsa Iniciar/).waitFor();
+await empty.screenshot({ path: "docs/capturas/final-inicio.png" });
+const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
+await mobile.goto(url);
+await mobile.getByRole("button", { name: "Velocidad por 10" }).click();
+await mobile.getByRole("button", { name: "Iniciar", exact: true }).click();
+await mobile.waitForTimeout(6000);
+const over = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
+
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
 console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, Separar, sin errores de consola");

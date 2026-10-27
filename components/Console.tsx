@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useConsole } from "@/lib/useConsole";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
+import { buildAuditLog } from "@/lib/audit";
 import CallQueue from "./CallQueue";
 import DecisionBanner from "./DecisionBanner";
 import IncidentDetail from "./IncidentDetail";
@@ -27,6 +28,14 @@ export default function Console() {
 
   const select = useCallback((id: string) => dispatch({ type: "select", incidentId: id }), [dispatch]);
   const decide = useCallback((incidentId: string, same: boolean) => dispatch({ type: "decide", incidentId, same }), [dispatch]);
+  const exportLog = useCallback(() => {
+    const blob = new Blob([JSON.stringify(buildAuditLog(s, status.label), null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `registro-112-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [s, status.label]);
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
 
   return (
@@ -39,6 +48,7 @@ export default function Console() {
         onPause={() => dispatch({ type: "pause" })}
         onSpeed={(speed: Speed) => dispatch({ type: "speed", speed })}
         onReset={() => dispatch({ type: "reset" })}
+        onExport={exportLog}
       />
       <main className="main">
         <CallQueue s={s} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />

@@ -70,21 +70,22 @@ export default function LivePanel({ s, sttUp, onCall }: { s: ConsoleState; sttUp
     }
   };
 
+  if (!sttUp) return null; // sin Whisper local el modo simulado no muestra la llamada en directo
+
   return (
     <section className="live" aria-label="Llamada en directo">
       <div className="live-row">
-        <select value={place} onChange={(e) => setPlace(Number(e.target.value))} aria-label="Ubicación AML de la llamada" disabled={!sttUp || phase !== "idle"}>
+        <select value={place} onChange={(e) => setPlace(Number(e.target.value))} aria-label="Ubicación AML de la llamada" disabled={phase !== "idle"}>
           {PLACES.map((p, i) => <option key={p.name} value={i}>{p.name}</option>)}
         </select>
         {phase === "recording" ? (
           <button className="btn primary" onClick={() => rec.current?.stop()}>Terminar y enviar</button>
         ) : (
-          <button className="btn" onClick={start} disabled={!sttUp || phase === "working"}>
+          <button className="btn" onClick={start} disabled={phase === "working"}>
             {phase === "working" ? "Procesando…" : "Llamada en directo"}
           </button>
         )}
       </div>
-      {!sttUp && <p className="note">Necesita Whisper local (STT_BASE_URL).</p>}
       {msg && <p className="toast" role="status">{msg}</p>}
     </section>
   );

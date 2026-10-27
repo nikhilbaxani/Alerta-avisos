@@ -11,9 +11,10 @@ interface Props {
   onPause: () => void;
   onSpeed: (v: Speed) => void;
   onReset: () => void;
+  onExport: () => void;
 }
 
-export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, onReset }: Props) {
+export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, onReset, onExport }: Props) {
   const done = Object.values(s.recs).filter((r) => r.status === "done").length;
   const incidents = s.engine.incidents.length;
   const freed = Math.max(0, done - incidents);
@@ -41,7 +42,7 @@ export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, o
         </div>
       </div>
       <div className="topbar-row">
-        <div className="counters" aria-live="polite">
+        <div className="counters" aria-live="polite" style={{ marginRight: "auto" }}>
           <span><b>{done}</b> llamadas → <b>{incidents}</b> incidentes</span>
           <span><b>{freed}</b> líneas liberadas</span>
           {pending > 0 ? (
@@ -50,7 +51,8 @@ export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, o
             <span>Sin decisiones pendientes</span>
           )}
         </div>
-        <span className={`engine ${status.mode === "local" ? "local" : ""}`} style={{ marginLeft: "auto" }}>{status.label}</span>
+        <button className="btn" style={{ minHeight: 26, padding: "0 8px", fontSize: 13 }} onClick={onExport} disabled={s.audit.length === 0}>Exportar registro</button>
+        <span className={`engine ${status.mode === "local" ? "local" : ""}`} >{status.label}</span>
       </div>
     </header>
   );
