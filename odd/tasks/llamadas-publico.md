@@ -41,10 +41,10 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 
 | ID | Specs | Ruta | Commit |
 |---|---|---|---|
-| T1 | S2, S5 | Extractor de reglas + nomenclátor + contrato, con tests (`lib/rules.ts`, `lib/gazetteer.ts`, `lib/publicCall.ts`, `tests/`) | — |
-| T2 | S1, S4, S7, S9 | Relay del VPS + Whisper CPU + Docker/Caddy (`server/`, `scripts/stt_server.py`) | — |
-| T3 | S3, S4, S6, S8 | Página `/llamar` + QR + bandeja de entrada en la consola | — |
-| T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | — |
+| T1 | S2, S5 | Extractor de reglas + nomenclátor + contrato, con tests (`lib/rules.ts`, `lib/gazetteer.ts`, `lib/publicCall.ts`, `tests/`) | f57706b |
+| T2 | S1, S4, S7, S9 | Relay del VPS + Whisper CPU + Docker/Caddy (`server/`, `scripts/stt_server.py`) | 830f196 |
+| T3 | S3, S4, S6, S8 | Página `/llamar` + QR + bandeja de entrada en la consola | 1f2534c |
+| T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | a7fa4eb + este commit |
 
 ## Log
 
@@ -52,3 +52,4 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L2** (decisiones del usuario): IA → «Solo Whisper en el VPS»; llamada → «Grabar en la web (Recomendado)»; ubicación → «Elegir en una lista (Recomendado)», corregido en moderación: «me parece bien, pero lo de la ubicación que se lo diga con el audio y ya»; VPS → «Docker disponible».
 - **L3** (usuario): «el audio no sea menor a 20s, que acepte 1min -2min como máximo pero no hay mínimo».
 - **L4** (exploración): X04 ya hizo `lib/validate.ts` (reutilizable sin Next) y `lib/http.ts` (depende de Next). La consola no recalcula `decide` para acciones `new`, así que una llamada externa se decide en el navegador al aceptarla. No había SSE, Docker ni Vercel.
+- **L5** (integración): ids del relay con etiqueta de arranque (`P<tag><n>`) para que un reinicio no repita ids ocultos por el `seen` de la bandeja; test del relay con el extractor real; título de `/llamar` cambiado a «Llamada de prueba al Copiloto 112». 269 tests, tsc, eval, eval:apagon y build en verde. Sin probar: docker build, Whisper real en CPU, micrófono real en móvil.
