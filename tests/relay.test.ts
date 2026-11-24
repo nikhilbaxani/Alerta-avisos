@@ -336,6 +336,23 @@ describe("relay /llamar + /events", () => {
     expect((await go(base, "6.6.6.6, 2.2.2.2")).status).toBe(202);
   });
 
+  it("TRUST_PROXY detrás de dos saltos locales (Funnel → Caddy → relay): se salta lo local y privado desde la derecha", async () => {
+    const { base } = await boot(fakeStt(), { trustProxy: true, rateLimit: { max: 1, windowMs: 60_000 } });
+    expect((await go(base, "1.2.3.4, 127.0.0.1")).status).toBe(202);
+    // Mismo cliente real (1.2.3.4); las entradas de la izquierda las controla el cliente y se ignoran.
+    expect((await go(base, "6.6.6.6, 1.2.3.4, 100.101.1.2, 127.0.0.1")).status).toBe(429);
+    // Otro cliente real con las mismas direcciones locales a la derecha: cuota propia.
+    expect((await go(base, "8.8.8.8, 127.0.0.1")).status).toBe(202);
+    expect((await go(base, "5.5.5.5, 10.0.0.7, 192.168.1.1, 172.16.0.1, fd00::1, fe80::1, ::1")).status).toBe(202);
+  });
+
+  it("TRUST_PROXY: si todas las direcciones son locales/privadas se usa la dirección del socket", async () => {
+    const { base } = await boot(fakeStt(), { trustProxy: true, rateLimit: { max: 1, windowMs: 60_000 } });
+    expect((await go(base, "127.0.0.1")).status).toBe(202);
+    expect((await go(base, "100.64.0.1, 10.1.1.1")).status).toBe(429); // misma clave: el socket (loopback)
+    expect((await go(base, "9.9.9.9")).status).toBe(202);
+  });
+
   it("IPv6: el límite agrupa por prefijo /64; IPv4 y ::ffff:a.b.c.d se tratan como IPv4", async () => {
     const { base } = await boot(fakeStt(), { trustProxy: true, rateLimit: { max: 1, windowMs: 60_000 } });
     expect((await go(base, "2001:db8:1:2::1")).status).toBe(202);

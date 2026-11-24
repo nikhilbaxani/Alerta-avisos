@@ -159,3 +159,8 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - Descartado: GPS del móvil (todo el público está en el mismo recinto y se fusionaría en un incidente), LLM en CPU (decenas de segundos por llamada) y telefonía real (cuenta y coste).
 - Pendiente: `npm audit` avisa de 2 vulnerabilidades en `next`/`postcss` previas a este cambio.
 - Cuota por IP y hueco de cola se reservan antes de leer el cuerpo y se devuelven si la llamada se rechaza (sin carreras entre subidas simultáneas). STT arranca como root solo para reparar el dueño de `/models` y cede privilegios con `setpriv`.
+
+## 2026-11-24 · Todo en el VPS detrás de Tailscale Funnel (sin Vercel)
+- Decisión: la consola y `/llamar` se sirven como web estática desde el VPS junto al relay, con un solo origen (`/relay/*` al relay). Solo se publica `127.0.0.1:8080`; Tailscale Funnel pone la URL pública HTTPS.
+- Motivo: el equipo no usa Vercel y quiere firewalld cerrado, SSH solo por Tailscale y el exit node intacto. Se descartó exponer SSH y quitar Tailscale (riesgo de quedarse sin acceso; el relay no lo necesita).
+- IP del cliente: `X-Forwarded-For` desde la derecha saltando direcciones locales y privadas; Caddy confía en saltos privados para conservar la cabecera de Funnel. Pendiente de comprobar en el VPS que Funnel la envía (prueba en `server/README.md`); si no, `RATE_LIMIT=60`.

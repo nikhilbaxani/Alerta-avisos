@@ -1,7 +1,36 @@
-{$RELAY_DOMAIN} {
-	encode zstd gzip
-	reverse_proxy relay:8080 {
-		# SSE: no acumular en búfer, enviar cada evento al instante.
-		flush_interval -1
+# Un solo origen: /relay/* → relay (sin el prefijo); el resto → web estática en /srv.
+# SITE_ADDRESS=:8080 (por defecto) sirve HTTP plano detrás de Tailscale Funnel, que ya pone el HTTPS.
+# Con un dominio real (p. ej. SITE_ADDRESS=demo.ejemplo.com) Caddy pide el certificado solo.
+{
+	# Sin API de administración ni telemetría: nada que escuche dentro del contenedor salvo el sitio.
+	admin off
+	servers {
+		# Funnel (tailscaled en el host) → docker-proxy → Caddy llega desde una IP privada. Sin esto Caddy
+		# sustituiría X-Forwarded-For por esa IP y el relay vería a todo el público como un solo cliente.
+		# Con esto conserva la cabecera de Funnel y añade el salto privado, que el relay se salta.
+		trusted_proxies static private_ranges
+	}
+}
+
+{$SITE_ADDRESS::8080} {
+	handle_path /relay/* {
+		reverse_proxy relay:8080 {
+			# SSE: no acumular en búfer, enviar cada evento al instante.
+			flush_interval -1
+		}
+	}
+
+	handle {
+		root * /srv
+		encode gzip
+		header {
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+			Permissions-Policy "microphone=(self), camera=(), geolocation=()"
+			# Next (exportación estática) usa scripts y estilos en línea; el relay es del mismo origen.
+			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+		}
+		try_files {path} {path}.html {path}/index.html /index.html
+		file_server
 	}
 }

@@ -15,6 +15,8 @@ Rama: `feature/llamadas-publico`. Leer hasta `## Log`.
 - **S8 · Modo simulado intacto.** Sin `NEXT_PUBLIC_RELAY_URL` la consola funciona exactamente igual que hoy y la bandeja no aparece. Si el VPS cae, la consola sigue funcionando.
 - **S9 · Seguridad del endpoint público.** Tamaño máximo 3 MB (la grabadora fija 64 kbps: 2 min ≈ 1 MB), tipo `audio/*` o `video/webm|mp4`, consentimiento obligatorio, límite 3 llamadas / 10 min por IP, cola máxima 20 (503 si llena), CORS solo para `ALLOWED_ORIGINS`, el audio solo vive en memoria y se descarta tras transcribir, sin teléfono ni nombre. El flujo `/events` exige `token` (comparación en tiempo constante). La transcripción es texto no confiable: no dispara acciones y se muestra como texto plano.
 
+- **S10 · Todo en el VPS con Funnel.** «lo que tenemos pensado es la web también sea por el vps no usamos vercel ni nada de eso»; modo elegido: «Sí, con Tailscale Funnel (Recomendado)». La consola y `/llamar` se sirven como web estática (exportación estática, modo simulado) desde el VPS junto al relay, con un solo origen: Tailscale Funnel → Caddy en `127.0.0.1:8080` → `/relay/*` al relay y el resto a la web (`NEXT_PUBLIC_RELAY_URL=/relay`). firewalld, SSH por Tailscale, el exit node y los demás dispositivos no se tocan. La IP del cliente para la cuota se toma del `X-Forwarded-For` saltando direcciones locales y privadas desde la derecha; si Funnel no la pasa, se documenta la prueba y subir `RATE_LIMIT`.
+
 ## Contrato compartido (`lib/publicCall.ts`)
 
 ```ts
@@ -45,6 +47,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T2 | S1, S4, S7, S9 | Relay del VPS + Whisper CPU + Docker/Caddy (`server/`, `scripts/stt_server.py`) | 830f196 |
 | T3 | S3, S4, S6, S8 | Página `/llamar` + QR + bandeja de entrada en la consola | 1f2534c |
 | T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | a7fa4eb |
+| T6 | S10, S9 | Despliegue todo-en-VPS con Funnel: web estática + Caddy interno + relay + stt | — |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log
@@ -58,3 +61,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L7** (revisión nativa aprobada, avisos no bloqueantes): alias genéricos («rincón», «puerto», «alameda») como lugar conocido, bandeja sin reconexión, token incorrecto sin salida, recibo «la verá» falso, fallo de traducción tira la llamada, colisión de ids en el mismo segundo.
 - **L8** (T5): las 16 correcciones aplicadas; 289 tests, tsc, eval, eval:apagon y build en verde. Sin probar: ruta 413 de `stt_server.py` con Whisper real, reconexión y «Cambiar token» de la bandeja, build de las imágenes Docker.
 - **L9** (revisión nativa de T5): corrección exigida 1, carrera de cuota (comprobar y contar separados por un await) → reserva síncrona de cuota y hueco de cola, devuelta si no hay 202 (a91d0ef, tests de peticiones solapadas en RED→GREEN). Corrección exigida 2, volumen de modelos de root tras actualizar → `chown` y `setpriv` al arrancar (dc47872). Revisión aprobada. S9 pasa de 8 MB a 3 MB y la grabadora fija 64 kbps (AAC en iOS). Pendiente aparte (avisos): decodificación sin límite antes del 413, recuperación de lugares de una palabra («aeropuerto», «cuarteles»), tests de la UI de la bandeja, escucha solo IPv4, `setpriv` sin comprobar con Docker real.
+- **L10** (usuario): «vale primero hay que dejar el ssh exitnode expuesto al público luego, primero hay que quitar la conexión de tailscale, el firewalld cerrado solo de tailscale, la conexión a mi otros dipositivos y al sobremesa». Se desaconseja (riesgo de quedarse fuera; el relay no lo necesita).
+- **L11** (usuario): «con tailscale como hago que la gente mande el audio usando el qr que le lleva a una web» → Funnel propuesto.
+- **L12** (usuario): «lo que tenemos pensado es la web también sea por el vps no usamos vercel ni nada de eso»; elige «Sí, con Tailscale Funnel (Recomendado)».
+- **L13** (T6): web estática + Caddy interno (`127.0.0.1:8080`) + relay + stt; Funnel delante. IP del cliente: XFF desde la derecha saltando locales/privadas; Caddy con `trusted_proxies static private_ranges` para no sustituir la cabecera de Funnel (si no, todo el público compartiría cuota). 293 tests, tsc, evals y build en verde; exportación estática con `/relay` comprobada en copia temporal y capturas sin errores de CSP en Chrome. Sin probar: build Docker, Caddy real, si Funnel envía `X-Forwarded-For` (prueba documentada en `server/README.md`, paso g).

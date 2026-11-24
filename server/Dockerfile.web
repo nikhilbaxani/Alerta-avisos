@@ -1,0 +1,24 @@
+# Web estática (consola + /llamar) servida por Caddy. Mismo modo que GitHub Pages: sin rutas /api.
+FROM node:22-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY tsconfig.json next.config.mjs next-env.d.ts ./
+COPY app ./app
+COPY components ./components
+COPY lib ./lib
+COPY data ./data
+COPY assets ./assets
+# Un solo origen: el relay cuelga de /relay (Caddy). La duración máxima debe coincidir con MAX_CALL_SECONDS del relay.
+ARG MAX_CALL_SECONDS=120
+ENV GITHUB_PAGES=1 \
+    NEXT_PUBLIC_RELAY_URL=/relay \
+    NEXT_PUBLIC_MAX_CALL_SECONDS=${MAX_CALL_SECONDS} \
+    NEXT_TELEMETRY_DISABLED=1
+# Como en .github/workflows/pages.yml: la exportación estática no admite rutas /api.
+RUN rm -rf app/api && npx next build
+
+FROM caddy:2
+COPY server/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/out /srv
+EXPOSE 8080

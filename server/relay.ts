@@ -44,6 +44,20 @@ export function rateKey(ip: string): string {
   return groups.slice(0, 4).map((g) => parseInt(g || "0", 16).toString(16)).join(":") + "::/64";
 }
 
+/** Loopback, RFC1918, CGNAT/Tailscale (100.64.0.0/10), link-local y ULA IPv6: direcciones de nuestros propios saltos. */
+export function isLocalOrPrivate(ip: string): boolean {
+  const v4m = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  const a = v4m ? v4m[1] : ip.split("%")[0];
+  const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(a);
+  if (m) {
+    const [x, y] = [+m[1], +m[2]];
+    return x === 10 || x === 127 || x === 0 || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168) || (x === 169 && y === 254) || (x === 100 && y >= 64 && y <= 127);
+  }
+  if (!isIPv6(a)) return true; // no es una dirección: no se puede confiar en ella
+  const first = parseInt(a.split(":")[0] || "0", 16);
+  return /^(0*:)+0*1?$|^::1?$/.test(a) || (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
+}
+
 export interface RelayOptions {
   sttBaseUrl: string;
   sttModel?: string;
@@ -52,7 +66,7 @@ export interface RelayOptions {
   token?: string;
   allowedOrigins?: string[];
   rateLimit?: { max: number; windowMs: number };
-  /** Confía en el ÚLTIMO salto de X-Forwarded-For, el que añade Caddy (solo detrás de él). */
+  /** Confía en X-Forwarded-For desde la derecha, saltando direcciones locales/privadas (solo detrás de Caddy/Funnel). */
   trustProxy?: boolean;
   /** Llamadas en espera (sin contar la que se procesa). */
   maxPending?: number;
@@ -140,10 +154,10 @@ export function createRelay(opts: RelayOptions) {
   function clientIp(req: http.IncomingMessage): string {
     if (opts.trustProxy) {
       const xff = req.headers["x-forwarded-for"];
-      // Lo que añade nuestro proxy es lo último; lo anterior lo controla el cliente.
-      const parts = (Array.isArray(xff) ? xff.join(",") : xff)?.split(",").map((p) => p.trim()).filter(Boolean);
-      const last = parts?.[parts.length - 1];
-      if (last) return last;
+      // Cada proxy local (Funnel → Caddy → relay) añade la dirección que ve a la derecha; lo de la izquierda lo
+      // controla el cliente. Se recorre desde la derecha y se toma la primera dirección que no sea local ni privada.
+      const parts = (Array.isArray(xff) ? xff.join(",") : xff)?.split(",").map((p) => p.trim()).filter(Boolean) ?? [];
+      for (let i = parts.length - 1; i >= 0; i--) if (!isLocalOrPrivate(parts[i])) return parts[i];
     }
     return req.socket.remoteAddress ?? "?";
   }

@@ -1,55 +1,112 @@
 # Relay del VPS — llamadas del público
 
-Recibe el audio que graba el público desde `/llamar` (QR), lo transcribe con Whisper en CPU, extrae los datos con el extractor de reglas (`lib/rules.ts`) y lo envía por SSE a la bandeja de la consola en Vercel.
+Recibe el audio que graba el público desde `/llamar` (QR), lo transcribe con Whisper en CPU, extrae los datos con el extractor de reglas (`lib/rules.ts`) y lo envía por SSE a la bandeja de la consola. **Todo corre en el VPS, con un solo origen**, publicado únicamente a través de Tailscale Funnel:
 
 ```
-móvil ──POST /llamar──▶ Caddy (HTTPS) ──▶ relay (Node) ──▶ stt (Whisper CPU)
-consola (Vercel) ◀──SSE /events?token=…── Caddy ◀── relay
+móvil / operador ──HTTPS──▶ Tailscale Funnel ──▶ web (Caddy, 127.0.0.1:8080)
+                                                   ├─ /relay/*  ──▶ relay (Node) ──▶ stt (Whisper CPU)
+                                                   └─ resto     ──▶ web estática (consola + /llamar)
 ```
 
-Solo Caddy publica puertos (80 y 443). `relay` y `stt` no son accesibles desde fuera.
+- La web es la exportación estática de la consola (modo simulado, como en GitHub Pages) construida con `NEXT_PUBLIC_RELAY_URL=/relay`.
+- Docker publica **solo** `127.0.0.1:8080`. Nada escucha en la IP pública del VPS. `firewalld`, el acceso SSH por Tailscale, el exit node y el resto de dispositivos **no se tocan**.
+- `relay` y `stt` no publican puertos: solo se ven dentro de la red de compose.
 
 ## Despliegue paso a paso
 
-Requisitos en el VPS: Docker con el plugin `docker compose`, puertos 80 y 443 libres y unos 2 GB de RAM libres.
+Requisitos en el VPS: Docker con el plugin `docker compose`, Tailscale ya instalado y conectado, y unos 2 GB de RAM libres.
 
-1. **DNS.** Crea un registro `A` (por ejemplo `relay.tudominio.com`) con la IP del VPS. Espera a que propague: Caddy necesita que el dominio ya apunte al VPS para obtener el certificado.
-2. **Copia el repositorio** al VPS (`git clone` de la rama `feature/llamadas-publico` o `rsync`) y entra en la carpeta.
-3. **Configura el entorno:**
-   ```bash
-   cp server/relay.env.example server/relay.env
-   openssl rand -hex 24        # copia el resultado en RELAY_TOKEN
-   nano server/relay.env       # RELAY_DOMAIN, RELAY_TOKEN y ALLOWED_ORIGINS
-   ```
-   `ALLOWED_ORIGINS` es la URL de la consola en Vercel (por ejemplo `https://tu-consola.vercel.app`, sin barra final). Solo ese origen podrá llamar desde el navegador.
-4. **Arranca:**
-   ```bash
-   docker compose -f server/docker-compose.vps.yml --env-file server/relay.env up -d --build
-   ```
-   La primera vez `stt` descarga el modelo (~460 MB para `small`) en el volumen `whisper_models`; después queda en caché.
-5. **Comprueba** (la primera respuesta puede tardar mientras carga el modelo):
-   ```bash
-   curl https://relay.tudominio.com/health
-   # {"ok":true,"queue":0,"maxCallSeconds":120}
-   docker compose -f server/docker-compose.vps.yml logs -f stt relay
-   ```
-6. **Vercel.** En el proyecto de la consola añade la variable de entorno `NEXT_PUBLIC_RELAY_URL=https://relay.tudominio.com` y vuelve a desplegar. El operador abre la consola con `https://tu-consola.vercel.app/#op=<RELAY_TOKEN>` (se guarda en `localStorage` y se borra de la URL; se usa `#` y no `?` para que el token no llegue a los registros de Vercel. `?op=` sigue aceptándose por compatibilidad). Si guardó uno equivocado, usa «Cambiar token» en la bandeja.
-   Además, `NEXT_PUBLIC_MAX_CALL_SECONDS` (Vercel, corte de la grabación en el navegador) y `MAX_CALL_SECONDS` (VPS) **deben coincidir**: si el navegador permite más que el servidor, las llamadas largas se descartan.
+**a) Tailscale (una vez, en la consola de administración).** En *Access controls* añade a la política (`nodeAttrs`) el atributo `funnel` para este nodo o su etiqueta:
 
-Actualizar: `git pull` y repetir el comando del paso 4. Parar: `docker compose -f server/docker-compose.vps.yml down` (el volumen del modelo se conserva).
+```json
+"nodeAttrs": [
+  { "target": ["<este nodo o tag:xxx>"], "attr": ["funnel"] }
+]
+```
+
+Y en *DNS* activa **HTTPS Certificates** para la tailnet. Anota el nombre del nodo: `https://<nodo>.<tailnet>.ts.net`.
+
+**b) Configura el entorno.** Copia el repositorio al VPS (`git clone` de la rama `feature/llamadas-publico`) y entra en la carpeta:
+
+```bash
+cp server/relay.env.example server/relay.env
+openssl rand -hex 24        # copia el resultado en RELAY_TOKEN
+nano server/relay.env       # RELAY_TOKEN y ALLOWED_ORIGINS=https://<nodo>.<tailnet>.ts.net
+```
+
+`ALLOWED_ORIGINS` debe ser exactamente el origen de Funnel (sin barra final): aunque la web y el relay comparten origen, el navegador envía `Origin` en el `POST` y el relay solo acepta los orígenes listados.
+
+**c) Arranca:**
+
+```bash
+docker compose -f server/docker-compose.vps.yml --env-file server/relay.env up -d --build
+```
+
+La primera vez se construye la web y `stt` descarga el modelo (~460 MB para `small`) en el volumen `whisper_models`.
+
+**d) Comprueba en local** (la primera respuesta puede tardar mientras carga el modelo):
+
+```bash
+curl http://127.0.0.1:8080/relay/health
+# {"ok":true,"queue":0,"maxCallSeconds":120}
+```
+
+**e) Publica con Funnel:**
+
+```bash
+sudo tailscale funnel --bg 8080
+tailscale funnel status
+```
+
+`funnel status` muestra la URL pública `https://<nodo>.<tailnet>.ts.net` apuntando a `http://127.0.0.1:8080`.
+
+**f) Usa la consola.** El operador abre `https://<nodo>.<tailnet>.ts.net/#op=<RELAY_TOKEN>` (se guarda en el navegador y se borra de la URL; si guardó uno equivocado, «Cambiar token» en la bandeja). La consola muestra un QR que apunta a `/llamar`: el público lo escanea desde el móvil.
+`NEXT_PUBLIC_MAX_CALL_SECONDS` (corte de la grabación en el navegador) se fija al construir la web con el mismo `MAX_CALL_SECONDS` del servidor, así que no hay que mantener dos valores; si lo cambias, vuelve a ejecutar el comando del paso c).
+
+**g) Prueba de la IP del cliente (importante).** El límite de llamadas por IP necesita la IP real del cliente. Funnel debería pasarla en `X-Forwarded-For`, pero no está verificado en este despliegue. Prueba con dos móviles **con datos móviles** (no wifi): cada uno hace una llamada y mira:
+
+```bash
+docker compose -f server/docker-compose.vps.yml --env-file server/relay.env logs relay
+```
+
+Cada línea `recibida` termina en `ip <hash de 8 caracteres>`: deben ser **distintos** entre los dos móviles. Si salen iguales (o ambos como la IP local), Funnel no reenvía la IP del cliente y todo el público compartiría una cuota: pon `RATE_LIMIT=60` en `server/relay.env` y reinicia con el comando del paso c). La moderación del operador sigue protegiendo la pantalla.
+
+**Prueba de suplantación (después de la anterior).** Desde un portátil fuera de la tailnet, envía una llamada con una IP falsa en la cabecera y comprueba que el relay registra tu IP real, no la falsa:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 9.9.9.9' \
+  -F consent=1 -F 'file=@llamada.webm;type=audio/webm' https://<nodo>.<tailnet>.ts.net/relay/llamar
+```
+
+Repite la petición sin la cabecera: las dos líneas `recibida` del log deben llevar **el mismo** hash de IP. Si son distintos, Funnel deja pasar la cabecera del cliente sin añadir la suya: pon `RATE_LIMIT=60` como arriba y no confíes en el límite por IP. Caddy conserva la cabecera de Funnel gracias a `trusted_proxies static private_ranges` en `server/Caddyfile`.
+
+**h) Parar:**
+
+```bash
+sudo tailscale funnel --https=443 off    # o: sudo tailscale funnel reset  (no verificado: comprueba `tailscale funnel --help` en tu versión)
+docker compose -f server/docker-compose.vps.yml --env-file server/relay.env down   # el volumen del modelo se conserva
+```
+
+**i) Qué no cambia.** `firewalld`, SSH por Tailscale, el exit node y los demás dispositivos quedan como estaban; Docker solo abre `127.0.0.1:8080`, inaccesible desde fuera salvo a través de Funnel.
+
+Actualizar: `git pull` y repetir el paso c).
+
+## Pasar a un dominio propio (más adelante)
+
+Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/relay.env` pon `SITE_ADDRESS=demo.tudominio.com` y `ALLOWED_ORIGINS=https://demo.tudominio.com`, y en `server/docker-compose.vps.yml` añade a `web` los puertos `"80:80"` y `"443:443"` (Caddy pide el certificado solo). Esto **sí** expone el VPS a internet: revisa antes `firewalld`.
 
 ## Variables
 
 | Variable | Por defecto | Qué hace |
 |---|---|---|
-| `RELAY_DOMAIN` | — | Dominio que sirve Caddy (HTTPS automático). |
+| `SITE_ADDRESS` | `:8080` | Dirección de Caddy. `:8080` = HTTP plano detrás de Funnel. |
 | `RELAY_TOKEN` | — | Token de `/events`. Sin él, `/events` responde 503. |
-| `ALLOWED_ORIGINS` | — | Orígenes CORS permitidos, separados por comas. |
-| `MAX_CALL_SECONDS` | 120 | Máximo de duración; `stt` decodifica el audio y responde 413 (sin transcribir) si supera máximo + 5 s. Debe coincidir con `NEXT_PUBLIC_MAX_CALL_SECONDS` en Vercel. |
+| `ALLOWED_ORIGINS` | — | Orígenes permitidos (CORS y `Origin` de los POST), separados por comas: el de Funnel. |
+| `MAX_CALL_SECONDS` | 120 | Máximo de duración; `stt` responde 413 (sin transcribir) si supera máximo + 5 s. También se usa al construir la web. |
 | `RATE_LIMIT` / `RATE_WINDOW_MIN` | 3 / 10 | Llamadas por IP y ventana. |
 | `STT_MODEL` | `Systran/faster-whisper-small` | Modelo de Whisper. |
 
-El relay (`server/relay.ts`) lee además `PORT` (8080), `HOST` (dirección de escucha; por defecto `0.0.0.0` para Docker, usa `127.0.0.1` en local), `STT_BASE_URL` y `TRUST_PROXY=1` (compose ya lo activa: la IP del cliente es el **último** salto de `X-Forwarded-For`, el que añade Caddy; los anteriores los controla el cliente). Las direcciones IPv6 se limitan por prefijo /64.
+El relay (`server/relay.ts`) lee además `PORT` (8080), `HOST` (dirección de escucha; por defecto `0.0.0.0` para Docker, usa `127.0.0.1` en local), `STT_BASE_URL` y `TRUST_PROXY=1` (compose ya lo activa): la IP del cliente se toma de `X-Forwarded-For` **recorriéndolo desde la derecha** y saltando direcciones locales y privadas (loopback, RFC1918, 100.64.0.0/10 de Tailscale, `fc00::/7`, `fe80::/10`); lo que queda a la izquierda de la primera dirección pública lo controla el cliente y se ignora. Si todas son locales se usa la dirección del socket. Las direcciones IPv6 se limitan por prefijo /64.
 
 ## Límites del endpoint público
 

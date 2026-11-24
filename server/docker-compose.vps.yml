@@ -1,18 +1,22 @@
 # Despliegue en el VPS (desde la raíz del repo):
 #   docker compose -f server/docker-compose.vps.yml --env-file server/relay.env up -d --build
-# Solo Caddy publica puertos (80/443). Relay y Whisper no tienen ports: solo se ven dentro de la red de compose.
+# Todo en un solo origen: Tailscale Funnel → web (Caddy, 127.0.0.1:8080) → /relay/* → relay → stt.
+# Todos comparten la red por defecto de compose (stt necesita salida para bajar el modelo).
+# Solo `web` publica un puerto, y solo en loopback: nada escucha en la IP pública del VPS.
 # (Whisper necesita salida a internet solo la primera vez, para descargar el modelo.)
 services:
-  caddy:
-    image: caddy:2
+  web:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile.web
+      args:
+        MAX_CALL_SECONDS: ${MAX_CALL_SECONDS:-120}
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:8080:8080"
     environment:
-      RELAY_DOMAIN: ${RELAY_DOMAIN:?define RELAY_DOMAIN en server/relay.env}
+      SITE_ADDRESS: ${SITE_ADDRESS:-:8080}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -29,10 +33,11 @@ services:
       STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
       MAX_CALL_SECONDS: ${MAX_CALL_SECONDS:-120}
       RELAY_TOKEN: ${RELAY_TOKEN:?define RELAY_TOKEN en server/relay.env}
+      # Origen público de Funnel (https://<nodo>.<tailnet>.ts.net): el navegador envía Origin también en POST del mismo origen.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?define ALLOWED_ORIGINS en server/relay.env}
       RATE_LIMIT: ${RATE_LIMIT:-3}
       RATE_WINDOW_MIN: ${RATE_WINDOW_MIN:-10}
-      TRUST_PROXY: "1" # detrás de Caddy: el cliente es el ÚLTIMO salto de X-Forwarded-For (lo que añade Caddy)
+      TRUST_PROXY: "1" # X-Forwarded-For desde la derecha, saltando direcciones locales/privadas (Funnel → Caddy)
       HOST: 0.0.0.0 # solo alcanzable desde la red de compose
     depends_on:
       - stt
