@@ -13,7 +13,7 @@
 - A4 aporta el aviso de un bebé en peligro. C3 informa de cables en el suelo: aparece sobre el mapa el acuse simulado del aviso automático a la distribuidora. Acelerar a ×10 para cerrar el escenario y señalar el contador de agrupación.
 - Si el relay está disponible, abrir **En directo (QR)** y mostrar una llamada de prueba ya enviada desde un móvil. El operador la revisa y pulsa **Aceptar** para que entre en el mapa y la cola de esa pestaña. No altera el escenario ni activa las herramientas del agente. Si no hay relay, mantener la demo en **Simulación**, que funciona sin conexión.
 
-**3. Qué cambia en la sala (1:50–2:30).** «El modelo no autoriza envíos. Solo los avisos informativos disparados por reglas salen sin aprobación, y aquí todos los envíos son simulados. En terminal, el asistente de espera da indicaciones mientras llega el turno y prioriza el riesgo vital que la sala aún no conoce. En estas reproducciones no acorta el tiempo hasta un operador para la llamada crítica. El parte reúne incidentes, prioridades, acciones y pendientes».
+**3. Qué cambia en la sala (1:50–2:30).** «El modelo no autoriza envíos. Solo los avisos informativos disparados por reglas salen sin aprobación, y aquí todos los envíos son simulados. En terminal, el asistente de espera da indicaciones y escala toda llamada en espera con riesgo vital o gravedad 5, aunque sea un duplicado. En la simulación, la llamada crítica llega antes a un operador en la DANA y tarda lo mismo en el apagón. El parte reúne incidentes, prioridades, acciones y pendientes».
 
 **4. Siguiente paso (2:30–3:00).** Piloto con un contratista, licencia por puesto de operador y evaluación con llamadas reales anonimizadas. Medir carga de trabajo, tiempo hasta atender la llamada crítica y errores de agrupación antes de integrar servicios reales.
 
@@ -23,7 +23,7 @@
 2. **Agente 112.** Agrupa avisos, detecta información nueva y traduce. La IA propone; la zona gris la decide el operador.
 3. **Percepción → decisión → acción.** **Percepción:** audio o guion, ubicación y riesgos extraídos. **Decisión:** agrupar, priorizar y preguntar en ámbar. **Acción:** un cable en el suelo genera un aviso informativo simulado; recursos, SMS y rellamada requieren aprobación; ES-Alert solo lo aprueba un coordinador humano. La traza deja el motivo, la aprobación y el resultado.
 4. **Dos modos de demostración.** **Simulación:** llamadas ficticias con audio, tarjetas y acuses simulados. **En directo (QR):** llamadas de prueba del público por móvil; entran en una cola separada tras revisión, sin ejecutar el agente de acciones.
-5. **Qué muestra la simulación.** DANA: 19 líneas liberadas por agrupación, 25 acciones preparadas y 20 llamadas atendidas por el asistente de espera. No son líneas telefónicas medidas ni atención humana más rápida.
+5. **Qué muestra la simulación.** DANA: 19 líneas liberadas por agrupación, 25 acciones preparadas y 19 llamadas atendidas por el asistente de espera. Son cifras de la simulación, no mediciones de una sala real.
 6. **Siguiente paso.** Piloto con un contratista, validación con llamadas anonimizadas y revisión de riesgos, supervisión humana y trazabilidad antes de cualquier integración real.
 
 ## Números y fuentes
@@ -44,12 +44,13 @@
 | Acciones preparadas | 25 | 18 |
 | Envíos simulados sin aprobación, por reglas | 4 | 5 |
 | ES-Alert pendientes de coordinación | 1 | 0 |
-| Llamadas atendidas por el asistente de espera | 20 | 14 |
-| De las atendidas, derivadas con prioridad por riesgo vital | 7 | 6 |
-| De las atendidas, duplicados resueltos sin operador | 6 | 5 |
-| Espera de la llamada crítica hasta un operador, sin y con asistente | E1: 26 s en ambos casos | J1: 40 s en ambos casos |
+| Llamadas atendidas por el asistente de espera | 19 | 13 |
+| De las atendidas, derivadas con prioridad por riesgo vital o gravedad 5 | 10 | 8 |
+| De las atendidas, duplicados resueltos sin operador | 6 | 4 |
+| De las atendidas, en cola humana sin escalar | 3 | 1 |
+| Espera de la llamada crítica hasta un operador, sin y con asistente | E1: 26 s → 8 s | J1: 40 s → 40 s |
 
-**Supuestos del agente.** Extracciones del guion, reglas deterministas, operador simulado que acierta en ámbar y aprueba las acciones de su competencia, sin simular al coordinador en estas ejecuciones. El reloj de las acciones y acuses es el del escenario, no el de la cola de la sala. Las escaladas y los duplicados resueltos ya están incluidos en las llamadas atendidas por el asistente.
+**Supuestos del agente.** Extracciones del guion, reglas deterministas, operador simulado que acierta en ámbar y aprueba las acciones de su competencia, sin simular al coordinador en estas ejecuciones. El reloj de las acciones y acuses es el del escenario, no el de la cola de la sala. Los tres resultados del asistente (escalada, cierre de un duplicado o cola humana sin escalar) son excluyentes y suman el total de llamadas atendidas.
 
 **Supuestos de la sala.** Ambas ejecuciones usan 2 operadores, 60 s por llamada nueva y 15 s por repetida. La franja de la consola compara con y sin copiloto: sin copiloto son 60 s por llamada y orden de llegada; con copiloto, primero las emergencias nuevas por gravedad. La tabla compara otra cosa: mantiene esa priorización y añade el asistente de espera, que puede atender varias llamadas a la vez. Solo los duplicados que cierra dejan de ocupar al operador; las demás llamadas conservan el mismo coste humano. No son tiempos medidos ni una estimación de llamadas perdidas que se recuperarían.
 
@@ -65,7 +66,7 @@ Solo los avisos informativos a la distribuidora y al ayuntamiento cuando los dis
 Una propuesta incoherente con la herramienta o sus argumentos se rechaza; una propuesta válida pero inoportuna puede descartarla quien deba aprobarla. El planificador mantiene las reglas si el modelo falla. Si la extracción no detecta un riesgo, el suelo de gravedad no lo recupera. En agrupación, el modelo no resuelve el ámbar; una fusión automática errónea se puede deshacer con **Separar**.
 
 **¿Reduce la espera de verdad?**
-Todavía no lo sabemos. En estas simulaciones, el asistente da una primera respuesta y cierra algunos duplicados sin operador, pero no reduce la espera de la llamada crítica hasta que la coge una persona. Haría falta un piloto para medir el efecto en una sala real.
+Todavía no lo sabemos. En estas simulaciones, el asistente da una primera respuesta y cierra algunos duplicados sin operador. La espera de la llamada crítica hasta un operador baja en la DANA y no cambia en el apagón. Haría falta un piloto para medir el efecto en una sala real.
 
 **¿Qué pasa con el audio y la privacidad?**
 En **Simulación** el audio es ficticio y está incluido con la consola. En **En directo (QR)** el audio de prueba se envía al relay para transcribirlo con Whisper; vive en memoria y no se pide nombre ni teléfono. Es una demo, no un canal del 112. Con el relay desactivado, la simulación sigue funcionando sin red, GPU ni claves.
