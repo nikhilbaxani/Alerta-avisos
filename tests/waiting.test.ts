@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getScenario } from "@/data/scenarios";
 import { formatRun, runAgent, runToJson } from "@/lib/agent";
@@ -310,9 +309,8 @@ describe("sala simulada con agente de espera", async () => {
 describe("npm run agente con el agente de espera", async () => {
   const run = await runAgent(dana);
 
-  it("por defecto usa los operadores de la franja de sala de la consola", () => {
-    const src = readFileSync("components/SimStrip.tsx", "utf8");
-    expect(src).toContain(`useState(${DEFAULT_OPERATORS})`);
+  it("por defecto usa 2 operadores en sala", () => {
+    expect(DEFAULT_OPERATORS).toBe(2);
     expect(run.waiting.operators).toBe(DEFAULT_OPERATORS);
   });
 

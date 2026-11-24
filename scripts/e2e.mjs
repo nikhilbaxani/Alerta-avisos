@@ -19,8 +19,12 @@ await page.addInitScript(() => {
   };
 });
 await page.goto(url);
-await page.getByRole("button", { name: "Velocidad por 10" }).click();
+await page.getByRole("button", { name: "Velocidad por 4" }).click();
 await page.getByRole("button", { name: "Iniciar", exact: true }).click();
+// El audio nunca suena solo: solo con «Escuchar».
+await page.waitForTimeout(4000);
+if (await page.evaluate(() => window.__audios.length)) fail("una llamada ha sonado sin pulsar Escuchar");
+await page.getByRole("button", { name: "Velocidad por 10" }).click();
 
 const asked = [];
 for (let i = 0; i < 2; i++) {
@@ -42,13 +46,9 @@ if ((await kpi(page, "calls")) !== 26 || (await kpi(page, "incidents")) !== 7) f
 // Los incidentes se buscan por contenido (tipo, motivo y nº de llamadas), no por su número INC-xx:
 // los números no se reutilizan y dependen de las decisiones del operador.
 const prio = (name) => page.locator(".prio").getByRole("button", { name }).first();
-// La consola está dividida en zonas (pestañas): Llamadas, Emergencias, Traducción, Acciones y Análisis.
-const tab = (name) => page.getByRole("tab", { name: new RegExp(name) }).click();
 
 // E1 en la cola de prioridad (la única emergencia médica, con dolor torácico): respuesta en árabe.
-await tab("Emergencias");
 await prio(/Emergencia médica[\s\S]*dolor torácico/).click();
-await tab("Traducción");
 await page.getByRole("button", { name: "¿La persona respira? ¿Está consciente?" }).click();
 const said = await page.locator(".said").innerText();
 if (!/[؀-ۿ]/.test(said)) fail("la respuesta no está en árabe");
@@ -58,8 +58,8 @@ await page.screenshot({ path: "docs/capturas/T19-arabe.png" });
 // Agente de acciones (X05 en la consola): los avisos informativos ya se enviaron solos; el SMS en árabe espera al operador.
 const sentBefore = await kpi(page, "actions");
 if (sentBefore < 2) fail(`el agente no ha enviado los avisos automáticos (${sentBefore})`);
-await tab("Acciones");
 await page.getByRole("button", { name: /Aprobar y enviar: SMS en árabe/ }).click();
+await page.locator("#box-actions").getByRole("button", { name: /Enviadas/ }).click();
 await page.getByText(/Aprobado y enviado · acuse SMS-[0-9A-F]{6}/).first().waitFor({ timeout: 5000 });
 
 // Audio de la llamada (sin red: MP3 dentro de la app).
@@ -67,7 +67,6 @@ for (const id of ["A1", "E1", "H1"]) {
   const r = await page.request.get(`${url}/audio/${id}.mp3`);
   if (r.status() !== 200 || !(r.headers()["content-type"] ?? "").includes("audio")) fail(`falta el audio ${id}`);
 }
-await tab("Emergencias");
 await page.getByRole("button", { name: "Escuchar la llamada E1" }).click();
 await page.getByRole("button", { name: "Detener la llamada E1" }).waitFor({ timeout: 3000 });
 await page.waitForFunction(() => window.__audios.some((a) => a.src.endsWith("/audio/E1.mp3") && !a.paused && !a.error && a.currentTime > 0.3), null, { timeout: 5000 })
@@ -76,14 +75,13 @@ await page.getByRole("button", { name: "Detener la llamada E1" }).click();
 if ((await kpi(page, "actions")) !== sentBefore + 1) fail("aprobar el SMS no cuenta como acción enviada");
 
 // ES-Alert (X07): lo propone el agente para la zona de los coches atrapados, pero solo lo aprueba un coordinador.
-await tab("Acciones");
+await page.locator("#box-actions").getByRole("button", { name: /Por aprobar/ }).click();
 const es = page.locator(".act", { hasText: "ES-Alert a la población" });
 if ((await es.count()) !== 1) fail("falta la tarjeta del ES-Alert en el coche de A");
 if (await es.getByRole("button", { name: /Aprobar y enviar/ }).count()) fail("el operador no debe poder aprobar un ES-Alert");
 if (!(await es.innerText()).includes("La aprueba un coordinador")) fail("el ES-Alert no avisa de que lo aprueba un coordinador");
 
 // Separar una llamada del coche de A (6 llamadas; F es el otro vehículo, con 2).
-await tab("Emergencias");
 await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
 await page.getByRole("button", { name: "Separar llamada A6" }).click();
 await page.waitForTimeout(300);

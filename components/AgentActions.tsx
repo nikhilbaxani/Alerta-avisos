@@ -1,4 +1,4 @@
-import { CITY_LABELS, RESOURCE_LABELS, actionIncidents, canApprove, toolService, toolTarget } from "@/lib/actions";
+import { CITY_LABELS, RESOURCE_LABELS, canApprove, toolService, toolTarget } from "@/lib/actions";
 import type { ActionTool, AgentAction } from "@/lib/actions";
 import Icon from "./Icon";
 import type { IconName } from "./Icon";
@@ -38,28 +38,23 @@ const whoText = (a: AgentAction) => {
 
 interface CardProps {
   a: AgentAction;
+  /** Etiquetas de la emergencia (o las de la zona) a la que pertenece. */
+  tokens?: React.ReactNode;
   onApprove: (key: string) => void;
   onDiscard: (key: string) => void;
-  /** Abre el incidente (o los de la zona) al pulsar su etiqueta. */
-  onIncident?: (id: string) => void;
 }
 
 /** Tarjeta de una acción que prepara el agente: aprobar/descartar si le toca al operador, o su estado. */
-export function ActionCard({ a, onApprove, onDiscard, onIncident }: CardProps) {
+export function ActionCard({ a, tokens, onApprove, onDiscard }: CardProps) {
   const state = a.status === "enviada" ? "sent" : a.status === "descartada" ? "discarded" : "pending";
   const mine = canApprove(a.policy, "operador");
   const title = actionTitle(a);
-  const incs = actionIncidents(a);
   return (
     <li className={`act st-${state === "pending" && !mine ? "coord" : state}`}>
       <span className="act-icon" aria-hidden="true"><Icon name={TOOL_ICON[a.tool]} size={18} /></span>
       <div className="act-body">
-        <span className="act-top">
-          <span className="act-title">{title}</span>
-          {onIncident && incs.map((id) => (
-            <button key={id} className="act-inc" onClick={() => onIncident(id)} aria-label={`Ver ${id}`}>{id}</button>
-          ))}
-        </span>
+        {tokens && <span className="act-incs">{tokens}</span>}
+        <span className="act-title">{title}</span>
         <span className="act-target">{a.reason}</span>
         {a.tool === "sms_al_llamante" && (
           <p className="act-sms">

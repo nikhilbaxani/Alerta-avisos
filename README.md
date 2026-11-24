@@ -17,12 +17,11 @@ El selector de la barra superior cambia entre dos escenarios: **DANA en Málaga*
 
 ## Qué enseña la demo
 
-1. **Agrupar**: 26 llamadas → 7 incidentes. El contador de «líneas liberadas» sube.
+1. **Agrupar**: 26 llamadas → 7 incidentes. El contador de «repetidas» (líneas que quedan libres) sube; cada llamada lleva la etiqueta de su incidente (③ INC-03, el mismo número que en el mapa).
 2. **Información nueva**: una llamada duplicada no se descarta; si dice «hay un bebé» o «no contesta», se avisa y sube la prioridad.
 3. **La ubicación del llamante no es la del incidente**: quien llama desde otro barrio se agrupa por la dirección que menciona.
 4. **Zona gris visible**: un segundo coche atrapado a ~460 m del primero no se fusiona solo; decide el operador.
-5. **Simulación de sala**: espera hasta atender la llamada crítica con y sin copiloto (con 1–4 operadores). Son supuestos ilustrativos (60 s por llamada nueva, 15 s por duplicado), no datos reales.
-6. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
+5. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
 
 ## Activar la IA local (GPU NVIDIA)
 
@@ -43,7 +42,7 @@ Sin Docker ni sudo (si Docker no ve la GPU): `bash scripts/ia-local.sh` arranca 
 
 Todo se configura con `.env.local` (plantilla en `.env.example`): `LLM_BASE_URL`, `LLM_MODEL`, `STT_BASE_URL`, `STT_MODEL`. Con IA local, además: texto libre traducido, opinión del modelo en la zona gris (solo opina, nunca decide) y **llamada en directo** con el micrófono.
 
-Audio de las llamadas simuladas: los MP3 ya vienen en `public/audio/` (1,3 MB) y la consola los reproduce sin red (botón **Sonido** en la barra superior; a ×10 no suenan solas, pero cada llamada tiene **Escuchar**). Para regenerarlos: `python3 -m venv .venv-audio && .venv-audio/bin/pip install edge-tts && .venv-audio/bin/python scripts/generate_audio.py` (o Piper). Crea `<id>.wav` (para Whisper, ignorado por git) y `<id>.mp3`, con filtro de teléfono y lluvia en la DANA.
+Audio de las llamadas simuladas: los MP3 ya vienen en `public/audio/` (1,3 MB) y la consola los reproduce sin red, solo cuando el operador pulsa **Escuchar** en una llamada (nunca suenan solas). Para regenerarlos: `python3 -m venv .venv-audio && .venv-audio/bin/pip install edge-tts && .venv-audio/bin/python scripts/generate_audio.py` (o Piper). Crea `<id>.wav` (para Whisper, ignorado por git) y `<id>.mp3`, con filtro de teléfono y lluvia en la DANA.
 
 ## Arquitectura
 

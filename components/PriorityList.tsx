@@ -6,15 +6,15 @@ import { placeOf, toneOf } from "./format";
 export default function PriorityList({ s, onSelect, pendingActions = {} }: { s: ConsoleState; onSelect: (id: string) => void; pendingActions?: Record<string, number> }) {
   const ranked = rankIncidents(s.engine.incidents, s.clock);
   return (
-    <section aria-labelledby="prio-h">
+    <section className="box" id="box-prio" aria-labelledby="prio-h">
       <div className="panel-head">
         <h2 id="prio-h">Emergencias por prioridad</h2>
         <span className="panel-count">{ranked.length}</span>
       </div>
       {ranked.length === 0 ? (
-        <p className="empty">Cuando entren llamadas, las emergencias se ordenarán aquí de más a menos urgente.</p>
+        <p className="empty box-body">Cuando entren llamadas, las emergencias se ordenarán aquí de más a menos urgente.</p>
       ) : (
-        <ol className="prio">
+        <ol className="prio box-body">
           {ranked.map((i, n) => {
             const b = priorityBreakdown(i, s.clock);
             const tone = toneOf(i);

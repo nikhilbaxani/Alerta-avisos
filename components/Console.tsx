@@ -8,7 +8,7 @@ import type { EngineStatus, Speed } from "@/lib/useConsole";
 import { buildAuditLog } from "@/lib/audit";
 import { STATIC_EXPORT } from "@/lib/config";
 import { getScenario } from "@/data/scenarios";
-import ActionsView from "./ActionsView";
+import ActionsBox from "./ActionsBox";
 import AgentFeed from "./AgentFeed";
 import { useCallAudio } from "./useCallAudio";
 import CallQueue from "./CallQueue";
@@ -16,20 +16,32 @@ import DecisionBanner from "./DecisionBanner";
 import HelpDialog from "./HelpDialog";
 import Icon from "./Icon";
 import IncidentDetail from "./IncidentDetail";
+import { ranksOf } from "./IncToken";
 import MapView from "./MapView";
+import type { FocusBox } from "./MapView";
 import PriorityList from "./PriorityList";
-import SimStrip from "./SimStrip";
 import TopBar from "./TopBar";
-import type { Tab, TabBadge, Theme } from "./TopBar";
-import TranslateView from "./TranslateView";
+import type { Theme } from "./TopBar";
+import TranslateBox from "./TranslateBox";
+
+/** Lleva la vista a una caja (útil en pantallas pequeñas) y la resalta un instante. */
+function focusBox(box: FocusBox) {
+  const el = document.getElementById(`box-${box}`);
+  if (!el) return;
+  el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  el.focus({ preventScroll: true });
+  el.classList.remove("flash");
+  void el.offsetWidth; // reinicia la animación
+  el.classList.add("flash");
+}
 
 export default function Console() {
   const { s, dispatch, fxDone } = useConsole();
   const [status, setStatus] = useState<EngineStatus>({ mode: "simulated", label: "Modo simulado" });
   const [sttUp, setSttUp] = useState(false);
   const [help, setHelp] = useState(false);
-  const [tab, setTab] = useState<Tab>("calls");
   const [theme, setTheme] = useState<Theme>("dark");
+  const [actionsFilter, setActionsFilter] = useState<string | null>(null);
   const audio = useCallAudio(s);
 
   useEffect(() => {
@@ -56,9 +68,10 @@ export default function Console() {
   }, []);
 
   const select = useCallback((id: string) => dispatch({ type: "select", incidentId: id }), [dispatch]);
-  const openIncident = useCallback((id: string) => {
-    if (id.startsWith("INC")) dispatch({ type: "select", incidentId: id });
-    setTab("incidents");
+  const selectIncident = useCallback((id: string) => {
+    if (!id.startsWith("INC")) return; // los ES-Alert son de zona, no de un incidente
+    dispatch({ type: "select", incidentId: id });
+    focusBox("detail");
   }, [dispatch]);
   const decide = useCallback((incidentId: string, same: boolean) => dispatch({ type: "decide", incidentId, same }), [dispatch]);
   const play = useCallback(() => dispatch({ type: "play" }), [dispatch]);
@@ -85,85 +98,31 @@ export default function Console() {
   const toApprove = s.actions.filter((a) => a.status === "propuesta" && canApprove(a.policy, "operador"));
   const pendingByIncident: Record<string, number> = {};
   for (const a of toApprove) for (const id of actionIncidents(a)) pendingByIncident[id] = (pendingByIncident[id] ?? 0) + 1;
-  const actionsByIncident: Record<string, number> = {};
-  for (const a of s.actions) for (const id of actionIncidents(a)) actionsByIncident[id] = (actionsByIncident[id] ?? 0) + 1;
   const sent = s.actions.filter((a) => a.status === "enviada").length;
   const scn = getScenario(s.scenarioId);
   const langs = new Set(scn.calls.map((c) => c.lang)).size;
   const notStarted = s.clock === 0 && !s.running && s.arrived.length === 0;
-  const foreignIncidents = s.engine.incidents.filter((i) => i.callIds.some((id) => (s.calls[id]?.extraction.language ?? "es") !== "es")).length;
-
-  const badges: Partial<Record<Tab, TabBadge>> = {
-    calls: { n: pending || s.arrived.length, tone: pending ? "amber" : undefined },
-    incidents: { n: s.engine.incidents.length },
-    translate: { n: foreignIncidents },
-    actions: { n: toApprove.length, tone: "amber" },
-  };
-
-  let view: React.ReactNode;
-  if (tab === "calls") {
-    view = (
-      <div className="view view-calls">
-        <CallQueue s={s} playing={audio.playing} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
-        <MapView s={s} onSelect={select} onFxDone={fxDone} onOpen={setTab} pendingActions={pendingByIncident} actionCount={actionsByIncident}>
-          {notStarted && (
-            <div className="welcome">
-              <h2>{scn.name}</h2>
-              <p>{scn.calls.length} llamadas simuladas en {langs} idiomas. Pulsa Iniciar para reproducir el escenario y ver cómo el copiloto agrupa las llamadas repetidas, te pregunta cuando duda y traduce.</p>
-              <div className="welcome-actions">
-                <button className="btn btn-dark btn-lg" onClick={play}><Icon name="play" />Iniciar simulación</button>
-                <button className="btn btn-lg" onClick={() => setHelp(true)}><Icon name="help" />Cómo funciona</button>
-              </div>
-            </div>
-          )}
-        </MapView>
-      </div>
-    );
-  } else if (tab === "incidents") {
-    view = (
-      <div className="view view-incidents">
-        <section className="panel"><PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} /></section>
-        <section className="panel" aria-label="Detalle de la emergencia">
-          <IncidentDetail s={s} actions={s.actions} audio={audio} onOpen={setTab} onSplit={(callId) => dispatch({ type: "split", callId })} />
-        </section>
-      </div>
-    );
-  } else if (tab === "translate") {
-    view = <TranslateView s={s} localAI={status.mode === "local"} audio={audio} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />;
-  } else if (tab === "actions") {
-    view = <ActionsView actions={s.actions} provisional={pending} onApprove={approve} onDiscard={discard} onIncident={openIncident} />;
-  } else {
-    const done = Object.values(s.recs).filter((r) => r.status === "done").length;
-    const incidents = s.engine.incidents.length;
-    view = (
-      <div className="view view-analysis">
-        <div className="an-kpis">
-          <div className="an-kpi card"><b>{done}</b><span>llamadas recibidas</span><small>de {scn.calls.length} del escenario</small></div>
-          <div className="an-kpi card"><b>{incidents}</b><span>emergencias distintas</span><small>tras agrupar las repetidas</small></div>
-          <div className="an-kpi card good"><b>{Math.max(0, done - incidents)}</b><span>líneas liberadas</span><small>llamadas repetidas agrupadas</small></div>
-          <div className={`an-kpi card ${pending ? "warn" : ""}`}><b>{pending}</b><span>{pending === 1 ? "decisión pendiente" : "decisiones pendientes"}</span><small>la IA duda y te pregunta</small></div>
-          <div className="an-kpi card"><b>{sent}</b><span>{sent === 1 ? "acción enviada" : "acciones enviadas"}</span><small>{toApprove.length ? `${toApprove.length} por aprobar` : "a servicios simulados"}</small></div>
-        </div>
-        <SimStrip s={s} />
-      </div>
-    );
-  }
+  const ranks = ranksOf(s);
+  // Desde la ficha del mapa: «Aprobar» lleva a las acciones de esa emergencia ya filtradas
+  const onMapFocus = useCallback((box: FocusBox) => {
+    if (box === "actions") setActionsFilter(s.selected);
+    focusBox(box);
+  }, [s.selected]);
+  useEffect(() => setActionsFilter(null), [s.epoch]);
+  useEffect(() => {
+    if (actionsFilter && !s.engine.incidents.some((i) => i.id === actionsFilter)) setActionsFilter(null);
+  }, [actionsFilter, s.engine.incidents]);
 
   return (
     <div className="console">
       <TopBar
         s={s}
         status={status}
-        tab={tab}
-        badges={badges}
         theme={theme}
         pending={pending}
         actionsSent={sent}
         actionsToApprove={toApprove.length}
-        sound={audio.enabled}
-        onTab={setTab}
         onTheme={toggleTheme}
-        onSound={audio.toggle}
         onPlay={play}
         onPause={() => dispatch({ type: "pause" })}
         onSpeed={(speed: Speed) => dispatch({ type: "speed", speed })}
@@ -172,10 +131,39 @@ export default function Console() {
         onScenario={(id) => dispatch({ type: "scenario", id })}
         onHelp={() => setHelp(true)}
       />
-      {/* La decisión ámbar se ve en todas las zonas: nunca queda escondida en otra pestaña. */}
-      <div className="decision-slot" aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
-      <main className="stage" id="stage" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-        {view}
+      {/* Una sola pantalla: cada apartado en su caja, todos a la vista a la vez. */}
+      <main className="board">
+        <CallQueue s={s} ranks={ranks} playing={audio.playing} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
+
+        <div className="col col-center">
+          {/* La decisión ámbar va encima del mapa y nunca se resuelve sola. */}
+          <div className="decision-slot" aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
+          <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident}>
+            {notStarted && (
+              <div className="welcome">
+                <h2>{scn.name}</h2>
+                <p>{scn.calls.length} llamadas simuladas en {langs} idiomas. Pulsa Iniciar para reproducir el escenario y ver cómo el copiloto agrupa las llamadas repetidas, te pregunta cuando duda y traduce.</p>
+                <div className="welcome-actions">
+                  <button className="btn btn-dark btn-lg" onClick={play}><Icon name="play" />Iniciar simulación</button>
+                  <button className="btn btn-lg" onClick={() => setHelp(true)}><Icon name="help" />Cómo funciona</button>
+                </div>
+              </div>
+            )}
+          </MapView>
+          <div className="pair">
+            <ActionsBox actions={s.actions} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onIncident={selectIncident} />
+            <TranslateBox s={s} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
+          </div>
+        </div>
+
+        <div className="col col-side">
+          <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
+          <section className="box" id="box-detail" tabIndex={-1} aria-label="Ficha de la emergencia">
+            <div className="box-body">
+              <IncidentDetail s={s} audio={audio} onSplit={(callId) => dispatch({ type: "split", callId })} />
+            </div>
+          </section>
+        </div>
       </main>
       <AgentFeed actions={s.actions} epoch={s.epoch} />
       <HelpDialog open={help} onClose={() => setHelp(false)} />

@@ -25,15 +25,14 @@ export default function HelpDialog({ open, onClose }: { open: boolean; onClose: 
           llamadas repetidas, avisa de lo nuevo que aportan y traduce. <b>La IA propone; el operador decide.</b>
         </p>
         <ol className="help-steps">
-          <li><b>Llamadas.</b> Entran a la izquierda, cada una con su idioma y un resumen en castellano. En el mapa, cada punto es una llamada y la línea la une a su emergencia; al pulsar una emergencia se abre su ficha sobre el mapa.</li>
-          <li><b>Se agrupan por emergencia.</b> Si dos llamadas hablan del mismo sitio y del mismo problema, se unen y la línea queda libre.</li>
-          <li><b>Si la IA duda, te pregunta.</b> Aparece un aviso ámbar arriba, en cualquier zona de la consola. Pulsa «Mismo incidente» (tecla M) o «Incidente distinto» (tecla D). Hasta que decidas, siguen separadas: nunca se fusionan solas.</li>
-          <li><b>Emergencias.</b> Ordenadas por gravedad, personas en riesgo y novedades. El número del mapa es su puesto en esa lista.</li>
-          <li><b>Traducción.</b> Lo que dijo cada llamante extranjero, traducido, y frases para responderle en voz alta en su idioma.</li>
-          <li><b>Acciones.</b> Lo que prepara el agente. Los avisos informativos a organismos salen solos; el resto espera a que lo apruebes, y el ES-Alert solo lo aprueba un coordinador.</li>
+          <li><b>Llamadas</b> (izquierda). Cada una con su idioma, un resumen en castellano y la etiqueta de su emergencia, por ejemplo <b>③ INC-03</b>: el número es el mismo que el del mapa. «Por emergencia» las agrupa debajo de cada una.</li>
+          <li><b>Mapa.</b> Cada punto es una llamada y la línea la une a su emergencia. Al pulsar una emergencia se abre su ficha y se resaltan sus llamadas. La pastilla ámbar del marcador dice cuántas acciones esperan tu aprobación.</li>
+          <li><b>Si la IA duda, te pregunta.</b> Aparece un aviso ámbar encima del mapa. Pulsa «Mismo incidente» (tecla M) o «Incidente distinto» (tecla D). Hasta que decidas, siguen separadas: nunca se fusionan solas.</li>
+          <li><b>Emergencias y ficha</b> (derecha). Ordenadas por gravedad, personas en riesgo y novedades; debajo, la ficha de la seleccionada con sus llamadas para escucharlas.</li>
+          <li><b>Acciones y traducción</b> (debajo del mapa). Lo que prepara el agente, filtrable por emergencia: los avisos informativos salen solos, el resto lo apruebas tú y el ES-Alert solo un coordinador. Al lado, frases para responder en voz alta en el idioma del llamante.</li>
         </ol>
         <h3>Para probarlo</h3>
-        <p>Usa el botón <b>Iniciar</b> de arriba y sube la velocidad a ×10 si quieres ver el escenario completo en menos de un minuto. Puedes arrastrar el mapa, acercarlo con la rueda o con los botones + y −, y cambiar entre mapa de calles y satélite. El botón del sol o la luna cambia entre modo claro y oscuro.</p>
+        <p>Usa el botón <b>Iniciar</b> de arriba y sube la velocidad a ×10 si quieres ver el escenario completo en menos de un minuto. Puedes arrastrar el mapa, acercarlo con la rueda o con los botones + y −, y cambiar entre mapa de calles y satélite. El audio de una llamada solo suena al pulsar «Escuchar». El botón del sol o la luna cambia entre modo claro y oscuro.</p>
         <h3>Modo simulado</h3>
         <p>Funciona sin internet ni GPU: las llamadas y sus extracciones vienen grabadas en el escenario, pero la agrupación y la prioridad se calculan en directo con el mismo algoritmo que con IA real. Las llamadas son ficticias.</p>
         <p className="note">Mapa de calles © colaboradores de OpenStreetMap (ODbL) y ortofoto PNOA © Instituto Geográfico Nacional (CC BY 4.0), incluidos en la aplicación para que funcione sin conexión.</p>

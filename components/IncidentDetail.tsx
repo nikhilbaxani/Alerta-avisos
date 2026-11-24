@@ -3,42 +3,35 @@ import { rankIncidents } from "@/lib/priority";
 import { callMeta } from "@/lib/useConsole";
 import type { ConsoleState } from "@/lib/useConsole";
 import type { RiskTag } from "@/lib/types";
-import { actionIncidents, canApprove } from "@/lib/actions";
-import type { AgentAction } from "@/lib/actions";
 import Icon from "./Icon";
+import IncToken from "./IncToken";
 import type { CallAudio } from "./useCallAudio";
-import type { Tab } from "./TopBar";
 import { langName, mmss, placeOf, plural } from "./format";
 
 interface Props {
   s: ConsoleState;
   onSplit: (callId: string) => void;
-  actions: AgentAction[];
   audio?: CallAudio;
-  onOpen: (tab: Tab) => void;
 }
 
 const URGENT: RiskTag[] = ["vida", "inconsciente", "sin_respuesta", "dolor_pecho", "atrapados", "menor", "cables_electricos"];
 
-export default function IncidentDetail({ s, onSplit, actions, audio, onOpen }: Props) {
+export default function IncidentDetail({ s, onSplit, audio }: Props) {
   const inc = s.engine.incidents.find((i) => i.id === s.selected);
   if (!inc) {
     return (
       <section className="detail detail-empty" aria-label="Detalle del incidente">
-        <p>Elige una emergencia de la lista para ver qué se sabe de ella y escuchar sus llamadas.</p>
+        <p>Elige una emergencia en el mapa o en la lista para ver qué se sabe de ella y escuchar sus llamadas.</p>
       </section>
     );
   }
   const rank = rankIncidents(s.engine.incidents, s.clock).findIndex((i) => i.id === inc.id) + 1;
   const langs = [...new Set(inc.callIds.map((id) => s.calls[id]?.extraction.language ?? "es"))];
   const foreign = langs.filter((l) => l !== "es");
-  const mine = actions.filter((a) => actionIncidents(a).includes(inc.id));
-  const todo = mine.filter((a) => a.status === "propuesta" && canApprove(a.policy, "operador")).length;
-  const sent = mine.filter((a) => a.status === "enviada").length;
   return (
     <section className="detail" aria-labelledby="detail-h">
       <header className="detail-head">
-        <p className="detail-kicker">{inc.id} · prioridad {rank}{inc.provisional ? ` · pendiente de decidir si es ${inc.linkedTo}` : ""}</p>
+        <p className="detail-kicker"><IncToken inc={inc} rank={rank} /> prioridad {rank}{inc.provisional ? ` · pendiente de decidir si es ${inc.linkedTo}` : ""}</p>
         <h2 id="detail-h">{TYPE_LABELS[inc.type]}</h2>
         {placeOf(inc) && <p className="detail-place">{placeOf(inc)}</p>}
         <p className="detail-summary">{inc.summary}</p>
@@ -63,29 +56,6 @@ export default function IncidentDetail({ s, onSplit, actions, audio, onOpen }: P
           </div>
         </div>
       )}
-
-      <div className="jump">
-        <button className={todo ? "todo" : ""} onClick={() => onOpen("actions")}>
-          <span className="act-icon" aria-hidden="true"><Icon name="agent" size={18} /></span>
-          <span>
-            <b>Acciones del agente</b>
-            <small>
-              {inc.provisional
-                ? "Se preparan cuando decidas si es el mismo incidente"
-                : mine.length === 0 ? "Nada que preparar por ahora" : [todo && `${todo} por aprobar`, sent && `${sent} ${sent === 1 ? "enviada" : "enviadas"}`].filter(Boolean).join(" · ") || "Sin acciones pendientes"}
-            </small>
-          </span>
-          <Icon name="arrow" size={16} />
-        </button>
-        <button onClick={() => onOpen("translate")}>
-          <span className="act-icon" aria-hidden="true"><Icon name="translate" size={18} /></span>
-          <span>
-            <b>{foreign.length ? `Responder en ${foreign.map(langName).join(", ").toLowerCase()}` : "Traducción"}</b>
-            <small>{foreign.length ? "Frases leídas en voz alta en su idioma" : "Todas las llamadas son en castellano"}</small>
-          </span>
-          <Icon name="arrow" size={16} />
-        </button>
-      </div>
 
       {inc.risks.length > 0 && (
         <div className="block">
