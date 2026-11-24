@@ -2,6 +2,11 @@
 
 Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descartada.
 
+## 2026-11-24 · Pestañas Simulación y En directo (QR)
+- Decisión: separar ambas sesiones. DANA y Apagón se eligen dentro de Simulación, cuyo reloj se detiene mientras la pestaña está oculta. En directo tiene su propia bandeja y mapa, y no admite llamadas sin moderar ni llamadas del micrófono local de la consola. Sin relay, su pestaña queda desactivada con un aviso visible.
+- Motivo: poder alternar entre un escenario reproducible y las llamadas del público sin mezclar colas, incidentes ni decisiones.
+- Descartado: añadir «En directo» como tercer escenario del selector y compartir la cola y los controles de reproducción.
+
 ## 2026-10-27 · Mapa SVG propio en lugar de teselas
 - Decisión: dibujar la bahía de Málaga en SVG con coordenadas aproximadas.
 - Motivo: la demo debe funcionar sin red (wifi del hackathon) y sin claves.
@@ -164,3 +169,23 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - Decisión: la consola y `/llamar` se sirven como web estática desde el VPS junto al relay, con un solo origen (`/relay/*` al relay). Solo se publica `127.0.0.1:8080`; Tailscale Funnel pone la URL pública HTTPS.
 - Motivo: el equipo no usa Vercel y quiere firewalld cerrado, SSH solo por Tailscale y el exit node intacto. Se descartó exponer SSH y quitar Tailscale (riesgo de quedarse sin acceso; el relay no lo necesita).
 - IP del cliente: `X-Forwarded-For` desde la derecha saltando direcciones locales y privadas; Caddy confía en saltos privados para conservar la cabecera de Funnel. Pendiente de comprobar en el VPS que Funnel la envía (prueba en `server/README.md`); si no, `RATE_LIMIT=60`.
+
+## X06: agente de espera
+- **2026-11-24 — Capacidad de sala y reloj de las acciones.** Decisión: simular la cola por separado, con 2 operadores por defecto y 60 s por nueva o ámbar y 15 s por repetida atendida por un humano. Motivo: conservar la reproducción y la auditoría X05 sin confundir el escalado inmediato con el inicio de atención de sala. Alternativa descartada: reordenar el motor o desplazar las aprobaciones en función de la cola.
+- **2026-11-24 — Prioridad y duplicados.** Decisión: encolar el riesgo vital en cuanto se detecta, incluso en duplicados, por delante del resto y sin interrumpir llamadas activas; solo una fusión de alta confianza sin criterio de escalado y con guion disponible libera una línea. Motivo: una llamada repetida puede traer una emergencia y una zona gris exige intervención humana. Alternativa descartada: cerrar toda repetida o tratar la zona gris como fusión automática.
+- **2026-11-24 — Guion pretraducido.** Decisión: añadir `asistente_automatico` («Soy el asistente automático del 112.») y `que_pasa` («¿Qué ha pasado?») en es/en/de/fr/ar/it, solo para la espera; reutilizar `direccion` y los consejos existentes `garaje` (vivienda o garaje inundado) y `cables` (cables eléctricos). Motivo: informar con transparencia, sin generar texto ni prometer que ya viene ayuda; si no hay traducción del guion, se conserva la vía humana. Alternativa descartada: generar o traducir el guion con un modelo, anunciar ayuda no confirmada o incorporar estas dos frases al SMS.
+
+## 2026-11-24 · X07: ES-Alert queda pendiente de coordinación humana
+- Decisión: no hay coordinador simulado. Una pareja de incidentes confirmados con vehículos atrapados por agua a 500 m o menos genera un único borrador con plantilla fija y zona circular que cubre las posiciones AML y su precisión. El umbral es un supuesto de la demo, no un protocolo oficial.
+- Motivo: reproducir A y F sin confundir corroboración con fusión automática ni atribuir aprobación humana al replay. `/api/plan` valida un solo incidente y descarta ES-Alert sin el contexto del motor; no acepta vecindad ni zona aportada por el cliente o el modelo.
+- Alternativa descartada: simular una aprobación de coordinación, basar la alerta en el número de llamadas a un mismo incidente o redactarla con texto libre.
+
+## 2026-11-24 · X07: aviso municipal y rellamada
+- Decisión: aviso informativo automático por reglas para semáforos, árbol caído y vía bloqueada, sin un despacho policial duplicado por tráfico; rellamada al primer aviso de falta de respuesta, con aprobación del operador. Toda propuesta del modelo requiere aprobación.
+- Motivo: separar avisos informativos de acciones hacia la ciudadanía y evitar rellamadas repetidas por la misma información.
+- Alternativa descartada: despachar recursos por el mismo aviso municipal o marcar como automática una rellamada.
+
+## 2026-11-24 · X07: un mismo parte para terminal, Markdown y JSON
+- Decisión: mostrar el parte al final, escribir Markdown con `--parte` e incluir la estructura en el JSON de `--json`. Calcular líneas liberadas por agrupación como llamadas menos incidentes, zonas por primera posición AML en celdas de 0,01° y prioridades al cierre de la reproducción.
+- Motivo: mostrar solo cifras del estado simulado, con métricas de espera separadas del reloj de las acciones.
+- Alternativa descartada: fijar cifras por escenario, reutilizar nombres de lugar de las transcripciones o mezclar líneas liberadas por agrupación con duplicados atendidos sin operador.

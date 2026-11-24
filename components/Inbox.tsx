@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { PUBLIC_RELAY_URL } from "@/lib/consoleMode";
 import { snapshot } from "@/lib/engine";
 import { acceptEvent, addEvent, discardEvent, emptyInbox, publicEventToCall } from "@/lib/inbox";
 import type { InboxState } from "@/lib/inbox";
@@ -11,7 +12,6 @@ import CallQRCode from "./CallQRCode";
 import Icon from "./Icon";
 import { langName } from "./format";
 
-const RELAY = (process.env.NEXT_PUBLIC_RELAY_URL ?? "").trim().replace(/\/$/, "");
 const TOKEN_KEY = "copiloto112.operatorToken";
 
 type Conn = "connecting" | "open" | "down";
@@ -27,11 +27,12 @@ const CONN_TEXT: Record<Conn, string> = { open: "Conectado", connecting: "Recone
 
 interface Props {
   s: ConsoleState;
+  visible?: boolean;
   onLive: (c: CallMeta, r: ProcessResult) => void;
 }
 
 /** Bandeja de llamadas del público: nada entra en el motor hasta que el operador pulsa «Aceptar» (S6). */
-export default function Inbox({ s, onLive }: Props) {
+export default function Inbox({ s, visible = true, onLive }: Props) {
   const [inbox, dispatch] = useReducer(reducer, emptyInbox);
   const [token, setToken] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -43,7 +44,7 @@ export default function Inbox({ s, onLive }: Props) {
   // Token: #op=<token> (el fragmento no llega a los registros de Vercel). Se acepta también ?op= por compatibilidad.
   // Se guarda en localStorage y se quita de la URL.
   useEffect(() => {
-    if (!RELAY) return;
+    if (!PUBLIC_RELAY_URL) return;
     try {
       const url = new URL(window.location.href);
       const fromHash = new URLSearchParams(url.hash.replace(/^#/, "")).get("op");
@@ -67,7 +68,7 @@ export default function Inbox({ s, onLive }: Props) {
 
   // SSE con reconexión: si el navegador cierra el EventSource (p. ej. 401 o caída del VPS) se recrea con espera 2 s → 15 s.
   useEffect(() => {
-    if (!RELAY || !token) return;
+    if (!PUBLIC_RELAY_URL || !token) return;
     let es: EventSource | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let delay = 2000;
@@ -76,7 +77,7 @@ export default function Inbox({ s, onLive }: Props) {
     const connect = () => {
       if (stopped) return;
       setConn("connecting");
-      const src = new EventSource(`${RELAY}/events?token=${encodeURIComponent(token)}`);
+      const src = new EventSource(`${PUBLIC_RELAY_URL}/events?token=${encodeURIComponent(token)}`);
       es = src;
       src.onopen = () => {
         delay = 2000;
@@ -111,7 +112,7 @@ export default function Inbox({ s, onLive }: Props) {
     (id: string) => {
       const { s: cs, inbox: ib } = ref.current;
       const ev = ib.pending.find((e) => e.id === id);
-      if (!ev) return;
+      if (cs.mode !== "live" || !ev) return;
       const { meta, result } = publicEventToCall(ev, cs.engine.incidents.map(snapshot), cs.clock);
       onLive(meta, result);
       dispatch({ type: "accept", id });
@@ -119,10 +120,10 @@ export default function Inbox({ s, onLive }: Props) {
     [onLive],
   );
 
-  if (!RELAY) return null; // S8: sin relay, la consola es la de siempre
+  if (!PUBLIC_RELAY_URL) return null; // S8: sin relay, la consola es la de siempre
 
   return (
-    <section className="inbox" aria-labelledby="inbox-h">
+    <section className="inbox" hidden={!visible} aria-labelledby="inbox-h">
       <div className="inbox-head">
         <h3 id="inbox-h"><Icon name="phone" size={16} />Llamadas del público</h3>
         <span className={`conn conn-${conn}`} role="status">{token ? CONN_TEXT[conn] : "Sin token"}</span>

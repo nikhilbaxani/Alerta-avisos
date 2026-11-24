@@ -17,7 +17,7 @@ const PLACES = [
 
 type Phase = "idle" | "recording" | "working";
 
-export default function LivePanel({ s, sttUp, onCall }: { s: ConsoleState; sttUp: boolean; onCall: (c: CallMeta, r: ProcessResult) => void }) {
+export default function LivePanel({ s, sttUp, onCall }: { s: ConsoleState; sttUp: boolean; onCall: (epoch: number, c: CallMeta, r: ProcessResult) => void }) {
   const [place, setPlace] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [msg, setMsg] = useState("");
@@ -63,7 +63,7 @@ export default function LivePanel({ s, sttUp, onCall }: { s: ConsoleState; sttUp
       if (!r.ok) throw new Error(result.error);
       counter.current += 1;
       const id = `L${counter.current}`;
-      onCall({ id, t: 0, lang: result.language, phone: "En directo", aml, transcript: td.text, live: true }, { ...result, callId: id });
+      onCall(s.epoch, { id, t: 0, lang: result.language, phone: "En directo", aml, transcript: td.text, live: true }, { ...result, callId: id });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "No se pudo procesar la llamada.");
     } finally {
@@ -74,7 +74,7 @@ export default function LivePanel({ s, sttUp, onCall }: { s: ConsoleState; sttUp
   if (!sttUp) return null; // sin Whisper local el modo simulado no muestra la llamada en directo
 
   return (
-    <section className="live" aria-label="Llamada en directo">
+    <section className="live" hidden={s.mode !== "sim"} aria-label="Llamada en directo">
       <p className="live-title"><Icon name="mic" size={16} />Llamada en directo con el micrófono</p>
       <div className="live-row">
         <select value={place} onChange={(e) => setPlace(Number(e.target.value))} aria-label="Ubicación AML de la llamada" disabled={phase !== "idle"}>

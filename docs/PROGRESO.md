@@ -97,3 +97,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Sin ejecutar en esta tarea: `npm run build` y e2e (otro agente tenía `.next`); `--live`.
 - Decisiones: tres entradas X06 en `docs/BUZON.md`, pendientes de pasar a DECISIONES en X07. Los tiempos de sala son ilustrativos.
 - Siguiente: X07.
+
+## 2026-11-24T23:00 · Pestañas Simulación / En directo (QR) · hecha
+- Qué se hizo: el control principal de la barra superior son dos pestañas; «Simulación» conserva el selector DANA/Apagón y la reproducción, «En directo (QR)» muestra la bandeja de llamadas del público y solo lo aceptado por el operador. Estado separado por pestaña (`lib/consoleMode.ts`); la simulación retoma donde estaba.
+- Verificación (independiente): `tsc`, 331 tests, `eval` 7/0/2, `eval:apagon` 6/0/1, build con y sin relay y `scripts/e2e.mjs` en verde; capturas `docs/capturas/pestanas-*.png` de escritorio y móvil revisadas.
+- Pendiente: redesplegar en el VPS para que se vea en público; el e2e necesita `npx playwright install chromium` en esta máquina.

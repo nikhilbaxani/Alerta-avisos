@@ -13,7 +13,7 @@ npm run dev        # http://localhost:3000
 
 Pulsa **Iniciar** (velocidad ×4 o ×10). Verás 26 llamadas en 6 idiomas convertirse en 7 incidentes. Dos veces la consola se para en **ámbar** y pregunta: `M` = mismo incidente, `D` = incidente distinto. En el modo simulado la agrupación y la prioridad **se calculan igual** con el algoritmo real; solo la extracción de cada llamada viene del guion. La demo no hace ninguna petición externa: el mapa es una ortofoto del IGN incluida en la aplicación (sin teselas) y la fuente se instala con npm. El botón **Cómo funciona** lo explica todo en un minuto; el mapa se arrastra y se acerca con la rueda o con + y −.
 
-El selector de la barra superior cambia entre dos escenarios: **DANA en Málaga** (26 llamadas, 6 idiomas) y **Apagón en Málaga** (16 llamadas: ascensores, semáforos, oxígeno domiciliario y una residencia sin luz), para ver que el sistema generaliza.
+En la pestaña **Simulación**, el selector cambia entre dos escenarios: **DANA en Málaga** (26 llamadas, 6 idiomas) y **Apagón en Málaga** (16 llamadas: ascensores, semáforos, oxígeno domiciliario y una residencia sin luz), para ver que el sistema generaliza.
 
 ## Qué enseña la demo
 
@@ -51,7 +51,8 @@ El público escanea el QR de la consola, abre `/llamar` en el móvil y graba una
 
 - Despliegue (todo en el VPS, sin Vercel): [`server/README.md`](server/README.md). Una sola URL pública de **Tailscale Funnel** (`https://<nodo>.<tailnet>.ts.net`) → Caddy en `127.0.0.1:8080` → la web estática (consola y `/llamar`) y, bajo `/relay/*`, el relay con Whisper. La web se construye con `NEXT_PUBLIC_RELAY_URL=/relay` (mismo origen), así que no hay CORS entre dominios ni nada más que desplegar.
 - El operador abre la consola una vez con `https://<nodo>.<tailnet>.ts.net/#op=<RELAY_TOKEN>` (el fragmento `#` no viaja al servidor; se guarda en el navegador y se borra de la URL; `?op=` sigue funcionando por compatibilidad pero conviene evitarlo). Si el token guardado es incorrecto, el botón «Cambiar token» de la bandeja lo reemplaza.
-- Sin `NEXT_PUBLIC_RELAY_URL` la consola es exactamente la de siempre (modo simulado intacto).
+- Abre **En directo (QR)** para ver el QR y la bandeja. El mapa, la cola y la lista de prioridades empiezan vacíos y solo muestran llamadas del público aceptadas. Esta vista no tiene reloj ni controles de reproducción; al volver a **Simulación** se recupera el escenario donde lo dejaste.
+- Sin `NEXT_PUBLIC_RELAY_URL`, **En directo (QR)** aparece desactivada con un aviso. **Simulación** sigue funcionando sin conexión.
 - `/llamar` avisa de que es una demo y **no** un servicio de emergencias, pide consentimiento y no recoge teléfono ni nombre; el audio solo vive en memoria del relay.
 
 ## Arquitectura

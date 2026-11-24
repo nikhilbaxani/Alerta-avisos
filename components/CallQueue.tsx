@@ -12,21 +12,27 @@ interface Props {
   sttUp: boolean;
   onSelect: (incidentId: string) => void;
   onLive: (c: CallMeta, r: ProcessResult) => void;
+  onMicrophone: (epoch: number, c: CallMeta, r: ProcessResult) => void;
 }
 
-export default function CallQueue({ s, sttUp, onSelect, onLive }: Props) {
+export default function CallQueue({ s, sttUp, onSelect, onLive, onMicrophone }: Props) {
+  const isLive = s.mode === "live";
   const list = [...s.arrived].reverse();
   const total = getScenario(s.scenarioId).calls.length;
   return (
     <section className="panel calls-col" aria-labelledby="calls-h">
       <div className="panel-head">
         <h2 id="calls-h">Llamadas entrantes</h2>
-        <span className="panel-count">{s.arrived.length} de {total}</span>
+        <span className="panel-count">{isLive ? s.arrived.length : `${s.arrived.length} de ${total}`}</span>
       </div>
-      <Inbox s={s} onLive={onLive} />
-      <LivePanel s={s} sttUp={sttUp} onCall={onLive} />
+      <Inbox s={s} visible={isLive} onLive={onLive} />
+      <LivePanel s={s} sttUp={sttUp} onCall={onMicrophone} />
       {list.length === 0 ? (
-        <p className="empty">Aquí aparecerán las llamadas según entren, de la más reciente a la más antigua.</p>
+        <p className="empty">
+          {isLive
+            ? "Las llamadas del público que aceptes en la bandeja aparecerán aquí."
+            : "Aquí aparecerán las llamadas según entren, de la más reciente a la más antigua."}
+        </p>
       ) : (
         <ul className="calls">
           {list.map((id) => {

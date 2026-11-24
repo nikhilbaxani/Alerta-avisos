@@ -51,8 +51,8 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T2 | S1, S4, S7, S9 | Relay del VPS + Whisper CPU + Docker/Caddy (`server/`, `scripts/stt_server.py`) | 830f196 |
 | T3 | S3, S4, S6, S8 | Página `/llamar` + QR + bandeja de entrada en la consola | 1f2534c |
 | T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | a7fa4eb |
-| T6 | S10, S9 | Despliegue todo-en-VPS con Funnel: web estática + Caddy interno + relay + stt | — |
-| T7 | S11, S2, S5 | Extracción con el LLM del sobremesa en el relay, reglas como respaldo | — |
+| T6 | S10, S9 | Despliegue todo-en-VPS con Funnel: web estática + Caddy interno + relay + stt |681c66f, a503651, ec272ec, 0ffe47d |
+| T7 | S11, S2, S5 | Extracción con el LLM del sobremesa en el relay, reglas como respaldo |90f5720, d03bbd9 |
 | T8 | S12 | Pestañas Simulación / En directo en la consola | — |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
@@ -74,3 +74,4 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L14** (despliegue en oracle-exit, 1 vCPU ARM, Ubuntu 24.04): `~/alerta-avisos`, `WEB_PORT=8095` (8080 lo usa SearXNG), Whisper `base`, Funnel en https://oracle-exit.tail0093c8.ts.net. Prueba por internet: llamada en castellano de 7 s → STT 5–6 s → inundacion_vehiculo, Campanillas conocida, gravedad 5; el relay ve la IP pública real y la suplantación con `X-Forwarded-For` se ignora; aceptar en la consola crea INC-01 sin errores.
 - **L15** (usuario): «pero está puesto los modelos whisper? … esto es para el modelo grande que procesa el texto que whisper transcribe»; elige opción A. Comprobado: `strata` responde en ~9 s y traduce bien árabe; `pc-sobremesa.tail0093c8.ts.net` resuelve a una IP pública de Funnel (176.58.90.46), así que el contenedor llega por internet (200, 340 ms) con el aislamiento intacto. La key se pegó en el chat: rotarla tras el hackathon.
 - **L16** (usuario): «De mientras, lo que digo en la web que está la pestaña esta que cambia de malaga dana y apagón, hazlo que sea tipo que sea la pestaña simulado y la pestaña real donde aparece lo que le mandamos por el qr».
+- **L17** (T8): la sesión anterior dejó las pestañas a medias; un worker las completó (la simulación conserva su estado al cambiar de pestaña, aviso visible sin relay, el micrófono local no alimenta la sesión del QR). Verificación independiente: S12 PASS; `tsc`, 331 tests, `eval`, `eval:apagon`, `npm run build` (con y sin relay) y `scripts/e2e.mjs` (con SSE simulado, escritorio y móvil) en verde, sin errores de consola ni scroll horizontal; capturas `docs/capturas/pestanas-*.png` revisadas. Notas: el e2e necesita `npx playwright install chromium` (se ejecutó con el Chromium en caché 1247); sin relay a 1440 px la barra superior salta a dos filas (menor, se corrige aparte); relay real sin probar con las pestañas.

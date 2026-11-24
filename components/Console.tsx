@@ -37,7 +37,8 @@ export default function Console() {
   const decide = useCallback((incidentId: string, same: boolean) => dispatch({ type: "decide", incidentId, same }), [dispatch]);
   const play = useCallback(() => dispatch({ type: "play" }), [dispatch]);
   const exportLog = useCallback(() => {
-    const blob = new Blob([JSON.stringify(buildAuditLog(s, status.label), null, 2)], { type: "application/json" });
+    const payload = buildAuditLog(s, s.mode === "sim" ? status.label : "Relay del VPS");
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `registro-112-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
@@ -47,7 +48,8 @@ export default function Console() {
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
   const scn = getScenario(s.scenarioId);
   const langs = new Set(scn.calls.map((c) => c.lang)).size;
-  const notStarted = s.clock === 0 && !s.running && s.arrived.length === 0;
+  const notStartedSim = s.mode === "sim" && s.clock === 0 && !s.running && s.arrived.length === 0;
+  const emptyLive = s.mode === "live" && s.arrived.length === 0;
 
   return (
     <div className="console">
@@ -55,6 +57,7 @@ export default function Console() {
         s={s}
         status={status}
         pending={pending}
+        onMode={(mode) => dispatch({ type: "mode", mode })}
         onPlay={play}
         onPause={() => dispatch({ type: "pause" })}
         onSpeed={(speed: Speed) => dispatch({ type: "speed", speed })}
@@ -63,13 +66,19 @@ export default function Console() {
         onScenario={(id) => dispatch({ type: "scenario", id })}
         onHelp={() => setHelp(true)}
       />
-      <main className="main">
-        <CallQueue s={s} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
+      <div className={s.mode === "live" ? "main main-live" : "main"} id="console-panel" role="tabpanel" aria-labelledby={s.mode === "sim" ? "tab-sim" : "tab-live"}>
+        <CallQueue
+          s={s}
+          sttUp={sttUp}
+          onSelect={select}
+          onLive={(call, result) => dispatch({ type: "live", call, result })}
+          onMicrophone={(epoch, call, result) => dispatch({ type: "microphone", epoch, call, result })}
+        />
         <section className="center" aria-label="Mapa y decisiones">
           <div aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
           <div className="map-wrap">
             <MapView s={s} onSelect={select} onFxDone={fxDone} />
-            {notStarted && (
+            {notStartedSim && (
               <div className="welcome">
                 <h2>{scn.name}</h2>
                 <p>{scn.calls.length} llamadas simuladas en {langs} idiomas. Pulsa Iniciar para reproducir el escenario y ver cómo el copiloto agrupa las llamadas repetidas, te pregunta cuando duda y traduce.</p>
@@ -79,19 +88,26 @@ export default function Console() {
                 </div>
               </div>
             )}
+            {emptyLive && (
+              <div className="welcome welcome-live">
+                <h2>En directo: esperando llamadas del público</h2>
+                <p>Escanea el QR de la bandeja para enviar una llamada desde el móvil. Cada llamada entra primero en la bandeja y solo pasa al mapa cuando pulsas Aceptar.</p>
+              </div>
+            )}
           </div>
-          <SimStrip s={s} />
+          {s.mode === "sim" && <SimStrip s={s} />}
         </section>
         <section className="panel side-col" aria-label="Prioridad y detalle">
           <PriorityList s={s} onSelect={select} />
           <IncidentDetail
+            key={s.epoch}
             s={s}
             localAI={status.mode === "local"}
             onSplit={(callId) => dispatch({ type: "split", callId })}
             onReply={(reply) => dispatch({ type: "reply", reply })}
           />
         </section>
-      </main>
+      </div>
       <HelpDialog open={help} onClose={() => setHelp(false)} />
     </div>
   );

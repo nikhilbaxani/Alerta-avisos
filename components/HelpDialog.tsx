@@ -32,7 +32,8 @@ export default function HelpDialog({ open, onClose }: { open: boolean; onClose: 
           <li><b>Responde en su idioma.</b> Al abrir una emergencia, elige una frase y pulsa «Reproducir al llamante».</li>
         </ol>
         <h3>Para probarlo</h3>
-        <p>Usa el botón <b>Iniciar</b> de arriba y sube la velocidad a ×10 si quieres ver el escenario completo en menos de un minuto. Puedes arrastrar el mapa y acercarlo con la rueda o con los botones + y −.</p>
+        <p>En <b>Simulación</b>, elige el escenario, pulsa <b>Iniciar</b> y sube la velocidad a ×10 si quieres verlo completo en menos de un minuto. Puedes arrastrar el mapa y acercarlo con la rueda o con los botones + y −.</p>
+        <p>En <b>En directo (QR)</b>, escanea el código para enviar una llamada de prueba. Las llamadas del público solo pasan al mapa y a la cola cuando el operador las acepta en la bandeja.</p>
         <h3>Modo simulado</h3>
         <p>Funciona sin internet ni GPU: las llamadas y sus extracciones vienen grabadas en el escenario, pero la agrupación y la prioridad se calculan en directo con el mismo algoritmo que con IA real. Las llamadas son ficticias.</p>
         <p className="note">Ortofoto PNOA © Instituto Geográfico Nacional (CC BY 4.0), incluida en la aplicación para que funcione sin conexión.</p>
