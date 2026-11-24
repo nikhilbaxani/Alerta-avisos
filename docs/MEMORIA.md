@@ -206,3 +206,50 @@ En modo simulado el texto libre se desactiva con el aviso "La traducción libre 
 
 - Hecho: investigación, especificación (este archivo), `lib/types.ts` y `data/scenario-dana-malaga.ts` (26 llamadas con extracciones mock y gold).
 - Pendiente: todo lo de `docs/TASKS.md`.
+
+## 16. Ampliación: de copiloto a agente (X04–X08)
+
+> Aprobada el 2026-11-24 a partir de `docs/PROPUESTA-AGENTE.md`. Amplía, no sustituye, las secciones anteriores. Todo lo de §6 (modo simulado sin red, zona gris decidida por el operador, `gold` intacto) sigue siendo obligatorio.
+
+**Restricción de Nick (2026-11-24): la interfaz de la consola no se toca.** Prohibido modificar `components/`, `app/page.tsx`, `app/layout.tsx`, `app/globals.css` y `lib/useConsole.ts`. Las capacidades de agente viven en `lib/`, `app/api/` y `scripts/`, y se demuestran con tests, la API y `npm run agente` (reproduce el escenario en terminal e imprime la traza). La consola y GitHub Pages deben seguir funcionando exactamente igual (`node scripts/e2e.mjs` en verde).
+
+**Idea**: el sistema percibe (audio, AML), razona (extracción, agrupación, prioridad) y ahora también **actúa**: prepara acciones sobre servicios externos (simulados), atiende a quien está en espera y deja una traza auditable de cada paso.
+
+### 16.1 Seguridad (prerrequisito, X04)
+- La transcripción y todo texto derivado de ella (`summary_es`, `location_text`, `keywords`) son **datos no confiables**. En los prompts van delimitados (etiquetas que el propio texto no puede cerrar) y el sistema dice que su contenido nunca son instrucciones.
+- **Gravedad mínima por riesgos**: el código calcula un suelo de gravedad a partir de los riesgos detectados y el LLM no puede bajar de él. La tabla es coherente con la escala del prompt y ninguna extracción `mock` de los escenarios queda por debajo de su suelo.
+- **Ninguna herramienta se ejecuta porque lo diga el texto de la llamada**: el planificador solo ve datos estructurados (tipo, riesgos, personas, idioma, gravedad, nº de llamadas, posición), nunca la transcripción ni resúmenes libres.
+- Límites y validación en `/api/process`, `/api/translate` y `/api/transcribe` (tamaños máximos, números finitos y en rango, vocabularios, longitud de listas). Respuestas 400/413 con mensaje en castellano.
+- Los identificadores de incidente **no se reutilizan nunca** (trazabilidad de la Ley de IA).
+
+### 16.2 Agente de acciones (X05 y X07)
+Para cada incidente, el agente genera **acciones propuestas**: herramienta, destino, qué hará, por qué (riesgos y llamadas que la justifican), riesgo y quién debe aprobarla.
+
+| Herramienta | Servicio simulado | Disparo (reglas de código) | Control | Tarea |
+|---|---|---|---|---|
+| `proponer_recursos` | CAD: bomberos, SAMU (061), policía local | tipo y riesgos (p. ej. vehículo atrapado → bomberos; `menor`, `herido`, `dolor_pecho`, `inconsciente` → SAMU) | operador | X05 |
+| `sms_al_llamante` | Pasarela SMS | instrucciones de seguridad en el idioma del llamante, solo con frases pretraducidas (§11) | operador | X05 |
+| `avisar_distribuidora` | Distribuidora eléctrica | `cables_electricos`, o `sin_luz` con personas vulnerables | automática con registro | X05 |
+| `aviso_ayuntamiento` | Movilidad / policía local | `semaforos`, `arbol_caido`, `via_bloqueada` | automática con registro | X07 |
+| `devolver_llamada` | Telefonía | información nueva `sin_respuesta` (p. ej. B3 «ya no contesta») | operador | X07 |
+| `proponer_es_alert` | ES-Alert (zona y texto) | varios vehículos atrapados por agua cerca entre sí | **siempre un humano con rol de coordinador** | X07 |
+
+- La política (automática / operador / coordinador) es **una tabla en código con tests**, no la decide el LLM. Automáticas solo los avisos informativos a organismos que no ponen en riesgo a nadie.
+- Estados de una acción: `propuesta` → `aprobada` → `enviada` (acuse simulado con referencia), o `descartada`. Las automáticas pasan directamente a `enviada` y quedan registradas. Una acción no se repite (clave: incidente + herramienta + destino).
+- **Modo simulado**: planificador determinista y puro (`lib/actions.ts`, sin dependencias de servidor). Conectores simulados: registran el envío y devuelven acuse. **Nada de red**.
+- **Con IA local**: `POST /api/plan` deja que el LLM proponga herramientas mediante *function calling*, viendo solo datos estructurados. El código valida herramienta, argumentos y política; las acciones de las reglas se mantienen siempre (el LLM añade, no quita). Cada acción indica su origen: «reglas» o «IA local».
+- **Traza del agente**: percepción (llamadas y riesgos) → razonamiento (motivo) → herramienta → aprobación (quién y cuándo) → resultado (acuse). La imprime `npm run agente` y se puede exportar en JSON.
+
+### 16.3 Agente para quien está en espera (X06)
+- Atiende **solo** las llamadas que, con los operadores disponibles, tendrían que esperar (mismos supuestos declarados de `lib/metrics.ts`). Nunca sustituye a un operador libre.
+- Se presenta como asistente automático (transparencia de la Ley de IA), en el idioma del llamante; recoge qué pasa y dónde (en simulado, la llamada del escenario) y la pasa por el flujo normal, así que un duplicado se agrupa sin ocupar a un operador.
+- Da instrucciones de seguridad con frases pretraducidas (§11 más las que se añadan, anotadas en DECISIONES).
+- **Escala de inmediato** a un operador humano ante riesgo vital (`vida`, `dolor_pecho`, `inconsciente`, `sin_respuesta` o gravedad 5): la llamada pasa la primera a la cola humana y se marca.
+- No cambia la agrupación: `npm run eval` da los mismos resultados.
+
+### 16.4 Coordinación (X07)
+- **Parte de situación** para el jefe de sala o el CECOP, calculado del estado: llamadas → incidentes, líneas liberadas, incidentes por prioridad con su motivo, zonas con más incidentes, acciones (propuestas, aprobadas, enviadas, descartadas) y llamadas atendidas o escaladas por el agente de espera. Se genera en Markdown y JSON desde `npm run agente`. Rotulado como simulación.
+
+### 16.5 Relato (X08)
+- README y PITCH cuentan el paso de copiloto a agente: percepción → decisión → acción. Métricas de demo: «líneas liberadas», «acciones preparadas» y «llamadas en espera atendidas», **siempre como simulación**. Ninguna cifra nueva fuera de §3.
+- El nombre visible de la consola no cambia (la interfaz no se toca). El cambio de nombre a «Agente 112» queda como decisión pendiente de Nick.

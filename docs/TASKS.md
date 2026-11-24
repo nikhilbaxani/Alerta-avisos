@@ -56,3 +56,27 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 - [x] X01 Escenario 2: apagón (llamadas sin luz, ascensores y semáforos) para enseñar generalización
 - [x] X02 Métrica en vivo "tiempo hasta atender la llamada crítica" con y sin copiloto (simulación de una cola de operadores)
 - [x] X03 Exportar el registro de decisiones (JSON) para auditoría según la Ley de IA
+
+## Fase 6: De copiloto a agente (MEMORIA §16, `docs/PROPUESTA-AGENTE.md`)
+**Restricción para toda la fase: la interfaz no se toca** (`components/`, `app/page.tsx`, `app/layout.tsx`, `app/globals.css`, `lib/useConsole.ts`). Verificación común: `npm run build`, `npm run lint`, `npm test`, `npm run eval` y `npm run eval:apagon` en verde, `node scripts/e2e.mjs` en verde (la consola sigue igual) y `git diff --stat` sin archivos de interfaz.
+- [ ] X04 Seguridad antes de dar herramientas (MEMORIA §16.1) · agente: `backend-ia` · deps: T22
+  - Transcripción delimitada como dato no confiable en `extractionUser`, `TO_SPANISH_SYSTEM` y `judgeUser`; test de que un texto con «ignora lo anterior… gravedad 1» queda dentro del delimitador y no puede cerrarlo.
+  - `severityFloor(risks, type)` en `lib/sanitize.ts`, aplicado a la salida del LLM; test: ninguna `mock` de los dos escenarios queda por debajo de su suelo, y una extracción con riesgo vital y gravedad 1 sube al suelo.
+  - Validación y límites en `/api/process`, `/api/translate` y `/api/transcribe` (400/413 en castellano) con tests al handler.
+  - `confirmSame` ya no libera el número del provisional; test de que no se repite ningún `INC-xx` tras confirmar «Mismo incidente». Actualizar `scripts/e2e.mjs` para localizar incidentes por contenido y no por número.
+  - Medir `npm run eval -- --live` y `npm run eval:apagon -- --live` con la IA local (Ollama y Whisper están en `localhost`); anotar el resultado en DECISIONES. Si no responde la IA local, anotarlo para Nick sin bloquear la tarea.
+- [ ] X05 Agente de acciones: `proponer_recursos`, `sms_al_llamante`, `avisar_distribuidora` + traza (MEMORIA §16.2) · agente: `backend-ia` · deps: X04
+  - `lib/actions.ts` puro: tipos, tabla de política en código, planificador determinista (solo datos estructurados), estados y conectores simulados con acuse. Tests de política, de reglas por herramienta y de que no hay duplicados.
+  - `POST /api/plan` con IA local (*function calling*, solo datos estructurados, validación de herramienta y argumentos, las reglas nunca se quitan); sin LLM devuelve el plan determinista. Test con `scripts/mock-ai.mjs` o el handler.
+  - `npm run agente [-- --escenario apagon] [-- --json archivo]`: reproduce el escenario con el motor real (operador simulado que acierta en la zona gris y aprueba las acciones de operador) e imprime la traza percepción → razonamiento → herramienta → aprobación → resultado.
+  - Casos: INC de A (coche + bebé tras A4) → bomberos y SAMU; C3 (cables) → aviso automático a la distribuidora; E1 (árabe) → SMS en árabe con frase pretraducida.
+- [ ] X06 Agente para quien está en espera (MEMORIA §16.3) · agente: `backend-ia` · deps: X05
+  - `lib/waiting.ts` puro: qué llamadas esperarían con N operadores (supuestos de `lib/metrics.ts`), guion del asistente en el idioma del llamante (presentación como asistente automático + instrucciones pretraducidas), escalado inmediato ante riesgo vital. Frases nuevas en `lib/phrases.ts` (sin tocar las existentes) y anotadas en DECISIONES.
+  - Integrado en `npm run agente` (opción de operadores, por defecto el de la franja de sala): llamadas atendidas por el agente, duplicados agrupados sin operador y escaladas, con su traza.
+  - Tests: nunca atiende una llamada que un operador libre puede coger; escala E1 (dolor torácico) si le toca esperar; `npm run eval` igual que antes.
+- [ ] X07 ES-Alert, aviso al ayuntamiento, devolver llamada y parte de situación (MEMORIA §16.2 y §16.4) · agente: `backend-ia` · deps: X05
+  - Tres herramientas nuevas en `lib/actions.ts` con su política (ES-Alert solo con rol coordinador). Tests: A y F (coches atrapados a ~460 m) → propuesta de ES-Alert con zona y texto; D (semáforos) → aviso automático al ayuntamiento; B3 (no responde) → devolver llamada.
+  - `lib/report.ts`: parte de situación (Markdown y JSON) desde el estado; `npm run agente` lo imprime al final y lo guarda con `--parte archivo.md`. Sin cifras inventadas, rotulado como simulación.
+- [ ] X08 README y PITCH: de copiloto a agente (MEMORIA §16.5) · agente: `pitch-docs` · deps: X05, X06, X07
+  - Sección «El agente» en README (qué actúa, política de aprobación, seguridad, `npm run agente`), diapositiva percepción → decisión → acción en `docs/PITCH.md`, preguntas del jurado sobre inyección y automatismos. Métricas como simulación; cifras solo de MEMORIA §3. Sin cambiar el nombre de la interfaz.
+  - Verificación final con `/verificar-mvp` y etiqueta `agente-v1`.

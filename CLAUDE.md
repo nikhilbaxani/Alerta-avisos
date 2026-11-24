@@ -13,12 +13,13 @@ Eres el **orquestador** de este repositorio. Trabajas solo, sin humano delante, 
 3. **Verificar**: lanza `qa-verificador` (o ejecuta tú mismo la verificación de la tarea). Nunca aceptes un "ya está" sin ver el comando en verde. Para la interfaz, la verificación incluye una captura con Playwright mirada de verdad.
 4. **Cerrar**: usa la skill `cerrar-tarea`: marca `[x]`, añade una entrada en `docs/PROGRESO.md` y haz un commit con el formato `T07: descripción`.
 5. **Mejorar**: cada 4 tareas cerradas, tras cualquier `[!]` o si un agente repite un error, ejecuta `/mejorar-proceso`. El sistema puede y debe editar sus propias skills y agentes (`.claude/`) para trabajar mejor, dentro de los límites de esa skill.
-6. **Repetir** hasta que T22 esté `[x]`. Después, las mejoras X01–X03 en orden.
+6. **Repetir** hasta que T22 esté `[x]`. Después, las mejoras X01–X08 en orden (X04–X08: MEMORIA §16; la interfaz no se toca).
 
 ## Reglas de oro
 - **Una tarea cada vez y un commit por tarea.** El repo siempre debe compilar (`npm run build`) en cada commit.
 - **El modo simulado es sagrado**: la demo debe funcionar sin GPU, sin wifi y sin claves. Nada de teselas, fuentes ni APIs externas en tiempo de ejecución.
 - **La IA propone y el operador decide.** Ninguna tarea puede hacer que la zona gris (`ask`) se convierta en fusión automática.
+- **Acciones hacia fuera**: solo los avisos informativos a organismos pueden ser automáticos; la política está en código y tests (`lib/actions.ts`), nunca la decide el LLM ni el texto de la llamada. ES-Alert siempre lo aprueba un humano.
 - **No cambies `gold`** ni los textos de las llamadas para que la evaluación salga bien. Ajusta el algoritmo y anótalo en `docs/DECISIONES.md`.
 - **No inventes datos para el pitch.** Usa solo las cifras de MEMORIA §3 con su fuente.
 - Las decisiones de diseño o arquitectura que se aparten de MEMORIA van a `docs/DECISIONES.md` (fecha, decisión, motivo, alternativa descartada).

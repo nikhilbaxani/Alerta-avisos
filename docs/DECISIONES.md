@@ -57,3 +57,9 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - Decisión: `translation_es` ya no se pide en el JSON de extracción; si la llamada no está en castellano, `processCall` hace una segunda llamada solo de traducción (`TO_SPANISH_SYSTEM`). Si falla, queda `null` y la consola enseña el original.
 - Motivo: con qwen2.5:7b real la traducción salía `null` en muchas llamadas extranjeras (K2, A2, C3) y la de E1 inventaba lugares («estación de Abú Umar», porque Whisper quita la puntuación del árabe). Con la llamada aparte, las 5 probadas traducen; E1 dice «Mi padre tiene 70 años…». Cuesta ~2 s más por llamada extranjera.
 - Pendiente: el `summary_es` de E1 todavía puede inventar el nombre de la estación.
+
+## 2026-11-24 · De copiloto a agente sin tocar la interfaz
+- Decisión: se aplica `docs/PROPUESTA-AGENTE.md` como tareas X04–X08 (MEMORIA §16): seguridad primero, después agente de acciones con conectores simulados, agente para llamadas en espera, ES-Alert y parte de situación. Por indicación de Nick, la interfaz de la consola no se toca: el agente vive en `lib/`, `app/api/` y `scripts/` y se demuestra con `npm run agente`.
+- Motivo: el reto pide agentes que actúen y conecten servicios; hoy el sistema percibe y razona, pero no actúa. La consola ya está verificada y presentada (vídeo y presentación), así que no se arriesga.
+- Automatismos: solo los avisos informativos a organismos (distribuidora, ayuntamiento) se envían sin aprobación, con registro; la tabla de política está en código y tests, nunca la decide el LLM. ES-Alert siempre lo aprueba un humano con rol de coordinador. Ninguna `ask` se convierte en fusión.
+- Descartado: tarjetas de acción y paneles en la consola (Nick no quiere cambios de interfaz) y renombrar la consola a «Agente 112» (pendiente de decisión de Nick).
