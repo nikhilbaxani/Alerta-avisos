@@ -28,7 +28,7 @@ interface Stt {
   calls: { task: string; model: string; hasFile: boolean }[];
   fetch: typeof fetch;
 }
-function fakeStt(reply: { text?: string; language?: string; duration?: number; fail?: boolean } = {}): Stt {
+function fakeStt(reply: { text?: string; language?: string; duration?: number; fail?: boolean; failTranslate?: boolean; status?: number; translation?: string } = {}): Stt {
   const calls: Stt["calls"] = [];
   return {
     calls,
@@ -37,8 +37,9 @@ function fakeStt(reply: { text?: string; language?: string; duration?: number; f
       const task = String(form.get("task"));
       calls.push({ task, model: String(form.get("model")), hasFile: form.get("file") instanceof Blob });
       expect(String(url)).toBe("http://stt.test/v1/audio/transcriptions");
-      if (reply.fail) return new Response("boom", { status: 500 });
-      const text = task === "translate" ? "There is a fire" : (reply.text ?? "Hay un incendio en la calle Larios");
+      if (reply.fail) return new Response("boom", { status: reply.status ?? 500 });
+      if (reply.failTranslate && task === "translate") return new Response("boom", { status: 500 });
+      const text = task === "translate" ? (reply.translation ?? "There is a fire") : (reply.text ?? "Hay un incendio en la calle Larios");
       return Response.json({ text, language: reply.language ?? "es", duration: reply.duration ?? 20 });
     }) as typeof fetch,
   };
@@ -69,11 +70,11 @@ afterEach(async () => {
   }
 });
 
-function call(base: string, o: { consent?: string | null; type?: string; bytes?: number; origin?: string } = {}) {
+function call(base: string, o: { consent?: string | null; type?: string; bytes?: number; origin?: string; xff?: string } = {}) {
   const fd = new FormData();
   fd.set("file", new Blob([new Uint8Array(o.bytes ?? 2000)], { type: o.type ?? "audio/webm" }), "c.webm");
   if (o.consent !== null) fd.set("consent", o.consent ?? "1");
-  return fetch(`${base}/llamar`, { method: "POST", body: fd, headers: o.origin ? { Origin: o.origin } : {} });
+  return fetch(`${base}/llamar`, { method: "POST", body: fd, headers: { ...(o.origin ? { Origin: o.origin } : {}), ...(o.xff ? { "x-forwarded-for": o.xff } : {}) } });
 }
 
 /** Lee eventos SSE hasta tener `n` o agotar el tiempo. */
@@ -159,10 +160,10 @@ describe("relay /llamar + /events", () => {
     expect((await call(base, { type: "video/webm" })).status).toBe(202);
   });
 
-  it("cuerpo mayor de 8 MB → 413", async () => {
+  it("cuerpo mayor de 3 MB → 413", async () => {
     const stt = fakeStt();
     const { base } = await boot(stt, { rateLimit: { max: 10, windowMs: 60_000 } });
-    const res = await call(base, { bytes: 8 * 1024 * 1024 + 10 });
+    const res = await call(base, { bytes: 3 * 1024 * 1024 + 10 });
     expect(res.status).toBe(413);
     expect(stt.calls).toHaveLength(0);
   });
@@ -254,6 +255,7 @@ describe("relay /llamar + /events", () => {
     const ok = await call(base, { origin: ORIGIN });
     expect(ok.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     const bad = await call(base, { origin: "https://evil.example" });
+    expect(bad.status).toBe(403);
     expect(bad.headers.get("access-control-allow-origin")).toBeNull();
     const pre = await fetch(`${base}/llamar`, { method: "OPTIONS", headers: { Origin: ORIGIN, "Access-Control-Request-Method": "POST" } });
     expect(pre.status).toBe(204);
@@ -273,14 +275,17 @@ describe("relay /llamar + /events", () => {
   });
 
   it("tras reiniciar el relay los ids no se repiten (etiqueta de arranque)", async () => {
-    const a = await boot(fakeStt(), { bootTag: defaultBootTag(1_000_000_000_000) });
-    const b = await boot(fakeStt(), { bootTag: defaultBootTag(1_000_000_600_000) });
+    const a = await boot(fakeStt(), { bootTag: "AB1" });
+    const b = await boot(fakeStt(), { bootTag: "CD2" });
     const idA = (await (await call(a.base)).json()).id;
     const idB = (await (await call(b.base)).json()).id;
     expect(idA).not.toBe(idB);
     expect(idA).toMatch(PUBLIC_CALL_ID);
     expect(idB).toMatch(PUBLIC_CALL_ID);
-    expect(defaultBootTag()).toMatch(/^[0-9A-Z]{1,3}$/);
+    const tags = Array.from({ length: 40 }, () => defaultBootTag());
+    for (const t of tags) expect(t).toMatch(/^[0-9A-Z]{1,3}$/);
+    // Aleatoria: no depende del segundo actual (dos arranques seguidos no chocan).
+    expect(new Set(tags).size).toBeGreaterThan(30);
   });
 
   it("con el extractor de reglas real produce un evento válido con ubicación conocida", async () => {
@@ -297,5 +302,149 @@ describe("relay /llamar + /events", () => {
   it("/health informa de la cola y del máximo", async () => {
     const { base } = await boot(fakeStt(), { maxCallSeconds: 90 });
     expect(await (await fetch(`${base}/health`)).json()).toEqual({ ok: true, queue: 0, maxCallSeconds: 90 });
+  });
+
+  const go = (base: string, xff: string) => call(base, { bytes: 100, xff });
+
+  it("TRUST_PROXY: se usa el último salto de X-Forwarded-For (el que añade Caddy), no el primero", async () => {
+    const { base } = await boot(fakeStt(), { trustProxy: true, rateLimit: { max: 1, windowMs: 60_000 } });
+    expect((await go(base, "6.6.6.6, 1.1.1.1")).status).toBe(202);
+    // Mismo cliente real (1.1.1.1) con otro primer salto falsificado: sigue limitado.
+    expect((await go(base, "7.7.7.7, 1.1.1.1")).status).toBe(429);
+    expect((await go(base, "6.6.6.6, 2.2.2.2")).status).toBe(202);
+  });
+
+  it("IPv6: el límite agrupa por prefijo /64; IPv4 y ::ffff:a.b.c.d se tratan como IPv4", async () => {
+    const { base } = await boot(fakeStt(), { trustProxy: true, rateLimit: { max: 1, windowMs: 60_000 } });
+    expect((await go(base, "2001:db8:1:2::1")).status).toBe(202);
+    expect((await go(base, "2001:0db8:0001:0002:ffff:aaaa:bbbb:cccc")).status).toBe(429);
+    expect((await go(base, "2001:db8:1:3::1")).status).toBe(202);
+    expect((await go(base, "3.3.3.3")).status).toBe(202);
+    expect((await go(base, "::ffff:3.3.3.3")).status).toBe(429);
+    expect((await go(base, "3.3.3.4")).status).toBe(202);
+  });
+
+  it("las peticiones rechazadas no gastan cuota: tres 415 y una llamada válida → 202", async () => {
+    const { base } = await boot(fakeStt());
+    for (let i = 0; i < 3; i++) expect((await call(base, { type: "image/png" })).status).toBe(415);
+    for (let i = 0; i < 3; i++) expect((await call(base, { consent: "0" })).status).toBe(400);
+    expect((await call(base)).status).toBe(202);
+  });
+
+  it("un 503 por cola llena no gasta cuota", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow = fakeStt();
+    const inner = slow.fetch;
+    slow.fetch = (async (...a: Parameters<typeof fetch>) => {
+      await gate;
+      return inner(...a);
+    }) as typeof fetch;
+    const { relay, base } = await boot(slow, { maxPending: 1 });
+    const codes: number[] = [];
+    for (let i = 0; i < 4; i++) codes.push((await call(base)).status);
+    expect(codes).toEqual([202, 202, 503, 503]);
+    release();
+    await relay.idle();
+    expect((await call(base)).status).toBe(202); // 3.ª llamada aceptada de 3
+    expect((await call(base)).status).toBe(429);
+  });
+
+  it("POST con Origin no permitido → 403 en castellano; sin Origin (curl) se admite", async () => {
+    const stt = fakeStt();
+    const { base } = await boot(stt);
+    const bad = await call(base, { origin: "https://evil.example" });
+    expect(bad.status).toBe(403);
+    expect((await bad.json()).error).toMatch(/origen/i);
+    expect(stt.calls).toHaveLength(0);
+    expect((await call(base)).status).toBe(202);
+    expect((await call(base, { origin: ORIGIN })).status).toBe(202);
+  });
+
+  it("si falla la pasada translate, la llamada se publica con translation_en null", async () => {
+    const stt = fakeStt({ language: "en", text: "There is a fire", failTranslate: true });
+    const { relay, base } = await boot(stt);
+    expect((await call(base)).status).toBe(202);
+    await relay.idle();
+    expect(stt.calls.map((c) => c.task)).toEqual(["transcribe", "translate"]);
+    const [ev] = await readEvents(base, 1);
+    expect(ev).toBeTruthy();
+    expect(ev.translation_en).toBeNull();
+    expect(ev.transcript).toBe("There is a fire");
+  });
+
+  it("transcripción y traducción se recortan a 4000 caracteres", async () => {
+    const stt = fakeStt({ language: "en", text: "x".repeat(9000), translation: "y".repeat(9000) });
+    const { relay, base } = await boot(stt);
+    await call(base);
+    await relay.idle();
+    const [ev] = await readEvents(base, 1);
+    expect(isPublicCallEvent(ev)).toBe(true);
+    expect(ev.transcript).toHaveLength(4000);
+    expect(ev.translation_en).toHaveLength(4000);
+  });
+
+  it("STT responde 413 (audio demasiado largo) → llamada descartada con línea de log", async () => {
+    const lines: string[] = [];
+    const { relay, base } = await boot(fakeStt({ fail: true, status: 413 }), { log: (m) => lines.push(m) });
+    expect((await call(base)).status).toBe(202);
+    await relay.idle();
+    expect(await readEvents(base, 1)).toHaveLength(0);
+    expect(lines.some((l) => /P1 descartada.*(largo|413)/.test(l))).toBe(true);
+  });
+
+  describe("peticiones mal formadas (regresión)", () => {
+    const raw = (base: string, body: BodyInit, headers: Record<string, string>) => fetch(`${base}/llamar`, { method: "POST", body, headers });
+
+    it("tipo vacío o video/ogg → 415", async () => {
+      const { base } = await boot(fakeStt());
+      expect((await call(base, { type: "" })).status).toBe(415);
+      expect((await call(base, { type: "video/ogg" })).status).toBe(415);
+    });
+
+    it("multipart roto → 400", async () => {
+      const { base } = await boot(fakeStt());
+      const res = await raw(base, "--x\r\nbasura sin cerrar", { "content-type": "multipart/form-data; boundary=x" });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBeTruthy();
+    });
+
+    it("audio vacío → 400", async () => {
+      const { base } = await boot(fakeStt());
+      const res = await call(base, { bytes: 0 });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(/vac/i);
+    });
+
+    it("cuerpo JSON → 400", async () => {
+      const { base } = await boot(fakeStt());
+      expect((await raw(base, JSON.stringify({ consent: "1" }), { "content-type": "application/json" })).status).toBe(400);
+    });
+
+    it("consentimiento «true» (no «1») → 400", async () => {
+      const { base } = await boot(fakeStt());
+      expect((await call(base, { consent: "true" })).status).toBe(400);
+    });
+
+    it("GET /llamar y rutas con traversal → 404", async () => {
+      const { base } = await boot(fakeStt());
+      expect((await fetch(`${base}/llamar`)).status).toBe(404);
+      expect((await fetch(`${base}/%2e%2e/etc/passwd`)).status).toBe(404);
+    });
+
+    it("sin TRUST_PROXY un X-Forwarded-For falsificado no evita el límite (4.ª → 429)", async () => {
+      const { base } = await boot(fakeStt());
+      for (let i = 0; i < 3; i++) expect((await call(base, { xff: `9.9.9.${i}` })).status).toBe(202);
+      expect((await call(base, { xff: "9.9.9.200" })).status).toBe(429);
+    });
+
+    it("una transcripción con HTML llega intacta como texto", async () => {
+      const html = `<script>alert(1)</script> <img src=x onerror=alert(2)> incendio en calle Larios`;
+      const { relay, base } = await boot(fakeStt({ text: html }));
+      await call(base);
+      await relay.idle();
+      const [ev] = await readEvents(base, 1);
+      expect(ev.transcript).toBe(html);
+    });
   });
 });

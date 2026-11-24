@@ -44,7 +44,8 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T1 | S2, S5 | Extractor de reglas + nomenclátor + contrato, con tests (`lib/rules.ts`, `lib/gazetteer.ts`, `lib/publicCall.ts`, `tests/`) | f57706b |
 | T2 | S1, S4, S7, S9 | Relay del VPS + Whisper CPU + Docker/Caddy (`server/`, `scripts/stt_server.py`) | 830f196 |
 | T3 | S3, S4, S6, S8 | Página `/llamar` + QR + bandeja de entrada en la consola | 1f2534c |
-| T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | a7fa4eb + este commit |
+| T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | a7fa4eb |
+| T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | (commit de endurecimiento) |
 
 ## Log
 
@@ -53,3 +54,6 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L3** (usuario): «el audio no sea menor a 20s, que acepte 1min -2min como máximo pero no hay mínimo».
 - **L4** (exploración): X04 ya hizo `lib/validate.ts` (reutilizable sin Next) y `lib/http.ts` (depende de Next). La consola no recalcula `decide` para acciones `new`, así que una llamada externa se decide en el navegador al aceptarla. No había SSE, Docker ni Vercel.
 - **L5** (integración): ids del relay con etiqueta de arranque (`P<tag><n>`) para que un reinicio no repita ids ocultos por el `seen` de la bandeja; test del relay con el extractor real; título de `/llamar` cambiado a «Llamada de prueba al Copiloto 112». 269 tests, tsc, eval, eval:apagon y build en verde. Sin probar: docker build, Whisper real en CPU, micrófono real en móvil.
+- **L6** (verificación independiente): S1–S9 PASS. Hallazgos: audio largo bloquea Whisper (DoS), token dentro de la imagen Docker, XFF primer salto, IPv6 sin agrupar, `?op=` en logs, POST de otros orígenes, transcripción sin límite, STT como root, cuota gastada por peticiones rechazadas.
+- **L7** (revisión nativa aprobada, avisos no bloqueantes): alias genéricos («rincón», «puerto», «alameda») como lugar conocido, bandeja sin reconexión, token incorrecto sin salida, recibo «la verá» falso, fallo de traducción tira la llamada, colisión de ids en el mismo segundo.
+- **L8** (T5): las 16 correcciones aplicadas; 289 tests, tsc, eval, eval:apagon y build en verde. Sin probar: ruta 413 de `stt_server.py` con Whisper real, reconexión y «Cambiar token» de la bandeja, build de las imágenes Docker.

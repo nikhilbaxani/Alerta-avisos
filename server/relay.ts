@@ -7,9 +7,10 @@
  * El audio solo vive en memoria y se descarta tras transcribir. No se registra texto ni IPs completas.
  */
 import http from "node:http";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { isIPv6 } from "node:net";
 import { pathToFileURL } from "node:url";
-import { DEFAULT_MAX_CALL_SECONDS, isPublicCallEvent } from "../lib/publicCall";
+import { DEFAULT_MAX_CALL_SECONDS, MAX_TRANSCRIPT_CHARS, isPublicCallEvent } from "../lib/publicCall";
 import type { PublicCallEvent, PublicLocation } from "../lib/publicCall";
 import type { Extraction } from "../lib/types";
 
@@ -19,9 +20,28 @@ export type Extractor = (input: {
   translation_en: string | null;
 }) => { extraction: Extraction; location: PublicLocation } | Promise<{ extraction: Extraction; location: PublicLocation }>;
 
-/** Tres caracteres en base 36 derivados de la hora de arranque. */
-export function defaultBootTag(now = Date.now()): string {
-  return Math.floor(now / 1000).toString(36).toUpperCase().slice(-3);
+/** Tres caracteres aleatorios en base 36 (mayúsculas): dos arranques seguidos no comparten etiqueta salvo 1 de cada 46 656. */
+export function defaultBootTag(): string {
+  const b = randomBytes(3);
+  return Array.from(b, (x) => (x % 36).toString(36)).join("").toUpperCase();
+}
+
+/**
+ * Clave de límite de ritmo: IPv4 tal cual (también ::ffff:a.b.c.d); IPv6 agrupada por prefijo /64,
+ * porque un cliente IPv6 controla todo su /64 y cambiar de dirección dentro de él sería trivial.
+ */
+export function rateKey(ip: string): string {
+  const v4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
+  if (v4) return v4[1];
+  const bare = ip.split("%")[0];
+  if (!isIPv6(bare)) return ip;
+  let [head, tail] = bare.split("::") as [string, string | undefined];
+  // Un IPv6 con IPv4 incrustada al final (a::1.2.3.4) ocupa dos grupos.
+  const fix = (part: string) => part.replace(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/, (_, a, b, c, d) => `${((+a << 8) | +b).toString(16)}:${((+c << 8) | +d).toString(16)}`);
+  const h = head ? fix(head).split(":") : [];
+  const t = tail === undefined ? [] : tail ? fix(tail).split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return groups.slice(0, 4).map((g) => parseInt(g || "0", 16).toString(16)).join(":") + "::/64";
 }
 
 export interface RelayOptions {
@@ -32,7 +52,7 @@ export interface RelayOptions {
   token?: string;
   allowedOrigins?: string[];
   rateLimit?: { max: number; windowMs: number };
-  /** Confía en el primer salto de X-Forwarded-For (solo detrás de Caddy). */
+  /** Confía en el ÚLTIMO salto de X-Forwarded-For, el que añade Caddy (solo detrás de él). */
   trustProxy?: boolean;
   /** Llamadas en espera (sin contar la que se procesa). */
   maxPending?: number;
@@ -59,6 +79,11 @@ function sameToken(a: string, b: string): boolean {
 }
 
 class TooBig extends Error {}
+class SttError extends Error {
+  constructor(msg: string, readonly status: number) {
+    super(msg);
+  }
+}
 
 async function readCapped(req: http.IncomingMessage, maxBytes: number): Promise<Buffer> {
   const declared = Number(req.headers["content-length"] ?? 0);
@@ -76,7 +101,8 @@ async function readCapped(req: http.IncomingMessage, maxBytes: number): Promise<
 export function createRelay(opts: RelayOptions) {
   const maxCall = opts.maxCallSeconds ?? DEFAULT_MAX_CALL_SECONDS;
   const maxPending = opts.maxPending ?? 20;
-  const maxBytes = opts.maxBytes ?? 8 * MB;
+  // 120 s de Opus (MediaRecorder) ≈ 2 MB; 3 MB deja margen sin permitir audios mucho más largos.
+  const maxBytes = opts.maxBytes ?? 3 * MB;
   const limit = opts.rateLimit ?? { max: 3, windowMs: 10 * 60_000 };
   const origins = new Set(opts.allowedOrigins ?? []);
   const replayN = opts.replay ?? 50;
@@ -114,12 +140,15 @@ export function createRelay(opts: RelayOptions) {
   function clientIp(req: http.IncomingMessage): string {
     if (opts.trustProxy) {
       const xff = req.headers["x-forwarded-for"];
-      const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
-      if (first) return first;
+      // Lo que añade nuestro proxy es lo último; lo anterior lo controla el cliente.
+      const parts = (Array.isArray(xff) ? xff.join(",") : xff)?.split(",").map((p) => p.trim()).filter(Boolean);
+      const last = parts?.[parts.length - 1];
+      if (last) return last;
     }
     return req.socket.remoteAddress ?? "?";
   }
 
+  /** ¿Ya agotó la cuota? No la consume: solo se cuenta una llamada tras validarla (`recordHit`). */
   function rateLimited(ip: string): boolean {
     const now = Date.now();
     for (const [k, v] of hits) {
@@ -127,11 +156,13 @@ export function createRelay(opts: RelayOptions) {
       if (fresh.length) hits.set(k, fresh);
       else hits.delete(k);
     }
+    return (hits.get(ip) ?? []).length >= limit.max;
+  }
+
+  function recordHit(ip: string) {
     const mine = hits.get(ip) ?? [];
-    if (mine.length >= limit.max) return true;
-    mine.push(now);
+    mine.push(Date.now());
     hits.set(ip, mine);
-    return false;
   }
 
   function publish(ev: PublicCallEvent) {
@@ -147,7 +178,7 @@ export function createRelay(opts: RelayOptions) {
     form.set("model", opts.sttModel ?? "");
     form.set("task", task);
     const r = await doFetch(sttUrl, { method: "POST", body: form, signal: AbortSignal.timeout(180_000) });
-    if (!r.ok) throw new Error(`STT ${task} respondió ${r.status}`);
+    if (!r.ok) throw new SttError(`STT ${task} respondió ${r.status}`, r.status);
     const j = (await r.json()) as { text?: unknown; language?: unknown; duration?: unknown };
     if (typeof j.text !== "string") throw new Error("STT sin texto");
     return { text: j.text.trim(), language: String(j.language ?? ""), duration: Number(j.duration ?? 0) };
@@ -171,14 +202,22 @@ export function createRelay(opts: RelayOptions) {
         return;
       }
       let translation: string | null = null;
-      if (first.language !== "es") translation = (await stt(file, "translate")).text || null;
-      const { extraction, location } = await extract({ transcript: first.text, language: first.language, translation_en: translation });
+      if (first.language !== "es") {
+        // Si la traducción falla o tarda demasiado, la llamada sigue: las reglas usan la transcripción.
+        try {
+          translation = (await stt(file, "translate")).text.slice(0, MAX_TRANSCRIPT_CHARS) || null;
+        } catch (e) {
+          log(`[relay] ${id} sin traducción: ${e instanceof Error ? e.message : "desconocido"}`);
+        }
+      }
+      const transcript = first.text.slice(0, MAX_TRANSCRIPT_CHARS);
+      const { extraction, location } = await extract({ transcript, language: first.language, translation_en: translation });
       const ev: PublicCallEvent = {
         id,
         receivedAt: new Date(receivedAt).toISOString(),
         durationS: first.duration,
         language: first.language,
-        transcript: first.text,
+        transcript,
         translation_en: translation,
         extraction,
         location,
@@ -191,7 +230,8 @@ export function createRelay(opts: RelayOptions) {
       publish(ev);
       log(`[relay] ${id} publicada (${first.language}, ${Math.round(first.duration)} s, stt ${sttMs} ms)`);
     } catch (e) {
-      log(`[relay] ${id} error: ${e instanceof Error ? e.message : "desconocido"}`);
+      if (e instanceof SttError && e.status === 413) log(`[relay] ${id} descartada: audio demasiado largo (STT 413)`);
+      else log(`[relay] ${id} error: ${e instanceof Error ? e.message : "desconocido"}`);
     }
   }
 
@@ -206,7 +246,9 @@ export function createRelay(opts: RelayOptions) {
   }
 
   async function handleCall(req: http.IncomingMessage, res: http.ServerResponse) {
-    const ip = clientIp(req);
+    const origin = req.headers.origin;
+    if (origin && !origins.has(origin)) return json(req, res, 403, { error: "Origen no permitido" });
+    const ip = rateKey(clientIp(req));
     if (rateLimited(ip)) return json(req, res, 429, { error: "Demasiadas llamadas desde tu conexión. Espera unos minutos." });
     if (queue.length >= maxPending) return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
     const ctype = req.headers["content-type"] ?? "";
@@ -234,6 +276,7 @@ export function createRelay(opts: RelayOptions) {
     if (file.size === 0) return json(req, res, 400, { error: "El audio está vacío" });
     if (!AUDIO_TYPE.test(file.type)) return json(req, res, 415, { error: "El archivo no es un audio admitido" });
 
+    recordHit(ip); // la cuota solo se gasta con llamadas válidas y aceptadas
     const id = `P${bootTag}${++seq}`;
     const receivedAt = Date.now();
     log(`[relay] ${id} recibida (${Math.round(file.size / 1024)} KB, ip ${short(ip)})`);
@@ -313,10 +356,12 @@ export function start() {
     trustProxy: process.env.TRUST_PROXY === "1",
   });
   const port = envInt("PORT", 8080);
+  // 0.0.0.0 por defecto (Docker: Caddy llega por la red de compose). En local, HOST=127.0.0.1.
+  const host = process.env.HOST?.trim() || "0.0.0.0";
   const server = http.createServer(relay.handler);
   server.requestTimeout = 60_000;
-  server.listen(port, () => {
-    console.log(`[relay] escuchando en :${port} (token ${process.env.RELAY_TOKEN ? "configurado" : "NO configurado: /events devuelve 503"})`);
+  server.listen(port, host, () => {
+    console.log(`[relay] escuchando en ${host}:${port} (token ${process.env.RELAY_TOKEN ? "configurado" : "NO configurado: /events devuelve 503"})`);
   });
   return server;
 }

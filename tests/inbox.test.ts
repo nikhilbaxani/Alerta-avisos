@@ -3,6 +3,7 @@ import { scenario } from "@/data/scenario-dana-malaga";
 import { initialState, processCall, snapshot } from "@/lib/engine";
 import type { EngineCall } from "@/lib/engine";
 import { PENDING_CAP, acceptEvent, addEvent, discardEvent, emptyInbox, publicEventToCall } from "@/lib/inbox";
+import { MAX_TRANSCRIPT_CHARS, isPublicCallEvent } from "@/lib/publicCall";
 import type { PublicCallEvent } from "@/lib/publicCall";
 
 const first = [...scenario.calls].sort((a, b) => a.t - b.t)[0];
@@ -84,5 +85,19 @@ describe("bandeja", () => {
     for (let i = 1; i <= PENDING_CAP + 5; i++) s = addEvent(s, event({ id: `P${i}` }));
     expect(s.pending).toHaveLength(PENDING_CAP);
     expect(s.pending[0].id).toBe("P6");
+  });
+});
+
+describe("límite de texto del evento", () => {
+  it("acepta exactamente MAX_TRANSCRIPT_CHARS y rechaza más", () => {
+    expect(MAX_TRANSCRIPT_CHARS).toBe(4000);
+    expect(isPublicCallEvent(event({ transcript: "a".repeat(4000) }))).toBe(true);
+    expect(isPublicCallEvent(event({ transcript: "a".repeat(4001) }))).toBe(false);
+    expect(isPublicCallEvent(event({ translation_en: "a".repeat(4000) }))).toBe(true);
+    expect(isPublicCallEvent(event({ translation_en: "a".repeat(4001) }))).toBe(false);
+  });
+
+  it("la bandeja ignora un evento con transcripción desmesurada", () => {
+    expect(addEvent(emptyInbox, event({ transcript: "a".repeat(4001) }))).toBe(emptyInbox);
   });
 });

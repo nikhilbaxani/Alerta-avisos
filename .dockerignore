@@ -11,3 +11,7 @@ brag-output*
 presentacion
 docs/capturas
 *.tsbuildinfo
+# Secretos: nunca entran en el contexto de build ni en una imagen.
+server/relay.env
+**/*.env
+**/.env*

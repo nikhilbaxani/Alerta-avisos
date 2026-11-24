@@ -35,20 +35,27 @@ export default function Inbox({ s, onLive }: Props) {
   const [inbox, dispatch] = useReducer(reducer, emptyInbox);
   const [token, setToken] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState(false);
   const [conn, setConn] = useState<Conn>("connecting");
   const ref = useRef({ s, inbox });
   ref.current = { s, inbox };
 
-  // Token: ?op= (se guarda y se quita de la URL) o localStorage.
+  // Token: #op=<token> (el fragmento no llega a los registros de Vercel). Se acepta también ?op= por compatibilidad.
+  // Se guarda en localStorage y se quita de la URL.
   useEffect(() => {
     if (!RELAY) return;
     try {
       const url = new URL(window.location.href);
-      const fromUrl = url.searchParams.get("op");
+      const fromHash = new URLSearchParams(url.hash.replace(/^#/, "")).get("op");
+      const fromQuery = url.searchParams.get("op");
+      const fromUrl = fromHash || fromQuery;
       if (fromUrl) {
         localStorage.setItem(TOKEN_KEY, fromUrl);
         url.searchParams.delete("op");
-        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+        const h = new URLSearchParams(url.hash.replace(/^#/, ""));
+        h.delete("op");
+        const rest = h.toString();
+        window.history.replaceState(null, "", url.pathname + url.search + (rest ? `#${rest}` : ""));
         setToken(fromUrl);
         return;
       }
@@ -58,20 +65,46 @@ export default function Inbox({ s, onLive }: Props) {
     }
   }, []);
 
+  // SSE con reconexión: si el navegador cierra el EventSource (p. ej. 401 o caída del VPS) se recrea con espera 2 s → 15 s.
   useEffect(() => {
     if (!RELAY || !token) return;
-    setConn("connecting");
-    const es = new EventSource(`${RELAY}/events?token=${encodeURIComponent(token)}`);
-    es.onopen = () => setConn("open");
-    es.onerror = () => setConn(es.readyState === EventSource.CLOSED ? "down" : "connecting");
-    es.addEventListener("call", (e) => {
-      try {
-        dispatch({ type: "event", raw: JSON.parse((e as MessageEvent<string>).data) });
-      } catch {
-        /* evento mal formado: se ignora */
-      }
-    });
-    return () => es.close();
+    let es: EventSource | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let delay = 2000;
+    let failures = 0;
+    let stopped = false;
+    const connect = () => {
+      if (stopped) return;
+      setConn("connecting");
+      const src = new EventSource(`${RELAY}/events?token=${encodeURIComponent(token)}`);
+      es = src;
+      src.onopen = () => {
+        delay = 2000;
+        failures = 0;
+        setConn("open");
+      };
+      src.onerror = () => {
+        if (src.readyState !== EventSource.CLOSED) return setConn("connecting"); // el navegador reintenta solo
+        src.close();
+        failures += 1;
+        setConn(failures >= 3 ? "down" : "connecting");
+        timer = setTimeout(connect, delay);
+        delay = Math.min(delay * 2, 15_000);
+      };
+      src.addEventListener("call", (e) => {
+        try {
+          dispatch({ type: "event", raw: JSON.parse((e as MessageEvent<string>).data) });
+        } catch {
+          /* evento mal formado: se ignora */
+        }
+      });
+    };
+    connect();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      es?.close();
+    };
   }, [token]);
 
   const accept = useCallback(
@@ -95,7 +128,12 @@ export default function Inbox({ s, onLive }: Props) {
         <span className={`conn conn-${conn}`} role="status">{token ? CONN_TEXT[conn] : "Sin token"}</span>
       </div>
       <CallQRCode />
-      {token === "" && (
+      {token && (
+        <button type="button" className="btn btn-sm" onClick={() => { setDraft(""); setEditing((v) => !v); }} aria-expanded={editing}>
+          Cambiar token
+        </button>
+      )}
+      {(token === "" || editing) && (
         <form
           className="inbox-token"
           onSubmit={(e) => {
@@ -104,6 +142,7 @@ export default function Inbox({ s, onLive }: Props) {
             if (!v) return;
             try { localStorage.setItem(TOKEN_KEY, v); } catch { /* sin almacenamiento */ }
             setToken(v);
+            setEditing(false);
           }}
         >
           <label htmlFor="op-token" className="note">Token del operador</label>

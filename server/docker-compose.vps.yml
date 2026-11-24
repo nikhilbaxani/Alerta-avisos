@@ -32,7 +32,8 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?define ALLOWED_ORIGINS en server/relay.env}
       RATE_LIMIT: ${RATE_LIMIT:-3}
       RATE_WINDOW_MIN: ${RATE_WINDOW_MIN:-10}
-      TRUST_PROXY: "1" # detrás de Caddy: el primer salto de X-Forwarded-For es el cliente
+      TRUST_PROXY: "1" # detrás de Caddy: el cliente es el ÚLTIMO salto de X-Forwarded-For (lo que añade Caddy)
+      HOST: 0.0.0.0 # solo alcanzable desde la red de compose
     depends_on:
       - stt
 
@@ -43,6 +44,7 @@ services:
     restart: unless-stopped
     environment:
       STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+      MAX_CALL_SECONDS: ${MAX_CALL_SECONDS:-120} # rechaza (413) audio > máximo + 5 s sin transcribirlo
     volumes:
       - whisper_models:/models
 

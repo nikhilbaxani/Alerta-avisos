@@ -33,7 +33,8 @@ Requisitos en el VPS: Docker con el plugin `docker compose`, puertos 80 y 443 li
    # {"ok":true,"queue":0,"maxCallSeconds":120}
    docker compose -f server/docker-compose.vps.yml logs -f stt relay
    ```
-6. **Vercel.** En el proyecto de la consola añade la variable de entorno `NEXT_PUBLIC_RELAY_URL=https://relay.tudominio.com` y vuelve a desplegar. El operador abre la consola con `?op=<RELAY_TOKEN>` (se guarda en `localStorage`).
+6. **Vercel.** En el proyecto de la consola añade la variable de entorno `NEXT_PUBLIC_RELAY_URL=https://relay.tudominio.com` y vuelve a desplegar. El operador abre la consola con `https://tu-consola.vercel.app/#op=<RELAY_TOKEN>` (se guarda en `localStorage` y se borra de la URL; se usa `#` y no `?` para que el token no llegue a los registros de Vercel. `?op=` sigue aceptándose por compatibilidad). Si guardó uno equivocado, usa «Cambiar token» en la bandeja.
+   Además, `NEXT_PUBLIC_MAX_CALL_SECONDS` (Vercel, corte de la grabación en el navegador) y `MAX_CALL_SECONDS` (VPS) **deben coincidir**: si el navegador permite más que el servidor, las llamadas largas se descartan.
 
 Actualizar: `git pull` y repetir el comando del paso 4. Parar: `docker compose -f server/docker-compose.vps.yml down` (el volumen del modelo se conserva).
 
@@ -44,15 +45,15 @@ Actualizar: `git pull` y repetir el comando del paso 4. Parar: `docker compose -
 | `RELAY_DOMAIN` | — | Dominio que sirve Caddy (HTTPS automático). |
 | `RELAY_TOKEN` | — | Token de `/events`. Sin él, `/events` responde 503. |
 | `ALLOWED_ORIGINS` | — | Orígenes CORS permitidos, separados por comas. |
-| `MAX_CALL_SECONDS` | 120 | Máximo de duración; se rechaza lo que supere máximo + 5 s. |
+| `MAX_CALL_SECONDS` | 120 | Máximo de duración; `stt` decodifica el audio y responde 413 (sin transcribir) si supera máximo + 5 s. Debe coincidir con `NEXT_PUBLIC_MAX_CALL_SECONDS` en Vercel. |
 | `RATE_LIMIT` / `RATE_WINDOW_MIN` | 3 / 10 | Llamadas por IP y ventana. |
 | `STT_MODEL` | `Systran/faster-whisper-small` | Modelo de Whisper. |
 
-El relay (`server/relay.ts`) lee además `PORT` (8080), `STT_BASE_URL` y `TRUST_PROXY=1` (compose ya lo activa: la IP del cliente es el primer salto de `X-Forwarded-For`, que pone Caddy).
+El relay (`server/relay.ts`) lee además `PORT` (8080), `HOST` (dirección de escucha; por defecto `0.0.0.0` para Docker, usa `127.0.0.1` en local), `STT_BASE_URL` y `TRUST_PROXY=1` (compose ya lo activa: la IP del cliente es el **último** salto de `X-Forwarded-For`, el que añade Caddy; los anteriores los controla el cliente). Las direcciones IPv6 se limitan por prefijo /64.
 
 ## Límites del endpoint público
 
-8 MB por llamada, tipo `audio/*` o `video/webm|mp4`, consentimiento obligatorio (`consent=1`), 3 llamadas por IP cada 10 min, cola de 20 llamadas (503 si está llena). El audio se procesa de una en una.
+3 MB por llamada (120 s de Opus ≈ 2 MB), tipo `audio/*` o `video/webm|mp4`, consentimiento obligatorio (`consent=1`), 3 llamadas por IP cada 10 min (solo cuentan las peticiones válidas aceptadas), cola de 20 llamadas (503 si está llena), `Origin` no permitido → 403 (sin `Origin`, p. ej. curl, se admite), transcripción y traducción recortadas a 4000 caracteres. Si la traducción falla, la llamada se publica sin ella. El audio se procesa de una en una.
 
 ## Latencia esperada (CPU)
 

@@ -52,12 +52,14 @@ def main() -> None:
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     ap.add_argument("--compute-type", default=None, help="float16 en GPU, int8 en CPU por defecto")
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--max-seconds", type=float, default=float(os.environ.get("MAX_CALL_SECONDS") or 120),
+                    help="rechaza (413) audio más largo que esto + 5 s sin transcribirlo")
     ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 solo dentro de una red interna de Docker")
     args = ap.parse_args()
 
     if args.device == "cuda":
         preload_cuda_libs()
-    from faster_whisper import WhisperModel  # import tardío: después de precargar CUDA
+    from faster_whisper import WhisperModel, decode_audio  # import tardío: después de precargar CUDA
 
     compute = args.compute_type or ("float16" if args.device == "cuda" else "int8")
     t0 = time.time()
@@ -100,8 +102,19 @@ def main() -> None:
                 return
             t = time.time()
             try:
+                # Se decodifica primero (rápido) para rechazar audios largos sin gastar CPU en transcribirlos.
+                audio = decode_audio(io.BytesIO(fields["file"][0]), sampling_rate=16000)
+            except Exception as e:  # audio corrupto o formato no soportado
+                self._json(400, {"error": f"no se pudo decodificar el audio: {e}"})
+                return
+            seconds = len(audio) / 16000
+            if seconds > args.max_seconds + 5:
+                print(f"[stt] rechazado: {seconds:.0f}s > {args.max_seconds:.0f}s + 5", flush=True)
+                self._json(413, {"error": f"el audio dura {seconds:.0f} s y el máximo es {args.max_seconds:.0f} s"})
+                return
+            try:
                 with lock:
-                    segments, info = model.transcribe(io.BytesIO(fields["file"][0]), language=lang, task=task, beam_size=5)
+                    segments, info = model.transcribe(audio, language=lang, task=task, beam_size=5)
                     text = " ".join(s.text.strip() for s in segments).strip()
             except Exception as e:  # audio corrupto o formato no soportado
                 self._json(500, {"error": f"no se pudo transcribir: {e}"})

@@ -59,7 +59,7 @@ export default function CallRecorder() {
       const res = await fetch(`${RELAY}/llamar`, { method: "POST", body: form });
       if (res.status === 202) {
         setPhase("done");
-        setMsg({ ok: true, text: "Recibida. Gracias: el operador la verá en la consola." });
+        setMsg({ ok: true, text: "Enviada. Si el audio se procesa bien, el operador la verá en la consola en unos segundos." });
         return;
       }
       let detail = "";

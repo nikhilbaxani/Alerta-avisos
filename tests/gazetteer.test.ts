@@ -44,7 +44,7 @@ describe("locate (nomenclátor de Málaga)", () => {
   });
 
   it("todas las coordenadas caen dentro del mapa", () => {
-    for (const t of ["larios", "alameda principal", "plaza de la merced", "calle victoria", "cuarteles", "avenida de andalucia", "cruz de humilladero", "paseo maritimo", "teatinos", "campanillas", "aeropuerto", "torremolinos", "el palo", "rincon de la victoria"]) {
+    for (const t of ["larios", "alameda principal", "plaza de la merced", "calle victoria", "calle cuarteles", "avenida de andalucia", "cruz de humilladero", "paseo maritimo", "teatinos", "campanillas", "aeropuerto de malaga", "torremolinos", "el palo", "rincon de la victoria"]) {
       const r = locate(t)!;
       expect(r, t).not.toBeNull();
       expect(r.aml.lat).toBeGreaterThan(36.59);
@@ -52,5 +52,30 @@ describe("locate (nomenclátor de Málaga)", () => {
       expect(r.aml.lng).toBeGreaterThan(-4.6);
       expect(r.aml.lng).toBeLessThan(-4.24);
     }
+  });
+
+  it("las palabras comunes sueltas no cuentan como lugar conocido", () => {
+    for (const t of [
+      "hay un olor raro en un rincón del garaje",
+      "hay agua en la alameda de mi casa",
+      "el puerto de montaña está cortado",
+      "the port of the router is broken",
+      "estamos en el centro comercial",
+      "el airport shuttle no llega",
+      "hay mucho aeropuerto de juguete",
+      "se oye una merced rara",
+    ]) {
+      expect(locate(t), t).toBeNull();
+    }
+  });
+
+  it("los alias específicos siguen funcionando", () => {
+    expect(locate("en el puerto de Málaga")!.place).toBe("Alameda Principal");
+    expect(locate("Malaga port is flooded")!.place).toBe("Alameda Principal");
+    expect(locate("cerca de la alameda principal")!.place).toBe("Alameda Principal");
+    expect(locate("en el aeropuerto de Málaga")!.place).toBe("Aeropuerto de Málaga");
+    expect(locate("Malaga airport terminal 3")!.place).toBe("Aeropuerto de Málaga");
+    expect(locate("en el centro de Málaga")!.place).toBe("Málaga centro");
+    expect(locate("en el centro histórico")!.place).toBe("Málaga centro");
   });
 });

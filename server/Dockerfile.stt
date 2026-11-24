@@ -1,11 +1,16 @@
 FROM python:3.11-slim
 WORKDIR /app
 # faster-whisper trae PyAV (ffmpeg embebido): no hace falta ffmpeg del sistema.
-RUN pip install --no-cache-dir faster-whisper
+RUN pip install --no-cache-dir faster-whisper \
+ && useradd --create-home --uid 10001 stt \
+ && mkdir /models && chown stt:stt /models
 COPY scripts/stt_server.py ./stt_server.py
 ENV STT_MODEL=Systran/faster-whisper-small \
+    MAX_CALL_SECONDS=120 \
     HF_HOME=/models
+# Sin root. El volumen nuevo hereda el dueño de /models (stt).
+USER stt
 VOLUME /models
 EXPOSE 8000
-# Forma shell para expandir STT_MODEL. Solo se publica dentro de la red de compose.
-CMD python stt_server.py --device cpu --host 0.0.0.0 --port 8000 --model "$STT_MODEL"
+# Forma shell para expandir las variables. Solo se publica dentro de la red de compose.
+CMD python stt_server.py --device cpu --host 0.0.0.0 --port 8000 --model "$STT_MODEL" --max-seconds "$MAX_CALL_SECONDS"

@@ -32,6 +32,8 @@ export const DEFAULT_MAX_CALL_SECONDS = 120;
 /** Ubicación por defecto si no se reconoce ningún lugar (S5). */
 export const UNKNOWN_LOCATION_AML: Aml = { lat: 36.7213, lng: -4.4214, acc: 1500 };
 export const KNOWN_LOCATION_ACC = 150;
+/** Tope de caracteres de transcripción y traducción (texto no confiable, S9). */
+export const MAX_TRANSCRIPT_CHARS = 4000;
 export const PUBLIC_CALL_ID = /^P[0-9A-Z]{1,12}$/;
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null;
@@ -67,8 +69,8 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent {
     isStr(x.receivedAt) && !Number.isNaN(Date.parse(x.receivedAt)) &&
     isNum(x.durationS) && x.durationS >= 0 &&
     isStr(x.language) && /^[a-z]{2}$/.test(x.language) &&
-    isStr(x.transcript) &&
-    (x.translation_en === null || isStr(x.translation_en)) &&
+    isStr(x.transcript) && x.transcript.length <= MAX_TRANSCRIPT_CHARS &&
+    (x.translation_en === null || (isStr(x.translation_en) && x.translation_en.length <= MAX_TRANSCRIPT_CHARS)) &&
     isExtraction(x.extraction) &&
     isObj(loc) && (loc.place === null || isStr(loc.place)) && typeof loc.known === "boolean" && isAml(loc.aml) &&
     isObj(tim) && isNum(tim.sttMs) && isNum(tim.totalMs)
