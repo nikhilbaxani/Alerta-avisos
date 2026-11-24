@@ -148,3 +148,11 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Sin ejecutar: `npm run build`, e2e y `--live` con modelo real. El umbral de 500 m para proponer ES-Alert es un supuesto de la demo, no un protocolo oficial.
 - Decisiones: X06 y X07 en DECISIONES (entraron en el commit de las pestañas, 131e105).
 - Siguiente: X08.
+
+## 2026-11-25 · X08 y cierre de la fase 6 · hecha
+- Qué se hizo: fusión de `origin/main` (X06, X07, X09 y X10 del equipo) con las llamadas por QR, el relay y las pestañas de esta rama; guardas de aprobación que derivan la política de la herramienta en cada transición; escalado de todo riesgo vital en espera; README y PITCH «de copiloto a agente»; relay con un único Whisper (sobremesa, por el gateway del LLM) y traducción por el LLM; el llamante ve su transcripción y pulsa «Enviar»; cola configurable con desalojo y posición en la cola; nombre visible y logo «Agente 112».
+- Verificación (independiente, sobre eef24d8): APTO; 460 tests entonces (486 ahora), `eval` 7/0/2, `eval:apagon` 6/0/1, `npm run agente` determinista, build con y sin relay, e2e y flujo público completo contra el relay real en local, pase adversario sobre los endpoints públicos. Sus hallazgos se corrigieron en b82f992.
+- Desplegado en el VPS (087cd8a). Prueba de carga: 50 audios simultáneos, 50 aceptados y transcritos, 0 errores; mediana 289 s y última 562 s (Whisper en CPU, en serie).
+- Sin probar: micrófono real en iOS Safari, `strata` y Whisper reales bajo carga con «Enviar» hasta la bandeja, la interfaz de «llamadas por delante» en un navegador real.
+- Pendiente: decisión sobre Whisper en GPU, review final, fusionar el cambio de estética del equipo antes de subir la rama (el usuario ha pedido no subirla aún), X04b.
+- Etiqueta `agente-v1` (local).

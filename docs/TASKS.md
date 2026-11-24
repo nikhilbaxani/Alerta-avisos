@@ -86,7 +86,7 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 - [x] X10 Audio de las llamadas en la consola (pedido por Nick para el pitch) · agente: `datos-escenario` + `frontend-consola` · deps: T16
   - `scripts/generate_audio.py`: voz por teléfono (quien vuelve a llamar suena igual), género según el guion, lluvia solo en la DANA y salida `public/audio/<id>.mp3` versionada (42 llamadas, 1,3 MB).
   - `components/useCallAudio.ts`: suena la llamada que entra si no hay otra sonando (no a ×10), «En línea» en la cola, «Escuchar/Detener» en cada llamada, botón «Sonido» recordado; funciona en GitHub Pages (subruta). Llamadas en directo con prefijo `V` para no chocar con L1/L2 del apagón.
-- [ ] X08 README y PITCH: de copiloto a agente (MEMORIA §16.5) · agente: `pitch-docs` · deps: X05, X06, X07
+- [x] X08 README y PITCH: de copiloto a agente (MEMORIA §16.5) · agente: `pitch-docs` · deps: X05, X06, X07
   - Sección «El agente» en README (qué actúa, política de aprobación, seguridad, `npm run agente`), diapositiva percepción → decisión → acción en `docs/PITCH.md`, preguntas del jurado sobre inyección y automatismos. Métricas como simulación; cifras solo de MEMORIA §3. Sin cambiar el nombre de la interfaz.
   - Verificación final con `/verificar-mvp` y etiqueta `agente-v1`.
 

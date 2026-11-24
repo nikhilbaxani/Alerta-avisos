@@ -60,7 +60,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T9 | S13 | Relay con STT único en la sobremesa (clave, una pasada, traducción por LLM) + opciones de velocidad en `scripts/stt_server.py` | cc86f28 |
 | T10 | S14, S3–S6, S9 | Confirmación del llamante: transcripción visible en `/llamar` y botón «Enviar» antes de publicar | eef24d8 |
 | T11 | S9, S14, S7 | Correcciones tras la verificación final: TTL en compose, cola y cuota con llamadas sin enviar, bandeja tras recargar, documentación de privacidad, cola configurable y posición en la cola | b82f992 |
-| T12 | S15 | Unificar el nombre visible y el logo en «Agente 112» | (este commit) |
+| T12 | S15 | Unificar el nombre visible y el logo en «Agente 112» | 087cd8a |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log

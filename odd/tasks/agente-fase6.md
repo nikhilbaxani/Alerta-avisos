@@ -24,8 +24,8 @@ Fuente de verdad: `docs/MEMORIA.md` §16 y `docs/PROPUESTA-AGENTE.md`. Contratos
 | T1 | S1, S2, S3, S4, S9 | X06: `lib/waiting.ts`, frases, integración en `npm run agente`, tests | 7765718 |
 | T2 | S1, S5, S6, S9 | X07: tres herramientas en `lib/actions.ts`, `lib/report.ts`, `--parte`, tests | 36d0415, 030154b |
 | T4 | S10 | Fusionar `origin/main` en la rama con el X06/X07 del equipo; conservar QR, relay, despliegue y pestañas | c25969b |
-| T5 | S11, S9 | Trasladar al código de `main` los arreglos de seguridad de hoy que sigan aplicando, con tests | (este commit) |
-| T3 | S7, S8 | X08: README y PITCH sobre la versión de `main`; verificación final y etiqueta `agente-v1` | — |
+| T5 | S11, S9 | Trasladar al código de `main` los arreglos de seguridad de hoy que sigan aplicando, con tests | 9eedfba |
+| T3 | S7, S8 | X08: README y PITCH sobre la versión de `main`; verificación final y etiqueta `agente-v1` | 927d4b9, 1f6ede5, etiqueta `agente-v1` |
 
 ## Log
 
@@ -40,3 +40,4 @@ Fuente de verdad: `docs/MEMORIA.md` §16 y `docs/PROPUESTA-AGENTE.md`. Contratos
 - **L9** (T4): fusión de `origin/main` en c25969b. Código del agente idéntico a `main`; X09 (acciones) y X10 (audio) solo en la pestaña Simulación; tablero de `main` con la tarea del QR renumerada a X11. 403 tests, `tsc`, evals, `npm run agente`, build y e2e sin relay en verde (worker). Sin probar: e2e con relay activado.
 - **L10** (T5, contra el código de `main`): se reproducían y se corrigieron (a) guardas que se fiaban de `policy`/`approval` del objeto, también por el reducer de la consola; (e) 370 de 2.098 llamadas con riesgo vital en espera no se escalaban en 500 salas aleatorias (duplicados conocidos): ahora se escalan todas; (g) redacción ambigua de los totales de espera. No se reproducían (b), (d), (f). (c): el modelo puede redactar un ES-Alert desde un solo incidente por diseño del compañero (`tests/coordination.test.ts:270-296`); se conserva, siempre pendiente de coordinador humano. Se cambiaron 5 aserciones previas de `tests/waiting.test.ts` (:94, :96, :232, :233-235, :270) por el escalado de duplicados con riesgo vital: avisar al compañero. 418 tests, `tsc`, evals y `npm run agente` deterministas. DANA: asistente 19 (6 duplicados, 10 escaladas, 3 en cola); E1 0:26 → 0:08. Apagón: 13 (4, 8, 1); J1 0:40 → 0:40.
 - **L11** (X08): README y PITCH sobre la versión de `main` en 927d4b9; cifras del asistente a actualizar tras L10.
+- **L12** (cierre): verificación final independiente APTO sobre eef24d8 (detalle en `odd/tasks/llamadas-publico.md`, L25); X08 marcada y etiqueta local `agente-v1`. La rama no se sube por indicación del usuario.
