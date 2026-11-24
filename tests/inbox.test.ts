@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { scenario } from "@/data/scenario-dana-malaga";
 import { initialState, processCall, snapshot } from "@/lib/engine";
 import type { EngineCall } from "@/lib/engine";
-import { PENDING_CAP, acceptEvent, addEvent, discardEvent, emptyInbox, publicEventToCall } from "@/lib/inbox";
+import { HANDLED_CAP, PENDING_CAP, acceptEvent, addEvent, discardEvent, emptyInbox, handledKey, loadHandled, markLoaded, publicEventToCall, saveHandled } from "@/lib/inbox";
 import { MAX_TRANSCRIPT_CHARS, isPublicCallEvent } from "@/lib/publicCall";
 import type { PublicCallEvent } from "@/lib/publicCall";
 
@@ -100,6 +100,75 @@ describe("bandeja", () => {
     for (let i = 1; i <= PENDING_CAP + 5; i++) s = addEvent(s, event({ id: `P${i}` }));
     expect(s.pending).toHaveLength(PENDING_CAP);
     expect(s.pending[0].id).toBe("P6");
+  });
+});
+
+function fakeStorage(init: Record<string, string> = {}) {
+  const m = new Map(Object.entries(init));
+  return {
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => void m.set(k, v),
+  };
+}
+
+describe("llamadas ya tratadas tras recargar la consola", () => {
+  const URL_A = "https://a.example/relay";
+  const URL_B = "https://b.example/relay";
+
+  it("las ids aceptadas o descartadas se guardan y, tras recargar, el reenvío del relay no las ofrece", () => {
+    const st = fakeStorage();
+    let s = addEvent(addEvent(addEvent(emptyInbox, event({ id: "P1" })), event({ id: "P2" })), event({ id: "P3" }));
+    s = acceptEvent(s, "P1").state;
+    s = discardEvent(s, "P2");
+    saveHandled(st, URL_A, s.seen);
+    let after = markLoaded(emptyInbox, loadHandled(st, URL_A));
+    for (const id of ["P1", "P2", "P3"]) after = addEvent(after, event({ id }));
+    expect(after.pending.map((e) => e.id)).toEqual(["P3"]);
+  });
+
+  it("está acotado a las últimas 500 y conserva las más recientes", () => {
+    const st = fakeStorage();
+    const ids = Array.from({ length: HANDLED_CAP + 20 }, (_, i) => `P${i + 1}`);
+    saveHandled(st, URL_A, ids);
+    const back = loadHandled(st, URL_A);
+    expect(HANDLED_CAP).toBe(500);
+    expect(back).toHaveLength(500);
+    expect(back[0]).toBe("P21");
+    expect(back.at(-1)).toBe(`P${HANDLED_CAP + 20}`);
+    let s = emptyInbox;
+    for (let i = 1; i <= HANDLED_CAP + 5; i++) s = discardEvent(addEvent(s, event({ id: `Q${i}` })), `Q${i}`);
+    expect(s.seen).toHaveLength(HANDLED_CAP);
+    expect(s.seen[0]).toBe("Q6");
+  });
+
+  it("cada relay tiene su propia lista", () => {
+    const st = fakeStorage();
+    saveHandled(st, URL_A, ["P1"]);
+    expect(loadHandled(st, URL_A)).toEqual(["P1"]);
+    expect(loadHandled(st, URL_B)).toEqual([]);
+    expect(handledKey(URL_A)).not.toBe(handledKey(URL_B));
+  });
+
+  it("un valor corrupto o no-array se ignora y un almacenamiento que falla no rompe", () => {
+    expect(loadHandled(fakeStorage({ [handledKey(URL_A)]: "{no json" }), URL_A)).toEqual([]);
+    expect(loadHandled(fakeStorage({ [handledKey(URL_A)]: '{"a":1}' }), URL_A)).toEqual([]);
+    expect(loadHandled(fakeStorage({ [handledKey(URL_A)]: '[1,"P2",null]' }), URL_A)).toEqual(["P2"]);
+    const broken = { getItem: () => { throw new Error("x"); }, setItem: () => { throw new Error("x"); } };
+    expect(loadHandled(broken, URL_A)).toEqual([]);
+    expect(() => saveHandled(broken, URL_A, ["P1"])).not.toThrow();
+  });
+
+  it("guardar mezcla con lo ya guardado (otra pestaña) sin duplicar", () => {
+    const st = fakeStorage();
+    saveHandled(st, URL_A, ["P1", "P2"]);
+    saveHandled(st, URL_A, ["P2", "P3"]);
+    expect(loadHandled(st, URL_A)).toEqual(["P1", "P2", "P3"]);
+  });
+
+  it("al cargar se retiran de las pendientes las ya tratadas y se conserva lo ya visto", () => {
+    const s = markLoaded(addEvent(emptyInbox, event({ id: "P9" })), ["P9", "P8"]);
+    expect(s.pending).toHaveLength(0);
+    expect(s.seen).toEqual(expect.arrayContaining(["P9", "P8"]));
   });
 });
 

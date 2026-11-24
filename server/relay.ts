@@ -147,6 +147,10 @@ export interface RelayOptions {
   trustProxy?: boolean;
   /** Llamadas retenidas sin enviar (en transcripción o esperando «Enviar»), sin contar una en proceso. */
   maxPending?: number;
+  /** Llamadas de una misma IP (/64 en IPv6) esperando «Enviar» (transcribing o ready). Por defecto 2. */
+  pendingPerIp?: number;
+  /** Audios aceptados por IP y ventana, sin devolución al descartar. Por defecto 3 × rateLimit.max. */
+  uploadLimit?: number;
   /** Tiempo que una llamada pendiente espera a «Enviar» antes de caducar y liberar su memoria (ms). */
   pendingTtlMs?: number;
   maxBytes?: number;
@@ -175,6 +179,36 @@ function sameToken(a: string, b: string): boolean {
   return timingSafeEqual(ha, hb);
 }
 
+/**
+ * Ventana deslizante por clave. `hit` reserva una unidad y devuelve su deshacer, que busca la unidad en la lista
+ * vigente (la poda de `full` sustituye las listas) y es inofensivo si la unidad ya salió de la ventana.
+ */
+function slidingWindow(max: number, windowMs: number) {
+  const m = new Map<string, number[]>();
+  return {
+    full(key: string): boolean {
+      const now = Date.now();
+      for (const [k, v] of m) {
+        const fresh = v.filter((t) => now - t < windowMs);
+        if (fresh.length) m.set(k, fresh);
+        else m.delete(k);
+      }
+      return (m.get(key) ?? []).length >= max;
+    },
+    hit(key: string): () => void {
+      const t = Date.now();
+      const mine = m.get(key) ?? [];
+      mine.push(t);
+      m.set(key, mine);
+      return () => {
+        const cur = m.get(key);
+        const i = cur ? cur.indexOf(t) : -1;
+        if (cur && i >= 0) cur.splice(i, 1);
+      };
+    },
+  };
+}
+
 /** Estado de una llamada pendiente de confirmación. `discarded` es interno (nunca se devuelve: el id pasa a 404). */
 type PendingStatus = "transcribing" | "ready" | "failed" | "expired" | "sent" | "discarded";
 interface Built {
@@ -186,6 +220,7 @@ interface Built {
   extractMs: number;
 }
 interface Pending {
+  id: string; // id secreto (solo para sus temporizadores; nunca se escribe en los logs)
   label: string; // id público del evento (P<tag><n>); es lo único que se escribe en los logs
   status: PendingStatus;
   ip: string;
@@ -198,6 +233,8 @@ interface Pending {
   error?: string;
   built?: Promise<Built | null>;
   sending?: Promise<void>;
+  /** Devuelve la unidad de cuota de esta llamada (una sola vez); se borra al usarla. */
+  refund?: () => void;
   timers: ReturnType<typeof setTimeout>[];
 }
 
@@ -237,7 +274,10 @@ export function createRelay(opts: RelayOptions) {
 
   const history: PublicCallEvent[] = [];
   const clients = new Set<http.ServerResponse>();
-  const hits = new Map<string, number[]>();
+  const quota = slidingWindow(limit.max, limit.windowMs);
+  const uploads = slidingWindow(opts.uploadLimit ?? limit.max * 3, limit.windowMs);
+  const pendingPerIp = opts.pendingPerIp ?? 2;
+  const reservingByIp = new Map<string, number>();
   const pendingTtlMs = opts.pendingTtlMs ?? 300_000;
   /** Llamadas del público por id secreto. Las enviadas, caducadas o fallidas quedan como marca ligera hasta 2×TTL. */
   const pending = new Map<string, Pending>();
@@ -273,28 +313,6 @@ export function createRelay(opts: RelayOptions) {
       for (let i = parts.length - 1; i >= 0; i--) if (!isLocalOrPrivate(parts[i])) return parts[i];
     }
     return req.socket.remoteAddress ?? "?";
-  }
-
-  /** ¿Ya agotó la cuota? No la consume: `recordHit` la reserva al entrar y se devuelve si la respuesta no es 202. */
-  function rateLimited(ip: string): boolean {
-    const now = Date.now();
-    for (const [k, v] of hits) {
-      const fresh = v.filter((t) => now - t < limit.windowMs);
-      if (fresh.length) hits.set(k, fresh);
-      else hits.delete(k);
-    }
-    return (hits.get(ip) ?? []).length >= limit.max;
-  }
-
-  function recordHit(ip: string): () => void {
-    const t = Date.now();
-    const mine = hits.get(ip) ?? [];
-    mine.push(t);
-    hits.set(ip, mine);
-    return () => {
-      const i = mine.indexOf(t);
-      if (i >= 0) mine.splice(i, 1);
-    };
   }
 
   /** Llamadas que ya pasaron el control de cola y aún leen o validan el cuerpo. */
@@ -340,6 +358,14 @@ export function createRelay(opts: RelayOptions) {
     p.status = "failed";
     p.error = error;
     release(p);
+    arm(p);
+  }
+
+  /** Devuelve a su IP la unidad de cuota de una llamada no enviada (una sola vez). */
+  function refundQuota(p: Pending) {
+    const r = p.refund;
+    p.refund = undefined;
+    r?.();
   }
 
   /** Extracción en segundo plano: LLM (con respaldo a reglas) o reglas (+ pasada translate de Whisper). Nunca rechaza. */
@@ -435,6 +461,7 @@ export function createRelay(opts: RelayOptions) {
       p.durationS = first.duration;
       p.sttMs = sttMs;
       p.status = "ready";
+      arm(p); // el TTL cuenta desde que la transcripción está lista, no desde la subida
       log(`[relay] ${id} transcrita (${language || "?"}, ${Math.round(first.duration)} s, stt ${sttMs} ms): esperando «Enviar»`);
       p.built = build(p);
     } catch (e) {
@@ -488,20 +515,43 @@ export function createRelay(opts: RelayOptions) {
       p.status = "expired";
       p.error = "La llamada caducó antes de enviarse. Vuelve a grabar.";
       release(p);
+      refundQuota(p);
       log(`[relay] ${p.label} caducada sin enviar`);
     }
   }
 
-  function track(id: string, p: Pending) {
-    pending.set(id, p);
+  /**
+   * Arranca los temporizadores al salir de «transcribing» (lista o fallida): una llamada que espera turno del STT
+   * no caduca ni se olvida. Pasado el doble del TTL se olvida del todo (el id vuelve a ser 404).
+   */
+  function arm(p: Pending) {
+    if (p.timers.length) return;
     const t1 = setTimeout(() => expire(p), pendingTtlMs);
-    // Pasado el doble del TTL se olvida del todo (el id vuelve a ser 404).
     const t2 = setTimeout(() => {
-      if (pending.get(id) === p) pending.delete(id);
+      if (pending.get(p.id) === p) pending.delete(p.id);
     }, pendingTtlMs * 2);
     t1.unref();
     t2.unref();
     p.timers = [t1, t2];
+  }
+
+  /** Cuántas llamadas de esta IP esperan «Enviar» (más las que aún están subiendo el cuerpo). */
+  function waitingOf(ip: string): number {
+    let n = reservingByIp.get(ip) ?? 0;
+    for (const p of pending.values()) if (p.ip === ip && (p.status === "transcribing" || p.status === "ready")) n++;
+    return n;
+  }
+
+  /** Cola llena: libera el hueco de la llamada «ready» más antigua que aún no se está enviando. */
+  function evictOldestReady(): boolean {
+    for (const p of pending.values()) {
+      if (p.status === "ready" && !p.sending) {
+        log(`[relay] ${p.label} retirada: la cola estaba llena`);
+        expire(p);
+        return true;
+      }
+    }
+    return false;
   }
 
   async function drain() {
@@ -518,15 +568,37 @@ export function createRelay(opts: RelayOptions) {
     const origin = req.headers.origin;
     if (origin && !origins.has(origin)) return json(req, res, 403, { error: "Origen no permitido" });
     const ip = rateKey(clientIp(req));
-    if (rateLimited(ip)) return json(req, res, 429, { error: "Demasiadas llamadas desde tu conexión. Espera unos minutos." });
-    if (held() + reserving > maxPending) return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
-    // Cuota y hueco de cola se reservan antes del primer await (sin carreras entre peticiones simultáneas)
-    // y se devuelven si la llamada se rechaza.
-    const release = recordHit(ip);
+    if (quota.full(ip)) return json(req, res, 429, { error: "Demasiadas llamadas desde tu conexión. Espera unos minutos." });
+    if (uploads.full(ip)) return json(req, res, 429, { error: "Has subido demasiados audios en poco tiempo. Espera unos minutos antes de grabar otro." });
+    if (waitingOf(ip) >= pendingPerIp) {
+      return json(req, res, 429, { error: "Ya tienes llamadas esperando a que pulses «Enviar». Envía o descarta la anterior antes de grabar otra." });
+    }
+    // Con la cola llena, la llamada «ready» más antigua cede su hueco; solo si no hay ninguna → 503.
+    if (held() + reserving > maxPending && !evictOldestReady()) {
+      return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
+    }
+    // Cuota, tope de subidas y hueco de cola se reservan antes del primer await (sin carreras entre peticiones
+    // simultáneas) y se devuelven si la llamada se rechaza. Si se acepta, la cuota queda en la llamada: se
+    // devuelve si luego se descarta o caduca sin enviarse; el tope de subidas nunca se devuelve.
+    const undoQuota = quota.hit(ip);
+    const undoUpload = uploads.hit(ip);
     reserving++;
-    res.once("close", () => {
+    reservingByIp.set(ip, (reservingByIp.get(ip) ?? 0) + 1);
+    let reserved = true;
+    const unreserve = () => {
+      if (!reserved) return;
+      reserved = false;
       reserving--;
-      if (res.statusCode !== 202) release();
+      const n = (reservingByIp.get(ip) ?? 1) - 1;
+      if (n > 0) reservingByIp.set(ip, n);
+      else reservingByIp.delete(ip);
+    };
+    res.once("close", () => {
+      unreserve();
+      if (res.statusCode !== 202) {
+        undoQuota();
+        undoUpload();
+      }
     });
     const ctype = req.headers["content-type"] ?? "";
     if (!ctype.startsWith("multipart/form-data")) return json(req, res, 400, { error: "Se esperaba multipart/form-data" });
@@ -556,8 +628,9 @@ export function createRelay(opts: RelayOptions) {
     const label = `P${bootTag}${++seq}`;
     const id = randomBytes(16).toString("hex"); // 128 bits: quien tiene el id es quien grabó
     log(`[relay] ${label} recibida (${Math.round(file.size / 1024)} KB, ip ${short(ip)})`);
-    const p: Pending = { label, status: "transcribing", ip, file, timers: [] };
-    track(id, p);
+    const p: Pending = { id, label, status: "transcribing", ip, file, refund: undoQuota, timers: [] };
+    unreserve(); // a partir de aquí la llamada ya cuenta como pendiente
+    pending.set(id, p);
     queue.push(() => processCall(p));
     void drain();
     json(req, res, 202, { id });
@@ -574,12 +647,22 @@ export function createRelay(opts: RelayOptions) {
     if (action === "status") {
       if (p.status === "ready") return json(req, res, 200, { status: "ready", transcript: p.transcript, language: p.language });
       if (p.status === "failed" || p.status === "expired") return json(req, res, 200, { status: p.status, error: p.error });
+      if (p.status === "transcribing") {
+        // Cuántas se transcribirán antes que esta (0 = es la que está en proceso). Solo un número: nada de otras llamadas.
+        let ahead = 0;
+        for (const [k, q] of pending) {
+          if (k === id) break;
+          if (q.status === "transcribing") ahead++;
+        }
+        return json(req, res, 200, { status: "transcribing", ahead });
+      }
       return json(req, res, 200, { status: p.status });
     }
 
     if (action === "discard") {
       if (p.status === "sent") return json(req, res, 409, { status: "sent", error: "La llamada ya se envió al operador." });
       p.timers.forEach(clearTimeout);
+      refundQuota(p);
       p.status = "discarded";
       release(p);
       pending.delete(id);
@@ -680,6 +763,7 @@ function envInt(name: string, def: number): number {
 export function start() {
   const cfg = getConfig(process.env);
   const llmTimeoutMs = envInt("LLM_TIMEOUT_MS", DEFAULT_LLM_TIMEOUT_MS);
+  const rateMax = envInt("RATE_LIMIT", 3);
   const relay = createRelay({
     sttBaseUrl: process.env.STT_BASE_URL ?? "http://stt:8000/v1",
     sttModel: process.env.STT_MODEL ?? "Systran/faster-whisper-small",
@@ -688,7 +772,10 @@ export function start() {
     maxCallSeconds: envInt("MAX_CALL_SECONDS", DEFAULT_MAX_CALL_SECONDS),
     token: process.env.RELAY_TOKEN,
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    rateLimit: { max: envInt("RATE_LIMIT", 3), windowMs: envInt("RATE_WINDOW_MIN", 10) * 60_000 },
+    rateLimit: { max: rateMax, windowMs: envInt("RATE_WINDOW_MIN", 10) * 60_000 },
+    maxPending: envInt("MAX_PENDING", 20),
+    pendingPerIp: envInt("PENDING_PER_IP", 2),
+    uploadLimit: envInt("UPLOAD_LIMIT", rateMax * 3),
     trustProxy: process.env.TRUST_PROXY === "1",
     llmExtract: llmEnabled(cfg) ? createLlmExtractor(cfg, llmTimeoutMs) : undefined,
     llmTimeoutMs,

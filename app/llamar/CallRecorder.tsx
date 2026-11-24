@@ -11,8 +11,9 @@ const MAX = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_CALL_SE
 // → submitting («Enviar») → done. Solo «Enviar» hace que la llamada llegue a la bandeja del operador (S14).
 type Phase = "idle" | "recording" | "uploading" | "transcribing" | "review" | "submitting" | "done";
 
-const POLL_GIVE_UP_MS = 180_000;
-const POLL_MAX_FAILS = 5;
+// Se espera mientras el relay diga «transcribing» (con mucha gente el STT va en serie): solo se abandona si el relay
+// dice failed/expired/404 o si fallan varias consultas seguidas.
+const POLL_MAX_FAILS = 8;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** 1 s al principio, luego más espaciado: el estado es barato, pero no hace falta insistir. */
 const pollDelay = (n: number) => (n < 6 ? 1000 : n < 16 ? 1500 : 2500);
@@ -32,6 +33,7 @@ export default function CallRecorder() {
   const [transcript, setTranscript] = useState("");
   const [language, setLanguage] = useState("");
   const [waited, setWaited] = useState(0);
+  const [ahead, setAhead] = useState(0); // llamadas que se transcriben antes que la mía
   const run = useRef(0); // invalida el sondeo en curso al descartar, reiniciar o desmontar
   const transcriptEl = useRef<HTMLParagraphElement | null>(null);
 
@@ -87,8 +89,8 @@ export default function CallRecorder() {
 
   /** Sondea el estado de la llamada hasta que haya texto (o falle). */
   const watch = async (id: string, token: number) => {
-    const t0 = Date.now();
     let fails = 0;
+    setAhead(0);
     for (let n = 0; run.current === token; n++) {
       await sleep(pollDelay(n));
       if (run.current !== token) return;
@@ -112,10 +114,10 @@ export default function CallRecorder() {
           setPhase("done");
           return;
         }
+        if (body.status === "transcribing") setAhead(Number.isInteger(body.ahead) && body.ahead > 0 ? body.ahead : 0);
       } catch {
         if (++fails >= POLL_MAX_FAILS) return backToIdle("Se perdió la conexión con el servidor mientras se transcribía. Vuelve a grabar.");
       }
-      if (Date.now() - t0 > POLL_GIVE_UP_MS) return backToIdle("La transcripción tarda más de lo normal. Vuelve a grabar.");
     }
   };
 
@@ -234,7 +236,7 @@ export default function CallRecorder() {
       {!busy && (
       <label className="call-consent">
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} disabled={phase !== "idle" && phase !== "done"} />
-        <span>Acepto que mi audio se envíe a los servidores del equipo (el VPS y, para transcribirlo mejor, el ordenador del equipo, por HTTPS) solo para transcribirlo. No se guarda y no se recoge mi teléfono ni mi nombre. La llamada solo llega al operador si pulso «Enviar».</span>
+        <span>Acepto que mi audio se envíe por HTTPS a los servidores del equipo (el VPS y el ordenador del equipo) para transcribirlo, y que el texto resultante lo procese la IA del equipo para extraer los datos, aunque no llegue a pulsar «Enviar». Ni el audio ni el texto se guardan en disco, y no se recoge mi teléfono ni mi nombre. La llamada solo llega al operador si pulso «Enviar».</span>
       </label>
       )}
 
@@ -271,6 +273,9 @@ export default function CallRecorder() {
           <p>
             Transcribiendo…{phase === "transcribing" && <> <span className="call-elapsed" aria-hidden="true">{waited} s</span></>}
           </p>
+          {phase === "transcribing" && ahead > 0 && (
+            <p className="call-ahead">{ahead === 1 ? "Hay 1 llamada por delante de la tuya." : `Hay ${ahead} llamadas por delante de la tuya.`}</p>
+          )}
           <p className="note">Suele tardar unos segundos, según lo larga que sea la llamada. Todavía no se ha enviado nada al operador.</p>
         </section>
       )}

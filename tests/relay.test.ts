@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { getConfig } from "@/lib/config";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { createLlmExtractor, createRelay, defaultBootTag, sttApiKeyFromEnv, type RelayOptions } from "@/server/relay";
@@ -202,7 +205,7 @@ describe("relay /llamar + /events", () => {
   });
 
   it("límite por IP: la 4.ª llamada → 429", async () => {
-    const { base } = await boot(fakeStt());
+    const { base } = await boot(fakeStt(), { pendingPerIp: 50 });
     for (let i = 0; i < 3; i++) expect((await call(base)).status).toBe(202);
     const res = await call(base);
     expect(res.status).toBe(429);
@@ -231,7 +234,7 @@ describe("relay /llamar + /events", () => {
       await gate;
       return inner(...a);
     }) as typeof fetch;
-    const { relay, base } = await boot(slow, { maxPending: 2, rateLimit: { max: 50, windowMs: 60_000 } });
+    const { relay, base } = await boot(slow, { maxPending: 2, pendingPerIp: 50, rateLimit: { max: 50, windowMs: 60_000 } });
     const codes: number[] = [];
     for (let i = 0; i < 5; i++) codes.push((await call(base)).status);
     expect(codes.slice(0, 3)).toEqual([202, 202, 202]); // 1 en curso + 2 en cola
@@ -378,7 +381,7 @@ describe("relay /llamar + /events", () => {
   });
 
   it("llamadas simultáneas desde la misma IP no superan la cuota (reserva antes de leer el cuerpo)", async () => {
-    const { relay, base } = await boot(fakeStt());
+    const { relay, base } = await boot(fakeStt(), { pendingPerIp: 50 });
     let open!: () => void;
     const gate = new Promise<void>((r) => (open = r));
     const pending = Array.from({ length: 8 }, () => slowCall(base, gate));
@@ -399,7 +402,7 @@ describe("relay /llamar + /events", () => {
       await gate;
       return inner(...a);
     }) as typeof fetch;
-    const { relay, base } = await boot(slow, { maxPending: 2, rateLimit: { max: 50, windowMs: 60_000 } });
+    const { relay, base } = await boot(slow, { maxPending: 2, pendingPerIp: 50, rateLimit: { max: 50, windowMs: 60_000 } });
     expect((await call(base)).status).toBe(202); // en proceso, fuera de la cola
     let open!: () => void;
     const bodies = new Promise<void>((r) => (open = r));
@@ -422,7 +425,7 @@ describe("relay /llamar + /events", () => {
       await gate;
       return inner(...a);
     }) as typeof fetch;
-    const { relay, base } = await boot(slow, { maxPending: 1 });
+    const { relay, base } = await boot(slow, { maxPending: 1, pendingPerIp: 50 });
     const codes: number[] = [];
     const ids: string[] = [];
     for (let i = 0; i < 4; i++) {
@@ -433,8 +436,8 @@ describe("relay /llamar + /events", () => {
     expect(codes).toEqual([202, 202, 503, 503]);
     release();
     await relay.idle();
-    // Las dos transcritas siguen retenidas hasta «Enviar» o «Volver a grabar»: se descartan para liberar la cola.
-    for (const id of ids) await fetch(`${base}/llamar/${id}`, { method: "DELETE" });
+    // Las dos se envían (una enviada conserva su unidad de cuota): los 503 no gastaron ninguna.
+    for (const id of ids) expect((await fetch(`${base}/llamar/${id}/enviar`, { method: "POST" })).status).toBe(200);
     expect((await call(base)).status).toBe(202); // 3.ª llamada aceptada de 3
     expect((await call(base)).status).toBe(429);
   });
@@ -519,7 +522,7 @@ describe("relay /llamar + /events", () => {
     });
 
     it("sin TRUST_PROXY un X-Forwarded-For falsificado no evita el límite (4.ª → 429)", async () => {
-      const { base } = await boot(fakeStt());
+      const { base } = await boot(fakeStt(), { pendingPerIp: 50 });
       for (let i = 0; i < 3; i++) expect((await call(base, { xff: `9.9.9.${i}` })).status).toBe(202);
       expect((await call(base, { xff: "9.9.9.200" })).status).toBe(429);
     });
@@ -855,7 +858,7 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
     const { stt, open } = gatedStt();
     const { relay, base } = await boot(stt);
     const id = await accept(base);
-    expect(await status(base, id)).toEqual({ status: "transcribing" });
+    expect(await status(base, id)).toEqual({ status: "transcribing", ahead: 0 });
     const early = await enviar(base, id);
     expect(early.status).toBe(409);
     expect((await early.json()).error).toMatch(/transcrib/i);
@@ -930,12 +933,12 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
     expect((await fetch(url(base, id))).status).toBe(404);
   });
 
-  it("una llamada caducada libera su hueco en la cola", async () => {
-    const { relay, base } = await boot(fakeStt(), { pendingTtlMs: 60, maxPending: 1, rateLimit: { max: 50, windowMs: 60_000 } });
+  it("una llamada caducada libera su hueco (el de su IP; con la cola llena se desaloja en vez de dar 503)", async () => {
+    const { relay, base } = await boot(fakeStt(), { pendingTtlMs: 60, rateLimit: { max: 50, windowMs: 60_000 } });
     await accept(base);
     await accept(base);
     await relay.idle();
-    expect((await call(base)).status).toBe(503);
+    expect((await call(base)).status).toBe(429); // 2 esperando «Enviar»
     await tick(100);
     expect((await call(base)).status).toBe(202);
   });
@@ -951,7 +954,7 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
   });
 
   it("el id es secreto: 128 bits en hexadecimal, distinto del id del evento y no consecutivo", async () => {
-    const { relay, base } = await boot(fakeStt(), { rateLimit: { max: 50, windowMs: 60_000 } });
+    const { relay, base } = await boot(fakeStt(), { pendingPerIp: 50, rateLimit: { max: 50, windowMs: 60_000 } });
     const ids = [await accept(base), await accept(base), await accept(base)];
     for (const id of ids) expect(id).toMatch(/^[0-9a-f]{32}$/);
     expect(new Set(ids).size).toBe(3);
@@ -962,23 +965,23 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
     expect(ev.id).toBe("P1");
   });
 
-  it("las llamadas pendientes cuentan contra la cola: con maxPending=1 caben 2 (una en curso + 1) hasta que se envían o descartan", async () => {
-    const { relay, base } = await boot(fakeStt(), { maxPending: 1, rateLimit: { max: 50, windowMs: 60_000 } });
+  it("las llamadas pendientes cuentan contra la cola: con maxPending=1 caben 2; la siguiente desaloja a la «ready» más antigua", async () => {
+    const { relay, base } = await boot(fakeStt(), { maxPending: 1, pendingPerIp: 50, rateLimit: { max: 50, windowMs: 60_000 } });
     const a = await accept(base);
     const b = await accept(base);
     await relay.idle(); // ya transcritas, pero siguen retenidas en memoria
-    const full = await call(base);
-    expect(full.status).toBe(503);
-    expect((await full.json()).error).toBeTruthy();
-    await enviar(base, a); // enviada: libera el hueco
+    expect((await call(base)).status).toBe(202); // cola llena: desaloja a «a», la más antigua
+    expect((await status(base, a)).status).toBe("expired");
+    expect((await status(base, b)).status).toBe("ready");
+    await relay.idle();
+    await enviar(base, b); // enviada: libera el hueco sin desalojar a nadie
     expect((await call(base)).status).toBe(202);
-    expect((await call(base)).status).toBe(503);
-    await fetch(url(base, b), { method: "DELETE" }); // descartada: libera el hueco
-    expect((await call(base)).status).toBe(202);
+    await relay.idle();
+    expect((await status(base, b)).status).toBe("sent");
   });
 
   it("el límite por IP sigue en el POST: consultar el estado no gasta cuota, y la 4.ª llamada → 429", async () => {
-    const { relay, base } = await boot(fakeStt());
+    const { relay, base } = await boot(fakeStt(), { pendingPerIp: 50 });
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) ids.push(await accept(base));
     await relay.idle();
@@ -1123,5 +1126,296 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
     await enviar(base, id);
     const [ev] = await readEvents(base, 1);
     expect(ev.translation_en).toBe("There is a fire");
+  });
+});
+
+/** Gate para retener el STT y dejar llamadas en «transcribing». */
+function gatedStt() {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const stt = fakeStt();
+  const inner = stt.fetch;
+  stt.fetch = (async (...a: Parameters<typeof fetch>) => {
+    await gate;
+    return inner(...a);
+  }) as typeof fetch;
+  return { stt, release };
+}
+const ip = (n: number) => `8.8.${Math.floor(n / 250)}.${(n % 250) + 1}`;
+const statusOf = async (base: string, id: string) => {
+  const r = await fetch(`${base}/llamar/${id}`);
+  return { code: r.status, body: r.status === 200 ? await r.json() : null };
+};
+const upload = async (base: string, xff?: string) => {
+  const r = await call(base, { xff });
+  return { code: r.status, id: r.status === 202 ? ((await r.json()).id as string) : "", res: r };
+};
+const del = (base: string, id: string) => fetch(`${base}/llamar/${id}`, { method: "DELETE" });
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+describe("T11 · compose pasa al relay todas las variables que lee start()", () => {
+  it("cada variable de entorno de start() aparece en el entorno del servicio relay", () => {
+    const src = readFileSync(join(__dirname, "../server/relay.ts"), "utf8");
+    const body = src.slice(src.indexOf("export function start()"));
+    const names = new Set<string>();
+    for (const m of body.matchAll(/process\.env\.(\w+)|envInt\("(\w+)"/g)) names.add(m[1] ?? m[2]);
+    // Lecturas indirectas: getConfig(process.env) y sttApiKeyFromEnv(process.env).
+    const rec = new Proxy({} as Record<string, string>, { get: (_, k) => (typeof k === "string" ? (names.add(k), undefined) : undefined) });
+    getConfig(rec);
+    sttApiKeyFromEnv(rec as NodeJS.ProcessEnv);
+    for (const n of ["PENDING_TTL_SECONDS", "PENDING_PER_IP", "UPLOAD_LIMIT", "MAX_PENDING"]) expect(names.has(n)).toBe(true);
+    const compose = readFileSync(join(__dirname, "../server/docker-compose.vps.yml"), "utf8");
+    const relaySvc = compose.slice(compose.indexOf("\n  relay:"), compose.indexOf("\n  stt:"));
+    const envBlock = relaySvc.slice(relaySvc.indexOf("environment:"), relaySvc.indexOf("depends_on:"));
+    const passed = new Set([...envBlock.matchAll(/^\s{6}(\w+):/gm)].map((m) => m[1]));
+    expect([...names].filter((n) => !passed.has(n)).sort()).toEqual([]);
+  });
+});
+
+describe("T11 · llamadas sin enviar: tope por IP y desalojo", () => {
+  it("7 IP con llamadas esperando «Enviar» no bloquean a una octava", async () => {
+    const { relay, base } = await boot(fakeStt(), { trustProxy: true, maxPending: 6, rateLimit: { max: 50, windowMs: 60_000 } });
+    for (let i = 0; i < 7; i++) {
+      for (let k = 0; k < 2; k++) expect((await upload(base, ip(i))).code).toBe(202);
+      await relay.idle();
+    }
+    expect((await upload(base, ip(7))).code).toBe(202);
+  });
+
+  it("con la cola llena desaloja la llamada «ready» más antigua; su id responde expired y luego 404", async () => {
+    const { relay, base } = await boot(fakeStt(), { trustProxy: true, maxPending: 2, pendingTtlMs: 400, rateLimit: { max: 50, windowMs: 60_000 } });
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) ids.push((await upload(base, ip(i))).id);
+    await relay.idle();
+    const d = await upload(base, ip(3));
+    expect(d.code).toBe(202);
+    const first = await statusOf(base, ids[0]);
+    expect(first.code).toBe(200);
+    expect(first.body.status).toBe("expired");
+    expect(first.body.error).toMatch(/caduc/i);
+    expect(first.body.transcript).toBeUndefined();
+    expect((await statusOf(base, ids[1])).body.status).toBe("ready");
+    expect((await statusOf(base, ids[2])).body.status).toBe("ready");
+    expect((await fetch(`${base}/llamar/${ids[0]}/enviar`, { method: "POST" })).status).toBe(410);
+    await wait(900);
+    expect((await statusOf(base, ids[0])).code).toBe(404);
+  });
+
+  it("desaloja por orden de antigüedad", async () => {
+    const { relay, base } = await boot(fakeStt(), { trustProxy: true, maxPending: 2, rateLimit: { max: 50, windowMs: 60_000 } });
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) ids.push((await upload(base, ip(i))).id);
+    await relay.idle();
+    await upload(base, ip(3)); // desaloja ids[0]
+    await relay.idle();
+    await upload(base, ip(4)); // desaloja ids[1]
+    expect((await statusOf(base, ids[0])).body.status).toBe("expired");
+    expect((await statusOf(base, ids[1])).body.status).toBe("expired");
+    expect((await statusOf(base, ids[2])).body.status).toBe("ready");
+  });
+
+  it("una llamada en «transcribing» nunca se desaloja: sin nada desalojable → 503", async () => {
+    const { stt, release } = gatedStt();
+    const { relay, base } = await boot(stt, { trustProxy: true, maxPending: 1, rateLimit: { max: 50, windowMs: 60_000 } });
+    const a = await upload(base, ip(1));
+    const b = await upload(base, ip(2));
+    const c = await upload(base, ip(3));
+    expect([a.code, b.code, c.code]).toEqual([202, 202, 503]);
+    expect((await statusOf(base, a.id)).body.status).toBe("transcribing");
+    expect((await statusOf(base, b.id)).body.status).toBe("transcribing");
+    release();
+    await relay.idle();
+  });
+
+  it("las llamadas enviadas no cuentan para la cola ni se desalojan", async () => {
+    const { relay, base } = await boot(fakeStt(), { trustProxy: true, maxPending: 1, rateLimit: { max: 50, windowMs: 60_000 } });
+    const sentIds: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const u = await upload(base, ip(i));
+      expect(u.code).toBe(202);
+      await relay.idle();
+      expect((await fetch(`${base}/llamar/${u.id}/enviar`, { method: "POST" })).status).toBe(200);
+      sentIds.push(u.id);
+    }
+    for (const id of sentIds) expect((await statusOf(base, id)).body.status).toBe("sent");
+  });
+
+  it("tope por IP: la 3.ª llamada esperando «Enviar» → 429 en castellano; enviar, descartar o caducar liberan hueco", async () => {
+    const { relay, base } = await boot(fakeStt(), { pendingTtlMs: 500, rateLimit: { max: 50, windowMs: 60_000 } });
+    const a = await upload(base);
+    const b = await upload(base);
+    expect([a.code, b.code]).toEqual([202, 202]);
+    const c = await upload(base);
+    expect(c.code).toBe(429);
+    expect((await c.res.json()).error).toMatch(/env[ií]a|descarta/i);
+    await relay.idle();
+    expect((await fetch(`${base}/llamar/${a.id}/enviar`, { method: "POST" })).status).toBe(200);
+    const d = await upload(base);
+    expect(d.code).toBe(202); // enviar libera
+    expect((await upload(base)).code).toBe(429);
+    expect((await del(base, b.id)).status).toBe(200);
+    const e = await upload(base);
+    expect(e.code).toBe(202); // descartar libera
+    expect((await upload(base)).code).toBe(429);
+    await relay.idle();
+    await wait(650); // caducan
+    expect((await upload(base)).code).toBe(202); // caducar libera
+  });
+
+  it("el tope por IP agrupa IPv6 por /64", async () => {
+    const { base } = await boot(fakeStt(), { trustProxy: true, rateLimit: { max: 50, windowMs: 60_000 } });
+    expect((await upload(base, "2001:db8:1:2:aaaa::1")).code).toBe(202);
+    expect((await upload(base, "2001:db8:1:2:bbbb::2")).code).toBe(202);
+    expect((await upload(base, "2001:db8:1:2:cccc::3")).code).toBe(429);
+    expect((await upload(base, "2001:db8:1:3::1")).code).toBe(202);
+  });
+
+  it("PENDING_PER_IP se puede configurar", async () => {
+    const { base } = await boot(fakeStt(), { pendingPerIp: 1, rateLimit: { max: 50, windowMs: 60_000 } });
+    expect((await upload(base)).code).toBe(202);
+    expect((await upload(base)).code).toBe(429);
+  });
+});
+
+describe("T11 · «Volver a grabar» devuelve la cuota; tope de subidas", () => {
+  it("3 × (grabar + DELETE) y una 4.ª subida → 202", async () => {
+    const { base } = await boot(fakeStt());
+    for (let i = 0; i < 3; i++) {
+      const u = await upload(base);
+      expect(u.code).toBe(202);
+      expect((await del(base, u.id)).status).toBe(200);
+    }
+    expect((await upload(base)).code).toBe(202);
+  });
+
+  it("la cuota se devuelve una sola vez (DELETE doble, o DELETE tras caducar)", async () => {
+    const { relay, base } = await boot(fakeStt(), { rateLimit: { max: 2, windowMs: 60_000 }, uploadLimit: 50, pendingPerIp: 50, pendingTtlMs: 300 });
+    const a = await upload(base);
+    expect((await del(base, a.id)).status).toBe(200);
+    expect((await del(base, a.id)).status).toBe(404);
+    const b = await upload(base);
+    const c = await upload(base);
+    expect([b.code, c.code]).toEqual([202, 202]);
+    expect((await upload(base)).code).toBe(429); // 2 de 2: no hubo devolución doble
+    await relay.idle();
+    await wait(380); // b y c caducan (devuelven 1 unidad cada una)
+    expect((await del(base, b.id)).status).toBe(200); // sigue en el mapa como «expired»
+    expect((await upload(base)).code).toBe(202);
+    expect((await upload(base)).code).toBe(202);
+    expect((await upload(base)).code).toBe(429); // las dos de antes no se devolvieron otra vez
+  });
+
+  it("con los límites por defecto la 10.ª subida de la ventana → 429 aunque todas se descartaran", async () => {
+    const { base } = await boot(fakeStt());
+    for (let i = 0; i < 9; i++) {
+      const u = await upload(base);
+      expect(u.code).toBe(202);
+      expect((await del(base, u.id)).status).toBe(200);
+    }
+    const r = await upload(base);
+    expect(r.code).toBe(429);
+    expect((await r.res.json()).error).toMatch(/audio|demasiad/i);
+  });
+
+  it("UPLOAD_LIMIT por defecto es 3 × RATE_LIMIT", async () => {
+    const { base } = await boot(fakeStt(), { rateLimit: { max: 1, windowMs: 60_000 } });
+    for (let i = 0; i < 3; i++) {
+      const u = await upload(base);
+      expect(u.code).toBe(202);
+      await del(base, u.id);
+    }
+    expect((await upload(base)).code).toBe(429);
+  });
+
+  it("una llamada enviada conserva su unidad de cuota y no se puede devolver con DELETE", async () => {
+    const { relay, base } = await boot(fakeStt(), { rateLimit: { max: 2, windowMs: 60_000 } });
+    const d1 = await deliver(base, relay);
+    const d2 = await deliver(base, relay);
+    expect([d1.sent.status, d2.sent.status]).toEqual([200, 200]);
+    expect((await del(base, d1.id)).status).toBe(409);
+    expect((await upload(base)).code).toBe(429);
+  });
+
+  it("una llamada desalojada devuelve su unidad de cuota", async () => {
+    const { relay, base } = await boot(fakeStt(), { trustProxy: true, maxPending: 1, rateLimit: { max: 2, windowMs: 60_000 }, pendingPerIp: 50 });
+    const A = "5.5.5.5";
+    expect((await upload(base, A)).code).toBe(202);
+    expect((await upload(base, A)).code).toBe(202);
+    await relay.idle();
+    expect((await upload(base, ip(1))).code).toBe(202); // desaloja la 1.ª de A
+    expect((await upload(base, A)).code).toBe(202); // sin devolución sería 429
+  });
+});
+
+describe("T11 · ráfaga de 50 personas a la vez", () => {
+  it("MAX_PENDING configurable: 50 IP distintas se aceptan todas y todas acaban viendo su transcripción", async () => {
+    const { relay, base } = await boot(fakeStt(), { trustProxy: true, maxPending: 50, rateLimit: { max: 3, windowMs: 60_000 } });
+    const ups = await Promise.all(Array.from({ length: 50 }, (_, i) => upload(base, ip(i))));
+    expect(ups.map((u) => u.code)).toEqual(Array(50).fill(202));
+    await relay.idle();
+    for (const u of ups) expect((await statusOf(base, u.id)).body.status).toBe("ready");
+  });
+
+  it("transcribing devuelve ahead: llamadas por delante, 0 la que está en proceso, sin datos de otros", async () => {
+    const { stt, release } = gatedStt();
+    const { relay, base } = await boot(stt, { trustProxy: true, maxPending: 10, rateLimit: { max: 50, windowMs: 60_000 } });
+    const ups: { id: string }[] = [];
+    for (let i = 0; i < 4; i++) ups.push(await upload(base, ip(i)));
+    const bodies = await Promise.all(ups.map((u) => statusOf(base, u.id)));
+    expect(bodies.map((b) => b.body.ahead)).toEqual([0, 1, 2, 3]);
+    expect(Object.keys(bodies[3].body).sort()).toEqual(["ahead", "status"]);
+    await del(base, ups[1].id); // si una se descarta, las de detrás avanzan
+    expect((await statusOf(base, ups[3].id)).body.ahead).toBe(2);
+    release();
+    await relay.idle();
+    const ready = await statusOf(base, ups[3].id);
+    expect(ready.body.status).toBe("ready");
+    expect(ready.body.ahead).toBeUndefined();
+  });
+
+  it("el TTL cuenta desde que la transcripción está lista, no desde la subida", async () => {
+    let n = 0;
+    const stt = fakeStt();
+    const inner = stt.fetch;
+    stt.fetch = (async (...a: Parameters<typeof fetch>) => {
+      n++;
+      await wait(250); // cada llamada tarda más que el TTL en llegar a su turno acumulado
+      return inner(...a);
+    }) as typeof fetch;
+    const { relay, base } = await boot(stt, { trustProxy: true, pendingTtlMs: 300, maxPending: 10, rateLimit: { max: 50, windowMs: 60_000 } });
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) ids.push((await upload(base, ip(i))).id);
+    await relay.idle(); // la 3.ª acaba a ~750 ms > 300 ms de TTL desde la subida
+    expect(n).toBe(3);
+    expect((await statusOf(base, ids[2])).body.status).toBe("ready");
+    expect((await fetch(`${base}/llamar/${ids[2]}/enviar`, { method: "POST" })).status).toBe(200);
+  });
+
+  it("una llamada en cola no se olvida (404) mientras espera al STT aunque pase el doble del TTL", async () => {
+    const { stt, release } = gatedStt();
+    const { relay, base } = await boot(stt, { pendingTtlMs: 100, rateLimit: { max: 50, windowMs: 60_000 } });
+    const u = await upload(base);
+    await wait(450);
+    expect((await statusOf(base, u.id)).body.status).toBe("transcribing");
+    release();
+    await relay.idle();
+    expect((await statusOf(base, u.id)).body.status).toBe("ready");
+  });
+
+  it("el tiempo máximo del STT cuenta desde el turno de cada llamada, no desde que espera en la cola", async () => {
+    const stt = fakeStt();
+    const inner = stt.fetch;
+    stt.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, 120);
+        init?.signal?.addEventListener("abort", () => (clearTimeout(t), reject(new Error("timeout"))));
+      });
+      return inner(url, init);
+    }) as typeof fetch;
+    const { relay, base } = await boot(stt, { trustProxy: true, sttTimeoutMs: 200, maxPending: 10, rateLimit: { max: 50, windowMs: 60_000 } });
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) ids.push((await upload(base, ip(i))).id); // 4 × 120 ms = 480 ms > 200 ms
+    await relay.idle();
+    for (const id of ids) expect((await statusOf(base, id)).body.status).toBe("ready");
   });
 });

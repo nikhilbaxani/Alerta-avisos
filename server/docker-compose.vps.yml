@@ -42,6 +42,14 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?define ALLOWED_ORIGINS en server/relay.env}
       RATE_LIMIT: ${RATE_LIMIT:-3}
       RATE_WINDOW_MIN: ${RATE_WINDOW_MIN:-10}
+      # Audios aceptados por IP y ventana, sin devolución al descartar. Vacío → 3 × RATE_LIMIT.
+      UPLOAD_LIMIT: ${UPLOAD_LIMIT:-}
+      # Llamadas de una misma IP esperando «Enviar».
+      PENDING_PER_IP: ${PENDING_PER_IP:-2}
+      # Llamadas retenidas sin enviar en todo el relay (50 personas a la vez: MAX_PENDING=50).
+      MAX_PENDING: ${MAX_PENDING:-20}
+      # Segundos que una llamada ya transcrita espera a «Enviar» antes de caducar.
+      PENDING_TTL_SECONDS: ${PENDING_TTL_SECONDS:-300}
       TRUST_PROXY: "1" # X-Forwarded-For desde la derecha, saltando direcciones locales/privadas (Funnel → Caddy)
       HOST: 0.0.0.0 # solo alcanzable desde la red de compose
       # LLM opcional del equipo (vacío → solo reglas). La clave vive solo en server/relay.env.

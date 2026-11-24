@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { PUBLIC_RELAY_URL } from "@/lib/consoleMode";
 import { snapshot } from "@/lib/engine";
-import { acceptEvent, addEvent, discardEvent, emptyInbox, publicEventToCall } from "@/lib/inbox";
+import { acceptEvent, addEvent, discardEvent, emptyInbox, loadHandled, markLoaded, publicEventToCall, saveHandled } from "@/lib/inbox";
 import type { InboxState } from "@/lib/inbox";
 import { RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import type { ProcessResult } from "@/lib/types";
@@ -15,10 +15,11 @@ import { langName } from "./format";
 const TOKEN_KEY = "copiloto112.operatorToken";
 
 type Conn = "connecting" | "open" | "down";
-type Act = { type: "event"; raw: unknown } | { type: "accept" | "discard"; id: string };
+type Act = { type: "event"; raw: unknown } | { type: "accept" | "discard"; id: string } | { type: "load"; ids: string[] };
 
 function reducer(s: InboxState, a: Act): InboxState {
   if (a.type === "event") return addEvent(s, a.raw);
+  if (a.type === "load") return markLoaded(s, a.ids);
   if (a.type === "discard") return discardEvent(s, a.id);
   return acceptEvent(s, a.id).state;
 }
@@ -40,6 +41,26 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
   const [conn, setConn] = useState<Conn>("connecting");
   const ref = useRef({ s, inbox });
   ref.current = { s, inbox };
+
+  // Tras recargar, el relay reenvía los últimos 50 eventos: las llamadas ya aceptadas o descartadas (guardadas por relay
+  // en localStorage) no se ofrecen otra vez. Los incidentes aceptados no se recrean: el estado en vivo no se guarda.
+  useEffect(() => {
+    if (!PUBLIC_RELAY_URL) return;
+    try {
+      dispatch({ type: "load", ids: loadHandled(localStorage, PUBLIC_RELAY_URL) });
+    } catch {
+      /* sin almacenamiento */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!PUBLIC_RELAY_URL || inbox.seen.length === 0) return;
+    try {
+      saveHandled(localStorage, PUBLIC_RELAY_URL, inbox.seen);
+    } catch {
+      /* sin almacenamiento */
+    }
+  }, [inbox.seen]);
 
   // Token: #op=<token> (el fragmento no llega a los registros de Vercel). Se acepta también ?op= por compatibilidad.
   // Se guarda en localStorage y se quita de la URL.

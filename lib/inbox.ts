@@ -59,10 +59,49 @@ export function addEvent(s: InboxState, raw: unknown): InboxState {
   return { ...s, pending: [...s.pending, raw].slice(-PENDING_CAP) };
 }
 
+/** Ids tratadas (aceptadas o descartadas) que se recuerdan: las últimas 500. */
+export const HANDLED_CAP = 500;
+
 const drop = (s: InboxState, id: string): InboxState => ({
   pending: s.pending.filter((e) => e.id !== id),
-  seen: s.seen.includes(id) ? s.seen : [...s.seen, id],
+  seen: s.seen.includes(id) ? s.seen : [...s.seen, id].slice(-HANDLED_CAP),
 });
+
+type ReadStore = Pick<Storage, "getItem">;
+type WriteStore = ReadStore & Pick<Storage, "setItem">;
+
+/** Clave de localStorage de las ids tratadas, una lista por relay. */
+export const handledKey = (relayUrl: string) => `copiloto112.handled:${relayUrl}`;
+
+/** Lee las ids tratadas de este relay; ignora lo corrupto y los fallos del almacenamiento. */
+export function loadHandled(store: ReadStore, relayUrl: string): string[] {
+  try {
+    const v: unknown = JSON.parse(store.getItem(handledKey(relayUrl)) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(-HANDLED_CAP) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Guarda las ids tratadas mezcladas con las ya guardadas (otra pestaña), sin duplicar y acotadas. */
+export function saveHandled(store: WriteStore, relayUrl: string, ids: string[]): void {
+  try {
+    const merged = [...new Set([...loadHandled(store, relayUrl), ...ids])].slice(-HANDLED_CAP);
+    store.setItem(handledKey(relayUrl), JSON.stringify(merged));
+  } catch {
+    /* sin almacenamiento: la bandeja sigue funcionando, solo no recuerda tras recargar */
+  }
+}
+
+/** Incorpora las ids guardadas: no se ofrecen de nuevo ni siquiera si ya estaban pendientes. */
+export function markLoaded(s: InboxState, ids: string[]): InboxState {
+  if (!ids.length) return s;
+  const known = new Set(ids);
+  return {
+    pending: s.pending.filter((e) => !known.has(e.id)),
+    seen: [...new Set([...ids, ...s.seen])].slice(-HANDLED_CAP),
+  };
+}
 
 export function discardEvent(s: InboxState, id: string): InboxState {
   return drop(s, id);

@@ -1,6 +1,6 @@
 # Relay del VPS — llamadas del público
 
-Recibe el audio que graba el público desde `/llamar` (QR) y lo transcribe con Whisper. **La persona ve la transcripción y decide:** solo cuando pulsa «Enviar» el relay extrae los datos (LLM o reglas de `lib/rules.ts`) y los publica por SSE en la bandeja de la consola. **Todo corre en el VPS, con un solo origen**, publicado únicamente a través de Tailscale Funnel:
+Recibe el audio que graba el público desde `/llamar` (QR) y lo transcribe con Whisper. **La persona ve la transcripción y decide:** solo cuando pulsa «Enviar» el relay publica el evento por SSE en la bandeja de la consola. **La extracción de datos (LLM o reglas de `lib/rules.ts`) empieza en cuanto la transcripción está lista, es decir, ANTES de «Enviar»:** con un LLM configurado, el texto de una llamada que la persona acaba descartando ya se ha enviado al LLM del equipo (en el sobremesa, sin guardarse en disco). **Todo corre en el VPS, con un solo origen**, publicado únicamente a través de Tailscale Funnel:
 
 ```
 móvil / operador ──HTTPS──▶ Tailscale Funnel ──▶ web (Caddy, 127.0.0.1:8080)
@@ -19,17 +19,17 @@ móvil / operador ──HTTPS──▶ Tailscale Funnel ──▶ web (Caddy, 12
 
 | `status` | Significado |
 |---|---|
-| `transcribing` | En cola o transcribiendo (≈8–10 s para una llamada corta). |
+| `transcribing` | En cola o transcribiendo (≈9 s por llamada: el STT va de una en una). Incluye `ahead`: cuántas llamadas se transcribirán antes que esta (0 = la que está en proceso); ningún dato de las demás. La espera no caduca ni se olvida. |
 | `ready` | Hay `transcript` (texto plano, solo lectura) y `language`. La extracción ya corre en segundo plano. |
 | `failed` | STT fallido, audio demasiado largo, sin voz o idioma no reconocido; `error` en castellano sin texto de la llamada. |
-| `expired` | Pasó `PENDING_TTL_SECONDS` sin «Enviar»; el texto y el audio ya se liberaron. |
+| `expired` | Pasó `PENDING_TTL_SECONDS` desde que la transcripción estuvo lista sin «Enviar», o el relay la retiró para dejar sitio a otra (ver «Límites»); el texto y el audio ya se liberaron. |
 | `sent` | Ya publicada (sin texto). |
 
 3. «Enviar» → `POST /llamar/:id/enviar` publica el evento **una sola vez** (idempotente: repetirlo devuelve `200 {"status":"sent"}` sin volver a publicar; si la extracción sigue en curso, espera a que acabe; si el LLM falló, se publica con reglas). Respuestas: `409` si aún transcribe o falló, `410` si caducó, `502` si no se pudo componer el evento.
 4. «Volver a grabar» → `DELETE /llamar/:id` descarta la llamada (`200`; después `404`).
 5. Un id desconocido, mal formado o ya olvidado → `404` con mensaje en castellano. Las rutas nuevas aplican la misma regla de `Origin` que `POST /llamar` (no permitido → `403`), no necesitan token del operador y no gastan cuota; solo conocer el id da acceso, así que no se puede enumerar la transcripción de otros. Respuestas con `Cache-Control: no-store`.
 
-Los límites del `POST` (tamaño, duración, cuota por IP, cola) no cambian, y las llamadas pendientes cuentan contra la cola. Recargar la página a mitad pierde la llamada pendiente (se borra sola al caducar).
+Las llamadas pendientes cuentan contra la cola y el tope por IP (ver «Límites del endpoint público»). Recargar la página a mitad pierde la llamada pendiente (se borra sola al caducar).
 
 ## Despliegue paso a paso
 
@@ -122,8 +122,11 @@ Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/rel
 | `RELAY_TOKEN` | — | Token de `/events`. Sin él, `/events` responde 503. |
 | `ALLOWED_ORIGINS` | — | Orígenes permitidos (CORS y `Origin` de los POST), separados por comas: el de Funnel. |
 | `MAX_CALL_SECONDS` | 120 | Máximo de duración; `stt` responde 413 (sin transcribir) si supera máximo + 5 s. También se usa al construir la web. |
-| `RATE_LIMIT` / `RATE_WINDOW_MIN` | 3 / 10 | Llamadas por IP y ventana. |
-| `PENDING_TTL_SECONDS` | 300 | Tiempo que una llamada transcrita espera a «Enviar» antes de caducar y liberar su memoria (el id responde `expired` hasta el doble y luego `404`). |
+| `RATE_LIMIT` / `RATE_WINDOW_MIN` | 3 / 10 | Cuota por IP y ventana: llamadas **enviadas o aún pendientes**. Una descartada o caducada sin enviar devuelve su unidad (una sola vez). |
+| `UPLOAD_LIMIT` | 3 × `RATE_LIMIT` (9) | Audios aceptados por IP y ventana; **no se devuelve** al descartar (evita gastar tiempo de STT grabando y descartando). Vacío = por defecto. Si cambias `RATE_LIMIT`, el valor por defecto sigue a `RATE_LIMIT`. |
+| `PENDING_PER_IP` | 2 | Llamadas de una misma IP (/64 en IPv6) esperando «Enviar» (`transcribing` o `ready`). La siguiente → 429 «envía o descarta la anterior». |
+| `MAX_PENDING` | 20 | Llamadas retenidas sin enviar en todo el relay (más una en proceso). Para unas 50 personas a la vez: `MAX_PENDING=50`. |
+| `PENDING_TTL_SECONDS` | 300 | Tiempo que una llamada **ya transcrita** espera a «Enviar» antes de caducar y liberar su memoria (cuenta desde que el texto está listo, no desde la subida; el id responde `expired` hasta el doble y luego `404`). |
 | `STT_MODEL` | `Systran/faster-whisper-small` | Modelo de Whisper. |
 | `LLM_BASE_URL` | — | URL base (compatible OpenAI) del LLM opcional del equipo. Vacío → solo reglas. |
 | `LLM_MODEL` | `qwen2.5:14b-instruct` | Nombre del modelo en `LLM_BASE_URL`. |
@@ -164,24 +167,32 @@ STT_MODEL=whisper
 - **Velocidad:** `scripts/stt_server.py` acepta `--beam-size` (`STT_BEAM_SIZE`, 5 por defecto) y `--cpu-threads` (`STT_CPU_THREADS`, 0 = biblioteca); beam 1 acelera a costa de algo de precisión. Mide antes de la demo.
 - **Perfil `local-stt`:** el servicio `stt` solo se levanta con `COMPOSE_PROFILES=local-stt` (ya en `relay.env.example`, así el despliegue sin sobremesa funciona igual que antes). Un `relay.env` anterior que no tenga esa línea deja de levantar el `stt` local: añádela, o configura el sobremesa. Requiere Docker Compose ≥ 2.20 (`depends_on … required: false`).
 - **Aislamiento intacto:** el VPS llega al sobremesa solo por su URL pública HTTPS; `server/tailnet-guard.nft` no cambia.
-- **Latencia (dos muestras, no un benchmark), medida directamente en el sobremesa:** 14,5 s de castellano → 11,2 s; 18,1 s de árabe → 11,7 s (≈0,7× tiempo real), con texto e idioma correctos. Suma la red y el gateway.
-- **Privacidad:** el audio de las llamadas del público también se envía por HTTPS al sobremesa del equipo, donde no se guarda en disco. La página `/llamar` lo dice en el texto de consentimiento.
+- **Latencia (medición actual, 6 hilos de CPU; pocas muestras, no un benchmark):** 14,5 s de castellano → 8,9 s; 18,1 s de árabe → 9,1–9,5 s; una llamada real de 6 s → 9,2 s. El coste es casi fijo por ventana de ~30 s de audio, no proporcional a la duración. Suma la red y el gateway.
+- **Privacidad:** con este STT el audio de las llamadas del público se transcribe en el sobremesa del equipo (allí es donde va para el STT), y el texto transcrito se envía al LLM del equipo en el mismo sobremesa; no se guarda en disco ni en el VPS ni en el sobremesa. La página `/llamar` lo dice en el texto de consentimiento.
 
 ## Límites del endpoint público
 
-3 MB por llamada (120 s de Opus ≈ 2 MB), tipo `audio/*` o `video/webm|mp4`, consentimiento obligatorio (`consent=1`), 3 llamadas por IP cada 10 min (solo cuentan las peticiones válidas aceptadas), cola de 20 llamadas retenidas más una en proceso (503 si está llena; cuentan las que esperan «Enviar»), `Origin` no permitido → 403 (sin `Origin`, p. ej. curl, se admite), transcripción y traducción recortadas a 4000 caracteres. Si la traducción falla, la llamada se publica sin ella. El audio se procesa de una en una. Las llamadas pendientes caducan a los `PENDING_TTL_SECONDS`.
+3 MB por llamada (120 s de Opus ≈ 2 MB), tipo `audio/*` o `video/webm|mp4`, consentimiento obligatorio (`consent=1`), `Origin` no permitido → 403 (sin `Origin`, p. ej. curl, se admite), transcripción y traducción recortadas a 4000 caracteres. Si la traducción falla, la llamada se publica sin ella. El audio se procesa de una en una. Cada petición rechazada (400, 413, 415…) devuelve lo que reservó.
+
+- **Cuota por IP** (`RATE_LIMIT` por `RATE_WINDOW_MIN`, 3 / 10 min): cuentan las llamadas **enviadas o aún pendientes**. «Volver a grabar» (DELETE antes de «Enviar»), caducar sin enviar o ser retirada por falta de sitio devuelven la unidad, una sola vez. Una llamada enviada conserva la suya.
+- **Tope de subidas por IP** (`UPLOAD_LIMIT`, por defecto 3 × `RATE_LIMIT`, misma ventana): cuenta los audios aceptados y **nunca se devuelve**; así grabar y descartar no es una forma gratuita de gastar STT (429 «has subido demasiados audios»).
+- **Pendientes por IP** (`PENDING_PER_IP`, 2): llamadas transcribiéndose o esperando «Enviar». La tercera → 429 pidiendo enviar o descartar la anterior. Enviar, descartar o caducar liberan hueco.
+- **Cola global** (`MAX_PENDING`, 20 retenidas más una en proceso; las enviadas no cuentan). Si está llena, la subida nueva **retira a la llamada `ready` más antigua** (esperando «Enviar»; nunca una que se transcribe ni una que ya se envía): su dueño ve el mensaje de caducada, se libera su memoria y se le devuelve la cuota. Solo si no hay ninguna retirable → 503. Así llamadas abandonadas no bloquean a nadie.
+- **Mucha gente a la vez.** El STT va en serie (≈9 s por llamada): 50 personas a la vez esperan hasta ≈8 min la última. La página muestra los segundos y «Hay N llamadas por delante de la tuya» y sigue esperando mientras el relay conteste `transcribing`; solo se rinde si el relay dice `failed`/`expired`/404 o fallan 8 consultas seguidas. Ni el TTL ni el olvido (2×TTL) corren mientras la llamada espera turno, y el tiempo máximo del STT (`STT_TIMEOUT_MS`) cuenta desde el turno de cada llamada. Con `MAX_PENDING=50` y las IP distintas de un grupo, caben las 50; desde una misma IP (p. ej. wifi compartida con NAT) solo 2 a la vez y 3 por ventana: si pasa, sube `RATE_LIMIT` y `PENDING_PER_IP`.
 
 ## Latencia esperada (CPU)
 
-Estimación, **no medida**: `small` con `int8` en 2–4 vCPU tarda del orden de 0,5–1× la duración del audio (una llamada de 60 s, ~30–60 s; la primera, algo más por la carga del modelo). Si el audio no está en castellano hay una segunda pasada (`translate`) que casi duplica el tiempo. Si va lento, usa `STT_MODEL=Systran/faster-whisper-base` o `tiny` (menos precisión). Mide en tu VPS con una llamada real antes de la demo.
+Con el Whisper del sobremesa (6 hilos): 8,9 s para 14,5 s de castellano, 9,1–9,5 s para 18,1 s de árabe y 9,2 s para una llamada real de 6 s; el coste es casi fijo por ventana de ~30 s. Con el `stt` local del VPS (`small`, `int8`, 2–4 vCPU) la estimación sigue sin medirse: del orden de 0,5–1× la duración del audio. Si el audio no está en castellano y no hay LLM hay una segunda pasada (`translate`) que casi duplica el tiempo. Si va lento, usa `STT_MODEL=Systran/faster-whisper-base` o `tiny` (menos precisión).
 
 ## Privacidad
 
-- El audio solo vive en memoria del relay y de `stt`: no se escribe en disco y se descarta al terminar la transcripción. El texto de una llamada pendiente solo está en memoria hasta «Enviar», «Volver a grabar» o la caducidad.
+- El audio solo vive en memoria del relay y de quien lo transcribe: no se escribe en disco en ninguno y se descarta al terminar la transcripción. El texto de una llamada pendiente solo está en memoria hasta «Enviar», «Volver a grabar» o la caducidad.
+- **Texto al LLM antes de «Enviar»:** la extracción empieza cuando la transcripción está lista. Con LLM configurado, el texto de una llamada que luego se descarta ya se envió al LLM del equipo.
 - Los registros no contienen texto de las llamadas, el id secreto ni IPs completas (solo un hash corto).
 - Se conserva en memoria el último medio centenar de eventos (texto y extracción) para reenviarlos al conectar; se pierden al reiniciar.
 - La transcripción es texto no confiable: no dispara acciones y la consola la muestra como texto plano. Tras aceptarla, el operador decide.
-- Los datos van al VPS del equipo; el modelo Whisper se ejecuta allí, sin APIs externas (solo la descarga inicial del modelo). Con el STT principal activado, el audio se envía además por HTTPS al sobremesa del equipo (ver arriba).
+- Los datos llegan al VPS del equipo. Con el `stt` local, Whisper se ejecuta en el VPS (sin APIs externas; solo la descarga inicial del modelo). Con el STT del sobremesa (despliegue actual), el audio se transcribe **en el sobremesa del equipo** —ahí es donde va para el STT, por HTTPS— y el texto transcrito se envía al LLM del equipo en ese mismo sobremesa; en ninguno de los dos sitios se guarda en disco.
+- **Consola del operador tras recargar:** el relay reenvía los últimos 50 eventos al conectar. La consola guarda en `localStorage`, por URL de relay, las ids ya aceptadas o descartadas (las últimas 500) y no las ofrece otra vez. El estado de la sesión en vivo **no** se guarda: tras recargar, los incidentes aceptados ya no están en el mapa y no se recrean.
 
 ## Desarrollo local
 
