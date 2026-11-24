@@ -4,7 +4,7 @@ import type { ConsoleState } from "@/lib/useConsole";
 export function buildAuditLog(s: ConsoleState, engineLabel: string) {
   return {
     generado: new Date().toISOString(),
-    sistema: "Copiloto 112",
+    sistema: "Agente 112",
     escenario: s.scenarioId,
     motor: engineLabel,
     nota: "La IA propone; todas las decisiones en zona gris las toma el operador.",

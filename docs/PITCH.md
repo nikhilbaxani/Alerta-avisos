@@ -1,4 +1,4 @@
-# Pitch: Copiloto 112
+# Pitch: Agente 112
 
 > Cifras solo de MEMORIA §3, con su fuente. Todo lo demás es del producto y se puede enseñar en la demo.
 
@@ -21,7 +21,7 @@
 ## Seis diapositivas (texto)
 
 1. **El 112 se satura por duplicados.** 19.821 llamadas, 4.770 incidentes (DANA 2024). Apagón 2025: llamadas ×4.
-2. **Copiloto 112.** Agrupa, detecta lo nuevo y traduce. La IA propone, el operador decide.
+2. **Agente 112.** Agrupa, detecta lo nuevo y traduce. La IA propone, el operador decide.
 3. **Demo en vivo.** (Consola: 26 llamadas → 7 incidentes, zona gris, árabe con voz.)
 4. **Cuatro cosas que nadie más hace a la vez.** Información nueva en duplicados · agrupar por la dirección mencionada · zona gris visible · respuesta traducida · todo en local.
 5. **Mercado.** 43.845 llamadas en idioma extranjero en Andalucía (2024); 362.822 residentes extranjeros en la provincia de Málaga; Andalucía gestionó 894.930 emergencias en 2025. Venta al contratista del pliego.

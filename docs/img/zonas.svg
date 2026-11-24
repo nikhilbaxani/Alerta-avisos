@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 310" width="1000" height="310" font-family="Archivo, 'Helvetica Neue', Arial, sans-serif">
-  <title>Las tres zonas de decisión del Copiloto 112</title>
+  <title>Las tres zonas de decisión del Agente 112</title>
   <rect width="1000" height="310" fill="#E9EDF0"/>
 
   <text x="60" y="34" font-size="17" font-weight="700" fill="#15222E">¿Es la misma emergencia? Puntuación entre una llamada nueva y el incidente más parecido</text>

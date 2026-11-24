@@ -1,4 +1,4 @@
-# Copiloto 112: explicación e ideas
+# Agente 112: explicación e ideas
 
 > Borrador de trabajo para completar y comparar ideas. Cifras: solo las de `docs/MEMORIA.md` §3, con su fuente.
 
@@ -6,7 +6,7 @@
 
 ## Qué es
 
-Copiloto de IA para las salas del 112 en catástrofes (DANA, apagón). Hace tres cosas:
+Agente de IA para las salas del 112 en catástrofes (DANA, apagón). Hace tres cosas:
 - **agrupa** las llamadas que hablan de la misma emergencia;
 - **detecta** cuándo un duplicado trae información nueva;
 - **traduce** la respuesta del operador al idioma del llamante.

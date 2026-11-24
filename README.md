@@ -1,6 +1,6 @@
-# Copiloto 112
+# Agente 112
 
-Copiloto de IA para las salas del 112 en España. En una catástrofe (DANA, apagón) **agrupa las llamadas que hablan del mismo incidente**, **detecta las que traen información nueva** y **traduce en tiempo real** a quien no habla castellano. La IA propone; **el operador decide**. Los modelos corren **en local**.
+Agente de IA para las salas del 112 en España. En una catástrofe (DANA, apagón) **agrupa las llamadas que hablan del mismo incidente**, **detecta las que traen información nueva** y **traduce en tiempo real** a quien no habla castellano. La IA propone; **el operador decide**. Los modelos corren **en local**.
 
 ![Consola a mitad del escenario, con una decisión pendiente](docs/capturas/T08-escritorio-decision.png)
 

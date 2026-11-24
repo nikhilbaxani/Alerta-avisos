@@ -1,4 +1,4 @@
-# MEMORIA del proyecto: Copiloto 112 ("Alerta-avisos")
+# MEMORIA del proyecto: Agente 112 (antes Copiloto 112, "Alerta-avisos")
 
 > Fuente única de verdad del proyecto. Cualquier agente que trabaje en este repo debe leer este archivo antes de empezar. Si algo de aquí se contradice con el código, manda este documento y hay que dejarlo anotado en `docs/DECISIONES.md`.
 
@@ -252,4 +252,4 @@ Para cada incidente, el agente genera **acciones propuestas**: herramienta, dest
 
 ### 16.5 Relato (X08)
 - README y PITCH cuentan el paso de copiloto a agente: percepción → decisión → acción. Métricas de demo: «líneas liberadas», «acciones preparadas» y «llamadas en espera atendidas», **siempre como simulación**. Ninguna cifra nueva fuera de §3.
-- El nombre visible de la consola no cambia (la interfaz no se toca). El cambio de nombre a «Agente 112» queda como decisión pendiente de Nick.
+- Nombre: **Agente 112** (decisión de Nick, 2026-11-24) en README, PITCH, PROYECTO, diagramas y registro de auditoría. La consola sigue mostrando «Copiloto 112» porque la interfaz no se toca; los identificadores del código (`copiloto-112`, `sin_copiloto`) tampoco cambian.
