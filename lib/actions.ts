@@ -316,16 +316,24 @@ function resourceRules(input: PlanInput): ProposalOf<"proponer_recursos">[] {
 const CALM_RISKS: RiskTag[] = ["vida", "atrapados", "menor", "dolor_pecho", "inconsciente", "sin_respuesta", "herido"];
 
 /** Qué frase pretraducida corresponde a cada situación (en este orden en el SMS). */
-const SMS_PHRASE_RULES: readonly { phrase: SmsPhraseId; risks: RiskTag[]; when: (i: PlanInput, has: (r: RiskTag) => boolean) => boolean }[] = [
-  { phrase: "garaje", risks: ["agua_subiendo"], when: (i, has) => has("agua_subiendo") || FLOOD_TYPES.includes(i.type) },
-  { phrase: "cables", risks: ["cables_electricos"], when: (_i, has) => has("cables_electricos") },
-  { phrase: "calma", risks: CALM_RISKS, when: (i, has) => i.type === "medica" || i.type === "ascensor" || CALM_RISKS.some(has) },
+const SMS_PHRASE_RULES: readonly { phrase: SmsPhraseId; risks: RiskTag[]; when: (type: IncidentType, has: (r: RiskTag) => boolean) => boolean }[] = [
+  { phrase: "garaje", risks: ["agua_subiendo"], when: (type, has) => has("agua_subiendo") || FLOOD_TYPES.includes(type) },
+  { phrase: "cables", risks: ["cables_electricos"], when: (_type, has) => has("cables_electricos") },
+  { phrase: "calma", risks: CALM_RISKS, when: (type, has) => type === "medica" || type === "ascensor" || CALM_RISKS.some(has) },
 ];
+
+/**
+ * Instrucciones de seguridad pretraducidas que corresponden a un tipo y unos riesgos, en orden. Es la
+ * misma elección del SMS (X05) y la reutiliza el asistente de espera (X06, `lib/waiting.ts`).
+ */
+export function safetyPhrases(type: IncidentType, risks: readonly RiskTag[]): SmsPhraseId[] {
+  const has = (r: RiskTag) => risks.includes(r);
+  return SMS_PHRASE_RULES.filter((r) => r.when(type, has)).map((r) => r.phrase);
+}
 
 /** Frases que corresponden al incidente por su tipo y sus riesgos, en el orden del SMS. */
 function phrasesFor(input: PlanInput): SmsPhraseId[] {
-  const has = (r: RiskTag) => input.risks.includes(r);
-  return SMS_PHRASE_RULES.filter((r) => r.when(input, has)).map((r) => r.phrase);
+  return safetyPhrases(input.type, input.risks);
 }
 
 /** Riesgos del incidente que justifican estas frases. */

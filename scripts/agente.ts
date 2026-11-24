@@ -1,12 +1,14 @@
-// npm run agente [-- --escenario apagon] [-- --json traza.json] [-- --live]
-// Reproduce el escenario con el motor real y el agente de acciones e imprime la traza
-// percepción → razonamiento → herramienta → aprobación → resultado. Todo es simulación.
+// npm run agente [-- --escenario apagon] [-- --operadores N] [-- --json traza.json] [-- --live]
+// Reproduce el escenario con el motor real, el agente de acciones y el agente de espera e imprime la
+// traza percepción → razonamiento → herramienta → aprobación → resultado, y las llamadas que atiende
+// el asistente de espera con N operadores (por defecto, los de la franja de sala). Todo es simulación.
 import { writeFileSync } from "node:fs";
 import { getScenario } from "@/data/scenarios";
 import { formatRun, rulesPlanner, runAgent, runToJson } from "@/lib/agent";
 import type { Planner } from "@/lib/agent";
 import { getConfig, llmEnabled } from "@/lib/config";
 import { planIncident } from "@/lib/plan";
+import { parseOperators } from "@/lib/waiting";
 
 /** Valor de una opción: `--opcion valor` o `--opcion=valor`. */
 function option(names: string[]): string | undefined {
@@ -28,6 +30,11 @@ async function main() {
     console.error(`Escenario desconocido: «${scn}». Usa «dana» o «apagon».`);
     process.exit(1);
   }
+  const operators = parseOperators(option(["--operadores", "--operators"]));
+  if (!operators.ok) {
+    console.error(operators.error);
+    process.exit(1);
+  }
   const jsonPath = option(["--json"]);
   if (jsonPath === "") {
     console.error("Falta el archivo de --json (p. ej. --json traza.json).");
@@ -46,7 +53,7 @@ async function main() {
     }
   }
 
-  const run = await runAgent(getScenario(SCENARIOS[scn]), { planner });
+  const run = await runAgent(getScenario(SCENARIOS[scn]), { planner, operators: operators.value });
   console.log(formatRun(run, label));
   if (jsonPath) {
     writeFileSync(jsonPath, `${JSON.stringify(runToJson(run, label), null, 2)}\n`);

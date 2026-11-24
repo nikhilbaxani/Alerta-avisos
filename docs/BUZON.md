@@ -20,7 +20,7 @@ Formato (añadir al final, no borrar; el destinatario marca `[leído]` o `[resue
 ## 2026-11-24 · de backend-ia para orquestador · X04: regresión de agrupación en vivo por el prompt
 - Con IA local, la advertencia de seguridad de X04 sube las preguntas de la DANA de 4 a 11 (0 fusiones incorrectas) y el apagón pasa de 7 a 8 incidentes (objetivo 6). Tabla y diagnóstico en DECISIONES («X04: medición en vivo»). Ollama y Whisper se pararon a las 17:12 y no se rearrancaron. Propuesta: tarea corta de ajuste (advertencia al principio del prompt de sistema) y volver a medir antes de X05.
 
-## 2026-11-24 · de backend-ia para backend-ia (X06, X07) y orquestador · Contratos del agente de acciones (X05)
+## 2026-11-24 · de backend-ia para backend-ia (X06, X07) y orquestador · Contratos del agente de acciones (X05) [leído en X06: aplicado (frases vía `safetyPhrases`, sin tocar `SMS_PHRASE_IDS`); sigue vigente para X07]
 - Añadir una herramienta (X07: `aviso_ayuntamiento`, `devolver_llamada`, `proponer_es_alert`) = sumar su nombre a `ACTION_TOOLS`, sus argumentos a `ToolArgs`, su política a `ACTION_POLICY` y su especificación a `TOOLS` en `lib/actions.ts` (reglas, `fromModel`, `parameters` para el LLM, `target`, `describe` y `send` del conector simulado). El compilador obliga a las tres últimas. Prefijo de acuse de 3 letras (`CAD`, `SMS`, `DIS`).
 - Política «coordinador» (ES-Alert): ya funciona en `approve`/`canApprove`/`discard`. En `npm run agente` el operador simulado solo aprueba las de política `operador`; las de coordinador se quedan `propuesta` (decidid en X07 si hay un coordinador simulado).
 - Lo que propone el modelo nunca es automático: `make()` pone política `operador` a una herramienta automática si `origin === "ia_local"`. Mantenedlo.
@@ -28,3 +28,16 @@ Formato (añadir al final, no borrar; el destinatario marca `[leído]` o `[resue
 - Entrada del planificador: `planInputFrom(incident, facts)` con `facts[callId] = { lang, phone, risks }`. Nada de texto libre. El parte de situación (X07) puede leer `summarize(run)` y `run.actions` de `lib/agent.ts`; el JSON de `runToJson` tiene claves en castellano.
 - Para X06 (agente de espera): reutilizad `smsText(frases, idioma)` de `lib/actions.ts` para componer instrucciones solo con frases pretraducidas; si añadís frases a `lib/phrases.ts`, las instructivas que deban ir por SMS hay que sumarlas a `SMS_PHRASE_IDS` y a `SMS_PHRASE_RULES`.
 - La consola no llama a `/api/plan` (la interfaz no se toca). Respuesta: `{ engine, proposals, issues, warning? }`; quien la use registra con `addProposals`.
+
+## 2026-11-24 · de backend-ia para backend-ia (X07) y orquestador · Contratos del agente de espera (X06)
+- `runAgent(escenario, { operators })` (por defecto `DEFAULT_OPERATORS = 2`, el de la franja de sala) devuelve además `run.roomCalls` (llamadas de la sala) y `run.waiting: WaitingReport` (`lib/waiting.ts`). Para el parte de situación: `run.waiting.con.attendedByAgent`, `.resolvedWithoutOperator`, `.escalated`, `.queued`, `.waitedAlone`, `.critical` (`{ id, wait }`), `.meanNewWait`, `.operatorSeconds`, y lo mismo en `run.waiting.sin` (sin agente de espera); `run.waiting.attentions[]` trae cada llamada atendida (`outcome`: `agrupada` | `en_cola` | `escalada`, `reason` en castellano, `queuePosition`, `operatorAt`, `script`). `run.waiting.assumptions` son los supuestos declarados: el parte debe rotularlo como simulación y citarlos.
+- Texto ya hecho: `waitingSummaryLines(run.waiting)` en `lib/agent.ts`; JSON: `waitingToJson(run.waiting)` (clave `agenteDeEspera` de `runToJson`, claves en castellano).
+- Regla de triaje (decisión del orquestador; DECISIONES «X06: triaje»): solo escala, y pasa la primera de la cola, el riesgo vital que la sala aún no conoce (nueva, zona gris, provisional, información nueva o un riesgo vital que el incidente no tenía, como G2). Un duplicado con riesgo vital ya conocido sigue en la cola en su orden. `en_cola` puede llevar `vital` no vacío.
+- Cifras para X07/X08 (simulación con supuestos; con agente frente a sin agente):
+  - Esperan sin que nadie les atienda: DANA 25 → 0 (1 operador) y 23 → 0 (2 operadores); apagón 15 → 0 y 14 → 0.
+  - Espera media de las emergencias nuevas: con 2 operadores **no cambia** (DANA 0:13, apagón 0:23); con 1 **empeora** (DANA 1:49 → 2:21, apagón 1:49 → 2:04).
+  - Llamada crítica hasta un operador: **no cambia** (E1 0:26, J1 0:40), pero la atiende el asistente desde que llega y pasa la primera de la cola.
+  - Duplicados cerrados sin operador: DANA 6 (90 s de operador), apagón 5 (75 s).
+  - No lo presentéis como «menos espera»: lo que gana es que nadie espera sin que le atiendan y que se libera tiempo de operador. Ya no vale el «E1 0:26 → 0:08» de la primera versión.
+- Frases: `WAITING_PHRASES` va aparte de `PHRASES` (la consola pinta un botón por cada elemento de `PHRASES`). Si X07 quiere una frase nueva para la devolución de llamada, igual: exportación aparte.
+- `safetyPhrases(tipo, riesgos)` en `lib/actions.ts` es la elección de instrucciones del SMS, reutilizable sin `PlanInput`.

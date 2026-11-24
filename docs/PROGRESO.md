@@ -83,3 +83,11 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Sin probar: function calling con qwen2.5 real (IA local parada); probado con fetch simulado y `mock-ai`.
 - Decisiones: 6 entradas X05 en DECISIONES (SMS solo a quien no habla castellano, destino de la distribuidora por canal, provisionales sin acciones, lo que propone el modelo siempre pasa por el operador…).
 - Siguiente: X06 (X04b espera a la IA local).
+
+## 2026-11-24T19:20 · X06 · hecha
+- Qué se hizo: `lib/waiting.ts` (sala con y sin agente de espera con los supuestos de `lib/metrics.ts`, triaje, guion con frases fijas en `WAITING_PHRASES`, separadas de `PHRASES` para no cambiar la consola) e integración en `npm run agente -- --operadores N` (por defecto 2, como la franja de sala).
+- Triaje (decidido por el orquestador tras la primera entrega): escala solo el riesgo vital que la sala aún no conoce (incidente nuevo, zona gris, provisional, información nueva o riesgo vital o gravedad 5 nuevos para el incidente, p. ej. G2); un duplicado con riesgo vital ya conocido sigue en la cola humana en su orden; un duplicado sin riesgo vital se cierra sin operador. La primera versión escalaba también los duplicados conocidos y retrasaba emergencias nuevas (C1 0:19 → 2:07).
+- Resultado (simulación, 2 operadores, DANA): 20 llamadas atendidas por el asistente en vez de esperar sin nadie, 6 duplicados sin operador, 7 escaladas; espera media de emergencias nuevas igual (0:13) y E1 igual (0:26); 1:30 menos de operador. Con 1 operador la espera media empeora (lo vital desconocido pasa delante). No vender como mejora de esperas.
+- Verificación (orquestador): lint OK; 257 tests; `eval` y `eval:apagon` idénticos; `npm run agente` OK; build OK; e2e en modo simulado OK; `PHRASES` sin líneas borradas; interfaz, `data/` y `lib/metrics.ts` sin tocar.
+- Pendiente: revisión del árabe de las frases nuevas por un hablante nativo.
+- Siguiente: X07.

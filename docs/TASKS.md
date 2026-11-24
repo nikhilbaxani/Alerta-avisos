@@ -73,7 +73,7 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
   - `POST /api/plan` con IA local (*function calling*, solo datos estructurados, validación de herramienta y argumentos, las reglas nunca se quitan); sin LLM devuelve el plan determinista. Test con `scripts/mock-ai.mjs` o el handler.
   - `npm run agente [-- --escenario apagon] [-- --json archivo]`: reproduce el escenario con el motor real (operador simulado que acierta en la zona gris y aprueba las acciones de operador) e imprime la traza percepción → razonamiento → herramienta → aprobación → resultado.
   - Casos: INC de A (coche + bebé tras A4) → bomberos y SAMU; C3 (cables) → aviso automático a la distribuidora; E1 (árabe) → SMS en árabe con frase pretraducida.
-- [ ] X06 Agente para quien está en espera (MEMORIA §16.3) · agente: `backend-ia` · deps: X05
+- [x] X06 Agente para quien está en espera (MEMORIA §16.3) · agente: `backend-ia` · deps: X05
   - `lib/waiting.ts` puro: qué llamadas esperarían con N operadores (supuestos de `lib/metrics.ts`), guion del asistente en el idioma del llamante (presentación como asistente automático + instrucciones pretraducidas), escalado inmediato ante riesgo vital. Frases nuevas en `lib/phrases.ts` (sin tocar las existentes) y anotadas en DECISIONES.
   - Integrado en `npm run agente` (opción de operadores, por defecto el de la franja de sala): llamadas atendidas por el agente, duplicados agrupados sin operador y escaladas, con su traza.
   - Tests: nunca atiende una llamada que un operador libre puede coger; escala E1 (dolor torácico) si le toca esperar; `npm run eval` igual que antes.
