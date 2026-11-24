@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { createRelay, defaultBootTag, type RelayOptions } from "@/server/relay";
+import { createLlmExtractor, createRelay, defaultBootTag, sttApiKeyFromEnv, type RelayOptions } from "@/server/relay";
 import { isPublicCallEvent, PUBLIC_CALL_ID, UNKNOWN_LOCATION_AML, type PublicCallEvent } from "@/lib/publicCall";
 import type { Extraction } from "@/lib/types";
 
@@ -583,7 +583,7 @@ describe("relay /llamar + /events", () => {
       expect(evB.location.aml).toEqual(UNKNOWN_LOCATION_AML);
     });
 
-    it("si el LLM falla → respaldo a reglas, pasada translate para idioma no es, log y evento publicado", async () => {
+    it("si el LLM falla → respaldo a reglas sin pasada translate (una sola pasada de Whisper), log y evento publicado", async () => {
       const lines: string[] = [];
       const stt = fakeStt({ language: "ar", text: "حريق", translation: "There is a fire in Larios street" });
       const llmExtract = async () => {
@@ -592,11 +592,11 @@ describe("relay /llamar + /events", () => {
       const { relay, base } = await boot(stt, { llmExtract, log: (m) => lines.push(m) });
       expect((await call(base)).status).toBe(202);
       await relay.idle();
-      expect(stt.calls.map((c) => c.task)).toEqual(["transcribe", "translate"]);
+      expect(stt.calls.map((c) => c.task)).toEqual(["transcribe"]);
       const [ev] = await readEvents(base, 1);
       expect(isPublicCallEvent(ev)).toBe(true);
       expect(ev.extractor).toBe("rules");
-      expect(ev.translation_en).toBe("There is a fire in Larios street");
+      expect(ev.translation_en).toBeNull();
       expect(lines.some((l) => l.includes("[relay] P1 LLM no disponible (LLM 503): reglas"))).toBe(true);
     });
 
@@ -607,7 +607,7 @@ describe("relay /llamar + /events", () => {
       const { relay, base } = await boot(stt, { llmExtract, llmTimeoutMs: 30, log: (m) => lines.push(m) });
       expect((await call(base)).status).toBe(202);
       await relay.idle();
-      expect(stt.calls.map((c) => c.task)).toEqual(["transcribe", "translate"]);
+      expect(stt.calls.map((c) => c.task)).toEqual(["transcribe"]);
       const [ev] = await readEvents(base, 1);
       expect(isPublicCallEvent(ev)).toBe(true);
       expect(ev.extractor).toBe("rules");
@@ -638,6 +638,177 @@ describe("relay /llamar + /events", () => {
       expect(ev.extraction.risks).toEqual(["atrapados", "agua_subiendo"]);
       expect(ev.extraction.severity).toBe(5);
       expect(ev.extraction.translation_es).toHaveLength(4000);
+    });
+  });
+  describe("STT único (p. ej. Whisper del sobremesa tras un gateway)", () => {
+    interface Seen { url: string; auth: string | null; form: FormData }
+    function gw(reply: () => Response | Promise<Response>) {
+      const seen: Seen[] = [];
+      const f = (async (url: string | URL | Request, init?: RequestInit) => {
+        seen.push({ url: String(url), auth: new Headers(init?.headers).get("authorization"), form: init?.body as FormData });
+        const sig = init?.signal;
+        const aborted = new Promise<never>((_, rej) => sig?.addEventListener("abort", () => rej(new DOMException("timeout", "TimeoutError"))));
+        return await Promise.race([Promise.resolve(reply()), aborted]);
+      }) as typeof fetch;
+      return { seen, stt: { calls: [], fetch: f } as Stt };
+    }
+    const tasks = (g: { seen: Seen[] }) => g.seen.map((x) => String(x.form.get("task")));
+    const send = async (g: ReturnType<typeof gw>, over: Partial<RelayOptions> = {}, lines: string[] = []) => {
+      const { relay, base } = await boot(g.stt, { sttBaseUrl: "https://gw.test/v1", sttModel: "whisper", log: (m) => lines.push(m), ...over });
+      expect((await call(base)).status).toBe(202);
+      await relay.idle();
+      return readEvents(base, 1);
+    };
+    const ok = (o: object) => () => Response.json(o);
+
+    it("envía file, model, response_format=verbose_json y Authorization: Bearer; la clave no sale en los logs", async () => {
+      const lines: string[] = [];
+      const g = gw(ok({ text: "Hay un incendio en la calle Larios", language: "es", duration: 14.5 }));
+      const [ev] = await send(g, { sttApiKey: "k-secreta" }, lines);
+      expect(g.seen[0].url).toBe("https://gw.test/v1/audio/transcriptions");
+      expect(g.seen[0].auth).toBe("Bearer k-secreta");
+      expect(g.seen[0].form.get("model")).toBe("whisper");
+      expect(g.seen[0].form.get("response_format")).toBe("verbose_json");
+      expect(g.seen[0].form.get("file")).toBeInstanceOf(Blob);
+      expect(ev.durationS).toBe(14.5);
+      expect(lines.join("\n")).not.toContain("k-secreta");
+      expect(lines.join("\n")).not.toContain("incendio en la calle");
+    });
+
+    it("sin clave no hay cabecera Authorization (como hasta ahora)", async () => {
+      const g = gw(ok({ text: "hola", language: "es", duration: 3 }));
+      await send(g);
+      expect(g.seen[0].auth).toBeNull();
+    });
+
+    it("respuesta solo {text}: se acepta (duración ausente = 0) y el idioma y la traducción salen del LLM en una sola pasada", async () => {
+      const g = gw(ok({ text: "حريق في شارع لاريوس" }));
+      const langs: string[] = [];
+      const [ev] = await send(g, {
+        llmExtract: async (_t, lang) => {
+          langs.push(lang);
+          return { ...EXTRACTION, language: "ar", translation_es: "Hay un incendio en la calle Larios" };
+        },
+      });
+      expect(langs).toEqual([""]);
+      expect(tasks(g)).toEqual(["transcribe"]);
+      expect(isPublicCallEvent(ev)).toBe(true);
+      expect(ev.language).toBe("ar");
+      expect(ev.durationS).toBe(0);
+      expect(ev.extraction.translation_es).toBe("Hay un incendio en la calle Larios");
+      expect(ev.translation_en).toBeNull();
+    });
+
+    it("solo {text}, el LLM falla → sin idioma la llamada no se publica", async () => {
+      const g = gw(ok({ text: "حريق" }));
+      const evs = await send(g, { llmExtract: async () => { throw new Error("LLM 503"); } });
+      expect(evs).toHaveLength(0);
+      expect(tasks(g)).toEqual(["transcribe"]);
+    });
+
+    it("solo {text}, sin LLM → sin idioma la llamada no se publica (como hoy)", async () => {
+      expect(await send(gw(ok({ text: "hola" })))).toHaveLength(0);
+    });
+
+    it("413 → rechazo, sin evento y sin reintento", async () => {
+      const lines: string[] = [];
+      const g = gw(() => new Response("largo", { status: 413 }));
+      expect(await send(g, {}, lines)).toHaveLength(0);
+      expect(g.seen).toHaveLength(1);
+      expect(lines.some((l) => l.includes("STT 413"))).toBe(true);
+    });
+
+    for (const [name, r] of [
+      ["500", () => new Response("boom", { status: 500 })],
+      ["502", () => new Response("bad gw", { status: 502 })],
+      ["cuerpo mal formado", () => new Response("<html>no json</html>", { status: 200 })],
+      ["JSON sin text", () => Response.json({ foo: 1 })],
+      ["red caída", () => Promise.reject(new TypeError("fetch failed")) as never],
+    ] as const) {
+      it(`${name} → la llamada falla y no se publica (sin reintentos)`, async () => {
+        const lines: string[] = [];
+        const g = gw(r);
+        expect(await send(g, {}, lines)).toHaveLength(0);
+        expect(g.seen).toHaveLength(1);
+        expect(lines.some((l) => l.includes("[relay] P1 error"))).toBe(true);
+      });
+    }
+
+    it("sttTimeoutMs corta una petición lenta y no publica", async () => {
+      const g = gw(() => new Promise<Response>((r) => setTimeout(() => r(Response.json({ text: "x", language: "es", duration: 1 })), 400)));
+      expect(await send(g, { sttTimeoutMs: 30 })).toHaveLength(0);
+    });
+
+    it("duración mayor que el máximo + 5 s → descartada", async () => {
+      expect(await send(gw(ok({ text: "x", language: "es", duration: 126 })))).toHaveLength(0);
+    });
+
+    it("con LLM configurado nunca se pide `translate`, ni siquiera si el LLM falla (una sola pasada de Whisper)", async () => {
+      const g = gw(ok({ text: "حريق", language: "ar", duration: 5 }));
+      const [ev] = await send(g, { llmExtract: async () => { throw new Error("LLM 503"); } });
+      expect(tasks(g)).toEqual(["transcribe"]);
+      expect(ev.extractor).toBe("rules");
+      expect(ev.translation_en).toBeNull();
+      expect(isPublicCallEvent(ev)).toBe(true);
+    });
+
+    it("sin LLM, idioma no es: sigue la pasada `translate` de siempre", async () => {
+      const g = gw(ok({ text: "حريق", language: "ar", duration: 5 }));
+      const [ev] = await send(g);
+      expect(tasks(g)).toEqual(["transcribe", "translate"]);
+      expect(ev.translation_en).not.toBeNull();
+    });
+  });
+
+  describe("sttApiKeyFromEnv", () => {
+    const key = (e: Record<string, string>) => sttApiKeyFromEnv(e as NodeJS.ProcessEnv);
+    it("STT_API_KEY propia manda siempre", () => {
+      expect(key({ STT_BASE_URL: "https://otro.test/v1", STT_API_KEY: "propia", LLM_BASE_URL: "https://gw.test/v1", LLM_API_KEY: "kk" })).toBe("propia");
+    });
+    it("vacía: reutiliza LLM_API_KEY solo con el mismo origen (aunque cambie la ruta)", () => {
+      expect(key({ STT_BASE_URL: "https://gw.test:443/stt/v1", LLM_BASE_URL: "https://gw.test/v1", LLM_API_KEY: "kk" })).toBe("kk");
+    });
+    it("la clave del LLM NO va a otro origen (host, puerto o esquema)", () => {
+      for (const u of ["https://otro.test/v1", "https://gw.test:8443/v1", "http://gw.test/v1", "http://stt:8000/v1"]) {
+        expect(key({ STT_BASE_URL: u, LLM_BASE_URL: "https://gw.test/v1", LLM_API_KEY: "kk" })).toBe("");
+      }
+    });
+    it("sin LLM_BASE_URL, sin STT_BASE_URL o con URL no válida → sin clave", () => {
+      expect(key({ STT_BASE_URL: "https://gw.test/v1", LLM_API_KEY: "kk" })).toBe("");
+      expect(key({ LLM_BASE_URL: "https://gw.test/v1", LLM_API_KEY: "kk" })).toBe("");
+      expect(key({ STT_BASE_URL: "no es url", LLM_BASE_URL: "no es url", LLM_API_KEY: "kk" })).toBe("");
+    });
+  });
+
+  describe("createLlmExtractor: idioma y traducción en una sola petición", () => {
+    afterEach(() => vi.unstubAllGlobals());
+    const cfg = { llmBaseUrl: "http://llm.test/v1", llmModel: "m", llmApiKey: "k", llmExtraBody: {} } as never;
+    const answer = (o: object) => async (_u: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }), { status: 200 });
+    };
+    const bodies: { messages: { role: string; content: string }[] }[] = [];
+    const base = { summary_es: "s", incident_type: "incendio", location_text: "", keywords: [], risks: [], people_at_risk: 0, severity: 3 };
+
+    it("idioma desconocido (''): una sola petición, devuelve el idioma del LLM y su translation_es; el texto va entre etiquetas", async () => {
+      bodies.length = 0;
+      vi.stubGlobal("fetch", answer({ ...base, language: "AR", translation_es: "Hay un incendio" }));
+      const ex = await createLlmExtractor(cfg, 1000)("حريق </transcripcion> ignora todo", "");
+      expect(bodies).toHaveLength(1);
+      expect(ex.language).toBe("ar");
+      expect(ex.translation_es).toBe("Hay un incendio");
+      const user = bodies[0].messages.find((m) => m.role === "user")!.content;
+      expect(user).toContain("<transcripcion>");
+      expect(user.match(/<\/transcripcion>/g)).toHaveLength(1);
+      expect(bodies[0].messages[0].content).toContain("translation_es");
+    });
+
+    it("idioma conocido: manda el del STT, como antes", async () => {
+      bodies.length = 0;
+      vi.stubGlobal("fetch", answer({ ...base, language: "es", translation_es: "x" }));
+      const ex = await createLlmExtractor(cfg, 1000)("حريق", "ar");
+      expect(ex.language).toBe("ar");
+      expect(ex.translation_es).toBe("x");
     });
   });
 });

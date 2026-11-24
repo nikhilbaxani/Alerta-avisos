@@ -54,6 +54,10 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--max-seconds", type=float, default=float(os.environ.get("MAX_CALL_SECONDS") or 120),
                     help="rechaza (413) audio más largo que esto + 5 s sin transcribirlo")
+    ap.add_argument("--beam-size", type=int, default=int(os.environ.get("STT_BEAM_SIZE") or 5),
+                    help="tamaño del haz de la decodificación (5 = valor de siempre; 1 = más rápido, algo menos preciso)")
+    ap.add_argument("--cpu-threads", type=int, default=int(os.environ.get("STT_CPU_THREADS") or 0),
+                    help="hilos de CPU de CTranslate2 (0 = valor por defecto de la biblioteca)")
     ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 solo dentro de una red interna de Docker")
     args = ap.parse_args()
 
@@ -63,7 +67,7 @@ def main() -> None:
 
     compute = args.compute_type or ("float16" if args.device == "cuda" else "int8")
     t0 = time.time()
-    model = WhisperModel(args.model, device=args.device, compute_type=compute)
+    model = WhisperModel(args.model, device=args.device, compute_type=compute, cpu_threads=args.cpu_threads)
     print(f"[stt] modelo {args.model} cargado en {args.device}/{compute} en {time.time() - t0:.1f}s", flush=True)
     lock = threading.Lock()  # un solo modelo en GPU: transcripciones en serie
 
@@ -114,7 +118,7 @@ def main() -> None:
                 return
             try:
                 with lock:
-                    segments, info = model.transcribe(audio, language=lang, task=task, beam_size=5)
+                    segments, info = model.transcribe(audio, language=lang, task=task, beam_size=args.beam_size)
                     text = " ".join(s.text.strip() for s in segments).strip()
             except Exception as e:  # audio corrupto o formato no soportado
                 self._json(500, {"error": f"no se pudo transcribir: {e}"})

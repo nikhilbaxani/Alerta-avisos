@@ -48,8 +48,29 @@ export function createLlmExtractor(cfg: AppConfig, timeoutMs = DEFAULT_LLM_TIMEO
       timeoutMs,
     );
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
-    return sanitizeExtraction({ ...(raw as Record<string, unknown>), language }, language);
+    // Con idioma conocido manda el del STT; con "" se queda el que detecta el LLM en esta misma petición.
+    return sanitizeExtraction(language ? { ...(raw as Record<string, unknown>), language } : raw, language);
   };
+}
+
+const originOf = (u: string): string | null => {
+  try {
+    return new URL(u).origin;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Clave del STT: STT_API_KEY; si está vacía, la del LLM solo cuando STT_BASE_URL tiene el mismo origen que
+ * LLM_BASE_URL (el STT del sobremesa va tras el mismo gateway). A cualquier otro origen no se envía ninguna clave.
+ */
+export function sttApiKeyFromEnv(env: NodeJS.ProcessEnv): string {
+  const own = env.STT_API_KEY?.trim() ?? "";
+  if (own) return own;
+  const sttOrigin = originOf(env.STT_BASE_URL?.trim() ?? "");
+  const llmOrigin = originOf(env.LLM_BASE_URL?.trim() ?? "");
+  return sttOrigin && sttOrigin === llmOrigin ? (env.LLM_API_KEY?.trim() ?? "") : "";
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -109,6 +130,10 @@ export function isLocalOrPrivate(ip: string): boolean {
 export interface RelayOptions {
   sttBaseUrl: string;
   sttModel?: string;
+  /** Clave del STT (Authorization: Bearer). Vacía → sin cabecera. */
+  sttApiKey?: string;
+  /** Tiempo máximo de una petición al STT (ms). */
+  sttTimeoutMs?: number;
   maxCallSeconds?: number;
   /** Token del operador para /events. Vacío → /events responde 503. */
   token?: string;
@@ -251,11 +276,15 @@ export function createRelay(opts: RelayOptions) {
     form.set("file", file, "llamada");
     form.set("model", opts.sttModel ?? "");
     form.set("task", task);
-    const r = await doFetch(sttUrl, { method: "POST", body: form, signal: AbortSignal.timeout(180_000) });
+    // Un gateway puede devolver solo {text}; con verbose_json suele añadir language y duration.
+    form.set("response_format", "verbose_json");
+    const headers: Record<string, string> = opts.sttApiKey ? { Authorization: `Bearer ${opts.sttApiKey}` } : {};
+    const r = await doFetch(sttUrl, { method: "POST", body: form, headers, signal: AbortSignal.timeout(opts.sttTimeoutMs ?? 180_000) });
     if (!r.ok) throw new SttError(`STT ${task} respondió ${r.status}`, r.status);
     const j = (await r.json()) as { text?: unknown; language?: unknown; duration?: unknown };
     if (typeof j.text !== "string") throw new Error("STT sin texto");
-    return { text: j.text.trim(), language: String(j.language ?? ""), duration: Number(j.duration ?? 0) };
+    const dur = Number(j.duration ?? 0);
+    return { text: j.text.trim(), language: String(j.language ?? ""), duration: dur };
   }
 
   async function processCall(id: string, file: Blob, receivedAt: number) {
@@ -271,7 +300,9 @@ export function createRelay(opts: RelayOptions) {
         log(`[relay] ${id} descartada: sin voz reconocible`);
         return;
       }
-      if (!/^[a-z]{2}$/.test(first.language)) {
+      // Sin idioma válido del STT, solo el LLM puede aportarlo (en la misma petición de extracción).
+      let language = /^[a-z]{2}$/.test(first.language) ? first.language : "";
+      if (!language && !opts.llmExtract) {
         log(`[relay] ${id} descartada: idioma no reconocido`);
         return;
       }
@@ -283,9 +314,10 @@ export function createRelay(opts: RelayOptions) {
 
       if (opts.llmExtract) {
         try {
-          const raw = await withTimeout(opts.llmExtract(transcript, first.language), llmTimeoutMs);
+          const raw = await withTimeout(opts.llmExtract(transcript, language), llmTimeoutMs);
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
-          const sanitized = sanitizeExtraction({ ...raw, language: first.language }, first.language);
+          const sanitized = sanitizeExtraction(language ? { ...raw, language } : raw, language);
+          if (!/^[a-z]{2}$/.test(sanitized.language)) throw new Error("idioma no detectado");
           if (sanitized.translation_es) sanitized.translation_es = sanitized.translation_es.slice(0, MAX_TRANSCRIPT_CHARS);
           const hit = (sanitized.location_text ? locate(sanitized.location_text) : null) ?? locate(transcript);
           if (hit) {
@@ -295,6 +327,7 @@ export function createRelay(opts: RelayOptions) {
             location = { place: null, known: false, aml: { ...UNKNOWN_LOCATION_AML } };
           }
           extraction = sanitized;
+          language = sanitized.language;
           extractor = "llm";
         } catch (e) {
           const reason = (e instanceof Error ? e.message : "desconocido").slice(0, 120);
@@ -303,7 +336,13 @@ export function createRelay(opts: RelayOptions) {
       }
 
       if (!extraction || !location) {
-        if (first.language !== "es") {
+        if (!language) {
+          log(`[relay] ${id} descartada: idioma no reconocido`);
+          return;
+        }
+        // Una sola pasada de Whisper por llamada: con LLM configurado nunca se pide `translate` (si el LLM falla,
+        // las reglas trabajan con la transcripción). Sin LLM, como siempre.
+        if (language !== "es" && !opts.llmExtract) {
           // Si la traducción falla o tarda demasiado, la llamada sigue: las reglas usan la transcripción.
           try {
             translation = (await stt(file, "translate")).text.slice(0, MAX_TRANSCRIPT_CHARS) || null;
@@ -311,7 +350,7 @@ export function createRelay(opts: RelayOptions) {
             log(`[relay] ${id} sin traducción: ${e instanceof Error ? e.message : "desconocido"}`);
           }
         }
-        const res = await extract({ transcript, language: first.language, translation_en: translation });
+        const res = await extract({ transcript, language, translation_en: translation });
         extraction = res.extraction;
         location = res.location;
         extractor = "rules";
@@ -321,7 +360,7 @@ export function createRelay(opts: RelayOptions) {
         id,
         receivedAt: new Date(receivedAt).toISOString(),
         durationS: first.duration,
-        language: first.language,
+        language,
         transcript,
         translation_en: translation,
         extraction,
@@ -334,7 +373,7 @@ export function createRelay(opts: RelayOptions) {
         return;
       }
       publish(ev);
-      log(`[relay] ${id} publicada (${first.language}, ${Math.round(first.duration)} s, stt ${sttMs} ms, ${extractor})`);
+      log(`[relay] ${id} publicada (${language}, ${Math.round(first.duration)} s, stt ${sttMs} ms, ${extractor})`);
     } catch (e) {
       if (e instanceof SttError && e.status === 413) log(`[relay] ${id} descartada: audio demasiado largo (STT 413)`);
       else log(`[relay] ${id} error: ${e instanceof Error ? e.message : "desconocido"}`);
@@ -464,6 +503,8 @@ export function start() {
   const relay = createRelay({
     sttBaseUrl: process.env.STT_BASE_URL ?? "http://stt:8000/v1",
     sttModel: process.env.STT_MODEL ?? "Systran/faster-whisper-small",
+    sttApiKey: sttApiKeyFromEnv(process.env),
+    sttTimeoutMs: envInt("STT_TIMEOUT_MS", 180_000),
     maxCallSeconds: envInt("MAX_CALL_SECONDS", DEFAULT_MAX_CALL_SECONDS),
     token: process.env.RELAY_TOKEN,
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),

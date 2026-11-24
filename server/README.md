@@ -109,6 +109,12 @@ Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/rel
 | `LLM_MODEL` | `qwen2.5:14b-instruct` | Nombre del modelo en `LLM_BASE_URL`. |
 | `LLM_API_KEY` | — | Clave del LLM (solo en `server/relay.env`, nunca en el repositorio). |
 | `LLM_TIMEOUT_MS` | `20000` | Tiempo máximo de espera del LLM antes de pasar a reglas (ms). |
+| `COMPOSE_PROFILES` | `local-stt` (en el ejemplo) | Perfil que levanta el Whisper local `stt`. Quítalo si usas el Whisper del sobremesa. |
+| `STT_BASE_URL` | `http://stt:8000/v1` | STT del relay (OpenAI-compatible). Con el sobremesa: la URL `…/v1` del gateway. |
+| `STT_API_KEY` | — | Clave del STT (`Authorization: Bearer`). Vacío → se reutiliza `LLM_API_KEY` **solo si** `STT_BASE_URL` tiene el mismo origen (esquema + host + puerto) que `LLM_BASE_URL`; a otro host no se envía ninguna clave. Sin clave, sin cabecera. |
+| `STT_TIMEOUT_MS` | `180000` | Tiempo máximo de cada petición al STT. |
+| `STT_LOCAL_MODEL` | `STT_MODEL` | Modelo del `stt` local si el relay usa otro `STT_MODEL` (p. ej. `whisper` del gateway). |
+| `STT_BEAM_SIZE` / `STT_CPU_THREADS` | 5 / 0 | Ajuste de velocidad de `scripts/stt_server.py` (local o sobremesa): beam 1 es más rápido y algo menos preciso; hilos 0 = valor de la biblioteca. |
 | `LLM_EXTRA_BODY` | — | Objeto JSON que se añade a la petición (no puede cambiar modelo, mensajes ni temperatura). Con modelos que razonan: `{"chat_template_kwargs":{"enable_thinking":false}}` (con `strata`, de ~65 s a ~5 s por llamada). |
 
 El relay (`server/relay.ts`) lee además `PORT` (8080), `HOST` (dirección de escucha; por defecto `0.0.0.0` para Docker, usa `127.0.0.1` en local), `STT_BASE_URL` y `TRUST_PROXY=1` (compose ya lo activa): la IP del cliente se toma de `X-Forwarded-For` **recorriéndolo desde la derecha** y saltando direcciones locales y privadas (loopback, RFC1918, 100.64.0.0/10 de Tailscale, `fc00::/7`, `fe80::/10`); lo que queda a la izquierda de la primera dirección pública lo controla el cliente y se ignora. Si todas son locales se usa la dirección del socket. Las direcciones IPv6 se limitan por prefijo /64.
@@ -117,9 +123,29 @@ El relay (`server/relay.ts`) lee además `PORT` (8080), `HOST` (dirección de es
 
 Si defines `LLM_BASE_URL`, `LLM_MODEL` y `LLM_API_KEY` en `server/relay.env`, tras la transcripción de Whisper el relay extrae los datos y traduce al castellano con el LLM del equipo (usando `EXTRACTION_SYSTEM` y `sanitizeExtraction` para mantener los vocabularios cerrados y el suelo de gravedad), geolocaliza con el nomenclátor (`lib/gazetteer.ts`) y se salta la segunda pasada `translate` de Whisper (ahorra CPU). La consola muestra «LLM del equipo» en el motor del evento.
 
-- **Respaldo automático:** si `LLM_BASE_URL` está vacío, o si el LLM falla, devuelve una respuesta inválida o tarda más de `LLM_TIMEOUT_MS` (20 s por defecto), el relay registra el aviso y pasa al extractor de reglas (`lib/rules.ts`, con la pasada `translate` de Whisper si el idioma no es castellano).
+- **Respaldo automático:** si `LLM_BASE_URL` está vacío, o si el LLM falla, devuelve una respuesta inválida o tarda más de `LLM_TIMEOUT_MS` (20 s por defecto), el relay registra el aviso y pasa al extractor de reglas (`lib/rules.ts`; con LLM configurado no hay pasada `translate`, solo la transcripción; sin LLM, con la pasada `translate` de Whisper si el idioma no es castellano).
 - **Aislamiento intacto:** el relay llega al LLM por su URL pública HTTPS (p. ej. Tailscale Funnel del sobremesa), sin acceso a la tailnet; la regla `server/tailnet-guard.nft` no cambia.
 - **Clave:** guárdala solo en `server/relay.env` (fuera de git) y **rótala tras el evento**.
+
+## Whisper grande en el sobremesa (opcional)
+
+Whisper `base` en 1 vCPU transcribe y, sobre todo, «traduce» (solo a inglés) mal. Con `STT_BASE_URL` apuntando al gateway del equipo y `STT_MODEL=whisper`, el relay transcribe con `large-v3-turbo` (CPU) en el sobremesa, tras el mismo gateway y la misma clave que el LLM: `POST {gateway}/v1/audio/transcriptions` (multipart `file`, `model`, `task`, `response_format=verbose_json`, `Authorization: Bearer …`). Hay **un único STT**: sin respaldo en el `stt` local (así no se suma latencia ni complejidad).
+
+```bash
+# server/relay.env en el VPS (placeholders; la clave real solo ahí)
+STT_BASE_URL=https://<gateway>/v1
+STT_MODEL=whisper
+# COMPOSE_PROFILES=local-stt   ← bórrala o coméntala: el Whisper local ya no se levanta
+```
+
+- **Una sola pasada de Whisper por llamada.** Con LLM configurado el relay nunca pide `translate`: la traducción al castellano (y el idioma, si el gateway solo devuelve `{"text": …}`) salen del LLM en la misma petición de extracción. Si el LLM falla, la llamada se publica con las reglas y sin traducción (no se hace una segunda pasada). Sin LLM, todo sigue como siempre: reglas + pasada `translate` del STT.
+- **Fallos del STT:** 413 = audio demasiado largo (descartada); cualquier otro error (red, tiempo, estado no 2xx, cuerpo mal formado) → la llamada no se publica y se registra el error. Sin `language` ni del STT ni del LLM, la llamada se descarta; sin `duration` se acepta.
+- **Límite de duración (S4):** el STT del sobremesa debe ser `scripts/stt_server.py` arrancado con **el mismo `MAX_CALL_SECONDS` que el VPS** (120): rechaza con 413 audio de más de `MAX_CALL_SECONDS + 5` s antes de transcribir, y un no-2xx nunca publica una llamada. Si el gateway reescribe el 413 por otro error, la llamada también se descarta.
+- **Velocidad:** `scripts/stt_server.py` acepta `--beam-size` (`STT_BEAM_SIZE`, 5 por defecto) y `--cpu-threads` (`STT_CPU_THREADS`, 0 = biblioteca); beam 1 acelera a costa de algo de precisión. Mide antes de la demo.
+- **Perfil `local-stt`:** el servicio `stt` solo se levanta con `COMPOSE_PROFILES=local-stt` (ya en `relay.env.example`, así el despliegue sin sobremesa funciona igual que antes). Un `relay.env` anterior que no tenga esa línea deja de levantar el `stt` local: añádela, o configura el sobremesa. Requiere Docker Compose ≥ 2.20 (`depends_on … required: false`).
+- **Aislamiento intacto:** el VPS llega al sobremesa solo por su URL pública HTTPS; `server/tailnet-guard.nft` no cambia.
+- **Latencia (dos muestras, no un benchmark), medida directamente en el sobremesa:** 14,5 s de castellano → 11,2 s; 18,1 s de árabe → 11,7 s (≈0,7× tiempo real), con texto e idioma correctos. Suma la red y el gateway.
+- **Privacidad:** el audio de las llamadas del público también se envía por HTTPS al sobremesa del equipo, donde no se guarda en disco. La página `/llamar` lo dice en el texto de consentimiento.
 
 ## Límites del endpoint público
 
@@ -135,7 +161,7 @@ Estimación, **no medida**: `small` con `int8` en 2–4 vCPU tarda del orden de 
 - Los registros no contienen texto de las llamadas ni IPs completas (solo un hash corto).
 - Se conserva en memoria el último medio centenar de eventos (texto y extracción) para reenviarlos al conectar; se pierden al reiniciar.
 - La transcripción es texto no confiable: no dispara acciones y la consola la muestra como texto plano. Tras aceptarla, el operador decide.
-- Los datos van al VPS del equipo; el modelo Whisper se ejecuta allí, sin APIs externas (solo la descarga inicial del modelo).
+- Los datos van al VPS del equipo; el modelo Whisper se ejecuta allí, sin APIs externas (solo la descarga inicial del modelo). Con el STT principal activado, el audio se envía además por HTTPS al sobremesa del equipo (ver arriba).
 
 ## Desarrollo local
 

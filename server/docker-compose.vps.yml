@@ -1,6 +1,8 @@
 # Despliegue en el VPS (desde la raíz del repo):
 #   docker compose -f server/docker-compose.vps.yml --env-file server/relay.env up -d --build
 # Todo en un solo origen: Tailscale Funnel → web (Caddy, 127.0.0.1:8080) → /relay/* → relay → stt.
+# `stt` (Whisper local) está en el perfil `local-stt`: relay.env.example lo activa con COMPOSE_PROFILES=local-stt.
+# Si el relay usa el Whisper del sobremesa (STT_BASE_URL del gateway), quita esa línea y no se levanta.
 # Todos comparten la red por defecto de compose (stt necesita salida para bajar el modelo).
 # Solo `web` publica un puerto, y solo en loopback: nada escucha en la IP pública del VPS.
 # (Whisper necesita salida a internet solo la primera vez, para descargar el modelo.)
@@ -29,7 +31,10 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8080"
-      STT_BASE_URL: http://stt:8000/v1
+      STT_BASE_URL: ${STT_BASE_URL:-http://stt:8000/v1}
+      # Clave del STT (vacía → la del LLM solo si STT_BASE_URL tiene el mismo origen que LLM_BASE_URL) y tiempo máximo (ms).
+      STT_API_KEY: ${STT_API_KEY:-}
+      STT_TIMEOUT_MS: ${STT_TIMEOUT_MS:-180000}
       STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
       MAX_CALL_SECONDS: ${MAX_CALL_SECONDS:-120}
       RELAY_TOKEN: ${RELAY_TOKEN:?define RELAY_TOKEN en server/relay.env}
@@ -46,16 +51,21 @@ services:
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-20000}
       LLM_EXTRA_BODY: ${LLM_EXTRA_BODY:-}
     depends_on:
-      - stt
+      stt:
+        condition: service_started
+        required: false # sin el perfil local-stt no existe: el relay usa el STT de STT_BASE_URL
 
   stt:
+    profiles: ["local-stt"]
     build:
       context: ..
       dockerfile: server/Dockerfile.stt
     restart: unless-stopped
     environment:
-      STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+      STT_MODEL: ${STT_LOCAL_MODEL:-${STT_MODEL:-Systran/faster-whisper-small}}
       MAX_CALL_SECONDS: ${MAX_CALL_SECONDS:-120} # rechaza (413) audio > máximo + 5 s sin transcribirlo
+      STT_BEAM_SIZE: ${STT_BEAM_SIZE:-5}
+      STT_CPU_THREADS: ${STT_CPU_THREADS:-0}
     volumes:
       - whisper_models:/models
 

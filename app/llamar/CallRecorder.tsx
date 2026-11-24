@@ -119,7 +119,7 @@ export default function CallRecorder() {
 
       <label className="call-consent">
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} disabled={phase !== "idle" && phase !== "done"} />
-        <span>Acepto que mi audio se envíe al servidor del equipo solo para transcribirlo. No se guarda y no se recoge mi teléfono ni mi nombre.</span>
+        <span>Acepto que mi audio se envíe a los servidores del equipo (el VPS y, para transcribirlo mejor, el ordenador del equipo, por HTTPS) solo para transcribirlo. No se guarda y no se recoge mi teléfono ni mi nombre.</span>
       </label>
 
       <div className="call-controls">

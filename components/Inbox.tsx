@@ -176,6 +176,7 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
                   <p className="inbox-risks">{ev.extraction.risks.map((r) => RISK_LABELS[r]).join(" · ")}</p>
                 )}
                 <p className="inbox-text">{ev.transcript}</p>
+                {ev.extraction.translation_es && <p className="inbox-text note"><b>ES:</b> {ev.extraction.translation_es}</p>}
                 {ev.translation_en && <p className="inbox-text note"><b>EN:</b> {ev.translation_en}</p>}
                 <div className="inbox-actions">
                   <button className="btn btn-dark btn-sm" onClick={() => accept(ev.id)} aria-label={`Aceptar llamada ${ev.id}`}>Aceptar</button>
