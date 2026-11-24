@@ -11,6 +11,8 @@ COPY data ./data
 COPY assets ./assets
 # Audio de las llamadas del escenario (X10): se sirve como /audio/<id>.mp3.
 COPY public ./public
+# El logo de la barra superior se importa desde docs/marca (components/TopBar.tsx).
+COPY docs/marca ./docs/marca
 # Un solo origen: el relay cuelga de /relay (Caddy). La duración máxima debe coincidir con MAX_CALL_SECONDS del relay.
 ARG MAX_CALL_SECONDS=120
 ENV GITHUB_PAGES=1 \
