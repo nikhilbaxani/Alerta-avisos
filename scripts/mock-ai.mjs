@@ -27,6 +27,12 @@ http
       if (req.url.endsWith("/chat/completions")) {
         const j = JSON.parse(body);
         const sys = j.messages[0].content;
+        if (Array.isArray(j.tools)) {
+          // Planificador (function calling): una propuesta plausible y otra que el código debe descartar.
+          const call = (name, args) => ({ id: `call_${name}`, type: "function", function: { name, arguments: JSON.stringify(args) } });
+          const tool_calls = [call("proponer_recursos", { servicio: "policia_local", riesgos: ["vida"] }), call("borrar_incidente", {})];
+          return send({ choices: [{ message: { role: "assistant", content: null, tool_calls } }] });
+        }
         let content;
         if (sys.startsWith("Traduce")) content = "ترجمة تجريبية";
         else if (sys.includes('"same"')) content = JSON.stringify({ same: false, confidence: 0.7, reason: "Parecen dos vehículos distintos." });

@@ -76,3 +76,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Verificación: `npm run lint`, `npm run build`, 33 tests, `npm run eval` (7 incidentes, 0 fusiones incorrectas, 2 preguntas, E1 2.º) y `eval:apagon` en verde; `node scripts/e2e.mjs` OK (adaptado a los nuevos contadores); `node scripts/capturas.mjs` sin errores de consola ni scroll horizontal en móvil; capturas `docs/capturas/consola-*.png` y `movil-*.png` revisadas. Exportación de GitHub Pages probada en una copia: las imágenes salen con la subruta.
 - Llamada en directo (`scripts/live-test.mjs` con `mock-ai.mjs`) OK con el botón renombrado a «Grabar».
 - Pendiente: probar la interfaz nueva con la IA real en GPU.
+
+## 2026-11-24T18:30 · X05 · hecha
+- Qué se hizo: `lib/actions.ts` (herramientas `proponer_recursos`, `sms_al_llamante` y `avisar_distribuidora`; política en código; planificador determinista con `PlanInput` sin texto libre; estados y conectores simulados con acuse; traza), `lib/plan.ts` y `POST /api/plan` (function calling con IA local, validado; sin LLM, reglas), `lib/agent.ts` y `npm run agente` (traza percepción → razonamiento → herramienta → aprobación → resultado).
+- Verificación (orquestador): lint OK; 225 tests; `eval` 7/0/2 y `eval:apagon` 6/0/1, iguales que antes; `npm run agente` determinista (DANA: 20 acciones, 2 automáticas; apagón: 15, 4 automáticas); build OK; e2e en modo simulado OK; `/api/plan` con cuerpo inválido → 400 en castellano. Build estático de GitHub Pages reproducido sin `app/api` y desde cero: pasa (Next no comprueba los tipos de `tests/`, aunque `tsc` sí fallaría allí). Ninguna interfaz, `data/` ni frase existente tocada.
+- Sin probar: function calling con qwen2.5 real (IA local parada); probado con fetch simulado y `mock-ai`.
+- Decisiones: 6 entradas X05 en DECISIONES (SMS solo a quien no habla castellano, destino de la distribuidora por canal, provisionales sin acciones, lo que propone el modelo siempre pasa por el operador…).
+- Siguiente: X06 (X04b espera a la IA local).

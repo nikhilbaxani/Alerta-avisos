@@ -68,7 +68,7 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 - [!] X04b Recuperar la agrupación en vivo tras X04 · agente: `backend-ia` · deps: X04 · **necesita la IA local** (bloqueada: Ollama y Whisper parados desde las 17:12)
   - Con X04 la DANA en vivo pasa de 4 a 11 preguntas y el apagón de 7 a 8 incidentes (0 fusiones incorrectas). Ajustar solo el prompt (p. ej. advertencia de seguridad al principio de `EXTRACTION_SYSTEM` y la regla de no inventar al final) sin quitar el delimitador ni el suelo.
   - Verificación: `eval --live` de los dos escenarios al menos igual que la línea base de DECISIONES («X04: medición en vivo»), 0 fusiones incorrectas, tests de `untrusted` en verde.
-- [ ] X05 Agente de acciones: `proponer_recursos`, `sms_al_llamante`, `avisar_distribuidora` + traza (MEMORIA §16.2) · agente: `backend-ia` · deps: X04
+- [x] X05 Agente de acciones: `proponer_recursos`, `sms_al_llamante`, `avisar_distribuidora` + traza (MEMORIA §16.2) · agente: `backend-ia` · deps: X04
   - `lib/actions.ts` puro: tipos, tabla de política en código, planificador determinista (solo datos estructurados), estados y conectores simulados con acuse. Tests de política, de reglas por herramienta y de que no hay duplicados.
   - `POST /api/plan` con IA local (*function calling*, solo datos estructurados, validación de herramienta y argumentos, las reglas nunca se quitan); sin LLM devuelve el plan determinista. Test con `scripts/mock-ai.mjs` o el handler.
   - `npm run agente [-- --escenario apagon] [-- --json archivo]`: reproduce el escenario con el motor real (operador simulado que acierta en la zona gris y aprueba las acciones de operador) e imprime la traza percepción → razonamiento → herramienta → aprobación → resultado.

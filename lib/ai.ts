@@ -55,6 +55,43 @@ export async function chatText(cfg: AppConfig, messages: Msg[], timeoutMs = 30_0
   return (await chatRaw(cfg, messages, false, timeoutMs)).trim();
 }
 
+export interface ToolDefinition {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+/** Llamada a herramienta tal como la devuelve el modelo: nada está validado todavía. */
+export interface RawToolCall {
+  name: unknown;
+  /** Texto JSON (OpenAI) u objeto ya parseado (algunas versiones de Ollama). */
+  arguments: unknown;
+}
+
+/**
+ * Function calling (API compatible con OpenAI; Ollama lo admite con qwen2.5). Devuelve las llamadas
+ * a herramientas sin validar: quien llama decide qué se acepta. Sin reintento: si falla o tarda más
+ * de `timeoutMs`, lanza y el planificador se queda con las reglas.
+ */
+export async function chatTools(cfg: AppConfig, messages: Msg[], tools: ToolDefinition[], timeoutMs = 30_000): Promise<RawToolCall[]> {
+  const res = await fetchTimeout(
+    `${cfg.llmBaseUrl}/chat/completions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.llmApiKey}` },
+      body: JSON.stringify({ model: cfg.llmModel, messages, tools, tool_choice: "auto", temperature: 0 }),
+    },
+    timeoutMs,
+  );
+  if (!res.ok) throw new Error(`LLM ${res.status}`);
+  const data = (await res.json()) as { choices?: { message?: { tool_calls?: unknown } }[] };
+  const calls = data.choices?.[0]?.message?.tool_calls;
+  if (!Array.isArray(calls)) return [];
+  return calls.map((c) => {
+    const fn = (c as { function?: { name?: unknown; arguments?: unknown } } | null)?.function;
+    return { name: fn?.name, arguments: fn?.arguments };
+  });
+}
+
 export async function transcribe(cfg: AppConfig, audio: Blob, filename = "audio.wav", lang?: string): Promise<string> {
   const form = new FormData();
   form.append("file", audio, filename);

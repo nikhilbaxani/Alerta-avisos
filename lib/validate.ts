@@ -1,4 +1,5 @@
 import { findCall } from "@/data/scenarios";
+import type { PlanCall, PlanInput } from "@/lib/actions";
 import { LANG_NAMES } from "@/lib/labels";
 import type { ProcessInput } from "@/lib/process";
 import { INCIDENT_TYPES, RISK_TAGS } from "@/lib/types";
@@ -35,6 +36,12 @@ export const LIMITS = {
   audioBytes: 10 * 1024 * 1024,
   /** Margen del multipart (cabeceras y separadores) sobre el audio. */
   formOverheadBytes: 64 * 1024,
+  /** Cuerpo JSON de /api/plan: un incidente con sus llamadas (el mayor del escenario ocupa unos 2 KB). */
+  planBodyBytes: 128 * 1024,
+  /** Llamadas de un incidente en /api/plan. */
+  planCalls: 200,
+  /** Personas en peligro declaradas en un incidente. */
+  planPeople: 10_000,
 } as const;
 
 export type Validated<T> = { ok: true; value: T } | { ok: false; status: 400 | 413; error: string };
@@ -174,5 +181,61 @@ export function validateAudio(file: unknown): Validated<Blob> {
     // MediaRecorder manda audio/webm, audio/ogg o audio/mp4 (Safari); algunos navegadores lo marcan como vídeo.
     if (f.type && !/^(audio|video)\//.test(f.type) && f.type !== "application/octet-stream") bad("El archivo no es audio");
     return f;
+  });
+}
+
+/** Idioma ISO 639-1 en minúsculas. */
+const LANG = /^[a-z]{2}$/;
+/** Teléfono enmascarado como en el escenario: «+34 6•• ••• 412». Sin letras: no es un canal de texto. */
+const MASKED_PHONE = /^\+?[0-9•* ]{1,24}$/u;
+
+function int(v: unknown, name: string, min: number, max: number): number {
+  const n = num(v, name, min, max);
+  if (!Number.isInteger(n)) bad(`${field(name)} debe ser un número entero`);
+  return n;
+}
+
+function risk(x: unknown, n: string): RiskTag {
+  if (!RISK_TAGS.includes(x as RiskTag)) bad(`${field(n)} no es un riesgo válido`);
+  return x as RiskTag;
+}
+
+function planCall(v: unknown, name: string): PlanCall {
+  if (!isObject(v)) bad(`${field(name)} debe ser una llamada con id, lang, phone y risks`);
+  const o = v as Record<string, unknown>;
+  if (typeof o.id !== "string" || !CALL_ID.test(o.id)) bad(`${field(`${name}.id`)} no es un identificador de llamada válido`);
+  if (typeof o.lang !== "string" || !LANG.test(o.lang)) bad(`${field(`${name}.lang`)} debe ser un código de idioma de dos letras`);
+  let phone: string | null = null;
+  if (o.phone !== undefined && o.phone !== null) {
+    if (typeof o.phone !== "string" || !MASKED_PHONE.test(o.phone)) bad(`${field(`${name}.phone`)} no es un teléfono enmascarado válido`);
+    phone = o.phone as string;
+  }
+  return { id: o.id as string, lang: o.lang as string, phone, risks: list(o.risks, `${name}.risks`, risk, RISK_TAGS.length * 2) };
+}
+
+/**
+ * Cuerpo de POST /api/plan: solo datos estructurados (MEMORIA §16.1). Devuelve una copia con los
+ * campos conocidos: un resumen o una transcripción en el cuerpo se ignoran y no llegan al planificador.
+ */
+export function validatePlanInput(body: unknown): Validated<PlanInput> {
+  return run(() => {
+    if (!isObject(body)) bad("El cuerpo debe ser un objeto JSON");
+    const o = body as Record<string, unknown>;
+    if (typeof o.incidentId !== "string" || !ID.test(o.incidentId)) bad("El campo incidentId no es un identificador válido");
+    if (!INCIDENT_TYPES.includes(o.type as IncidentType)) bad("El campo type no es un tipo de incidente válido");
+    if (o.provisional !== undefined && typeof o.provisional !== "boolean") bad("El campo provisional debe ser verdadero o falso");
+    const calls = list(o.calls, "calls", planCall, LIMITS.planCalls);
+    if (!calls.length) bad("El incidente debe tener al menos una llamada");
+    if (new Set(calls.map((c) => c.id)).size !== calls.length) bad("Hay llamadas repetidas en calls");
+    return {
+      incidentId: o.incidentId as string,
+      type: o.type as IncidentType,
+      risks: [...new Set(list(o.risks, "risks", risk, RISK_TAGS.length * 2))],
+      severity: int(o.severity, "severity", 1, 5),
+      people: int(o.people, "people", 0, LIMITS.planPeople),
+      points: list(o.points, "points", aml),
+      calls,
+      provisional: o.provisional === true,
+    };
   });
 }

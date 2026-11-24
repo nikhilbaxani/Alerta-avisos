@@ -1,3 +1,5 @@
+import type { PlanInput, Proposal } from "@/lib/actions";
+import { TYPE_LABELS } from "@/lib/labels";
 import { INCIDENT_TYPES, RISK_TAGS } from "@/lib/types";
 import type { IncidentType, RiskTag } from "@/lib/types";
 import { untrustedNotice, wrapUntrusted } from "@/lib/untrusted";
@@ -77,6 +79,33 @@ ${untrustedNotice(JUDGE_TAGS)}`;
 export const judgeUser = (incident: string, call: string, distanceM: number) =>
   `Incidente ya abierto:\n${wrapUntrusted(JUDGE_TAGS[0], incident)}\nLlamada nueva:\n${wrapUntrusted(JUDGE_TAGS[1], call)}\n` +
   `Distancia entre ambos: ${Number.isFinite(distanceM) && distanceM >= 0 ? `${Math.round(distanceM)} m` : "desconocida"}.`;
+
+/**
+ * Planificador de acciones con IA local (MEMORIA §16.2). Solo recibe datos estructurados: ningún
+ * texto de la llamada, así que no hace falta delimitar nada como dato no confiable (§16.1).
+ */
+export const PLANNER_SYSTEM = `Eres el planificador de acciones del Agente 112 en una sala del 112 en España. Recibes SOLO datos estructurados de un incidente (tipo, riesgos, gravedad de 1 a 5, personas en peligro, y el idioma y los riesgos de cada llamada) y la lista de acciones que ya han preparado las reglas del sistema.
+Si falta alguna acción útil para este incidente, propónla llamando a una herramienta (una llamada por acción). Si no falta ninguna, no llames a ninguna herramienta.
+- No repitas las acciones que ya están preparadas.
+- Usa solo los valores permitidos de cada herramienta y justifica con riesgos que el incidente tenga.
+- En los SMS usa solo las frases pretraducidas de la lista: no escribas texto propio.
+- No decides quién aprueba ni si algo se envía: lo fija el sistema y lo aprueba una persona.`;
+
+export const plannerUser = (input: PlanInput, already: readonly Proposal[]) =>
+  JSON.stringify({
+    incidente: {
+      id: input.incidentId,
+      tipo: input.type,
+      tipo_texto: TYPE_LABELS[input.type],
+      riesgos: input.risks,
+      gravedad: input.severity,
+      personas: input.people,
+      llamadas: input.calls.length,
+    },
+    // Sin teléfonos: el modelo no los necesita (minimización de datos).
+    llamadas: input.calls.map((c) => ({ id: c.id, idioma: c.lang, riesgos: c.risks })),
+    acciones_ya_preparadas: already.map((p) => ({ herramienta: p.tool, destino: p.destination })),
+  });
 
 export const translateSystem = (langName: string) =>
   `Traduce el mensaje de un operador del 112 al idioma "${langName}". Registro claro e imperativo de emergencia. No añadas nada ni expliques; responde solo con la traducción.`;
