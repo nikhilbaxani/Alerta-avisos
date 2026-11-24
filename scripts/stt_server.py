@@ -3,11 +3,11 @@
 
 Expone lo mínimo que usa la consola (lib/ai.ts):
   GET  /v1/models                    -> lista de modelos (sirve de sonda para /api/status)
-  POST /v1/audio/transcriptions      -> multipart con file, model y language opcional -> {"text": ...}
+  POST /v1/audio/transcriptions      -> multipart con file, model, language y task (transcribe|translate) opcionales -> {"text": ...}
 
 Uso (desde la raíz del repo, con el venv de scripts/ia-local.sh):
   .venv-stt/bin/python scripts/stt_server.py [--model Systran/faster-whisper-small] [--device cuda|cpu] [--port 8000]
-Solo escucha en 127.0.0.1: el audio de las llamadas no sale del equipo.
+Por defecto solo escucha en 127.0.0.1 (--host para Docker): el audio de las llamadas no sale del equipo.
 """
 from __future__ import annotations
 
@@ -52,6 +52,7 @@ def main() -> None:
     ap.add_argument("--device", default="cuda", choices=["cuda", "cpu"])
     ap.add_argument("--compute-type", default=None, help="float16 en GPU, int8 en CPU por defecto")
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 solo dentro de una red interna de Docker")
     args = ap.parse_args()
 
     if args.device == "cuda":
@@ -93,22 +94,26 @@ def main() -> None:
                 self._json(400, {"error": "falta el campo file"})
                 return
             lang = fields.get("language", (b"", None))[0].decode().strip() or None
+            task = fields.get("task", (b"", None))[0].decode().strip() or "transcribe"
+            if task not in ("transcribe", "translate"):
+                self._json(400, {"error": "task debe ser transcribe o translate"})
+                return
             t = time.time()
             try:
                 with lock:
-                    segments, info = model.transcribe(io.BytesIO(fields["file"][0]), language=lang, beam_size=5)
+                    segments, info = model.transcribe(io.BytesIO(fields["file"][0]), language=lang, task=task, beam_size=5)
                     text = " ".join(s.text.strip() for s in segments).strip()
             except Exception as e:  # audio corrupto o formato no soportado
                 self._json(500, {"error": f"no se pudo transcribir: {e}"})
                 return
-            print(f"[stt] {fields['file'][1] or 'audio'} lang={lang or info.language} {time.time() - t:.2f}s", flush=True)
+            print(f"[stt] {fields['file'][1] or 'audio'} lang={lang or info.language} task={task} {time.time() - t:.2f}s", flush=True)
             self._json(200, {"text": text, "language": info.language, "duration": info.duration})
 
         def log_message(self, *_: object) -> None:  # silencia el log por petición de http.server
             pass
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"[stt] escuchando en http://127.0.0.1:{args.port}/v1", flush=True)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    print(f"[stt] escuchando en http://{args.host}:{args.port}/v1", flush=True)
     server.serve_forever()
 
 

@@ -1,0 +1,13 @@
+FROM node:22-slim
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+# tsx está en devDependencies: se instala todo (sin scripts) y no se ejecuta ningún build de Next.
+RUN npm ci --ignore-scripts --include=dev
+COPY tsconfig.json ./
+COPY lib ./lib
+COPY data ./data
+COPY server ./server
+USER node
+EXPOSE 8080
+CMD ["npx", "tsx", "server/relay.ts"]

@@ -1,0 +1,52 @@
+# Despliegue en el VPS (desde la raíz del repo):
+#   docker compose -f server/docker-compose.vps.yml --env-file server/relay.env up -d --build
+# Solo Caddy publica puertos (80/443). Relay y Whisper no tienen ports: solo se ven dentro de la red de compose.
+# (Whisper necesita salida a internet solo la primera vez, para descargar el modelo.)
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?define RELAY_DOMAIN en server/relay.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - relay
+
+  relay:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile.relay
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      STT_BASE_URL: http://stt:8000/v1
+      STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+      MAX_CALL_SECONDS: ${MAX_CALL_SECONDS:-120}
+      RELAY_TOKEN: ${RELAY_TOKEN:?define RELAY_TOKEN en server/relay.env}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?define ALLOWED_ORIGINS en server/relay.env}
+      RATE_LIMIT: ${RATE_LIMIT:-3}
+      RATE_WINDOW_MIN: ${RATE_WINDOW_MIN:-10}
+      TRUST_PROXY: "1" # detrás de Caddy: el primer salto de X-Forwarded-For es el cliente
+    depends_on:
+      - stt
+
+  stt:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile.stt
+    restart: unless-stopped
+    environment:
+      STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
+    volumes:
+      - whisper_models:/models
+
+volumes:
+  caddy_data:
+  caddy_config:
+  whisper_models:

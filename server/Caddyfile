@@ -1,0 +1,7 @@
+{$RELAY_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy relay:8080 {
+		# SSE: no acumular en búfer, enviar cada evento al instante.
+		flush_interval -1
+	}
+}
