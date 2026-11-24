@@ -14,6 +14,7 @@
  * `ToolArgs`, su política en `ACTION_POLICY` y su especificación en `TOOLS` (el compilador obliga a
  * las tres últimas).
  */
+import { haversine } from "@/lib/cluster";
 import type { Incident } from "@/lib/engine";
 import { LANG_NAMES, RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { PHRASES } from "@/lib/phrases";
@@ -22,7 +23,7 @@ import type { Aml, IncidentType, RiskTag } from "@/lib/types";
 
 // ───────────────────────────── Herramientas y política ─────────────────────────────
 
-export const ACTION_TOOLS = ["proponer_recursos", "sms_al_llamante", "avisar_distribuidora"] as const;
+export const ACTION_TOOLS = ["proponer_recursos", "sms_al_llamante", "avisar_distribuidora", "aviso_ayuntamiento", "devolver_llamada", "proponer_es_alert"] as const;
 export type ActionTool = (typeof ACTION_TOOLS)[number];
 
 export type ApprovalPolicy = "automatica" | "operador" | "coordinador";
@@ -35,6 +36,9 @@ export const ACTION_POLICY: Readonly<Record<ActionTool, ApprovalPolicy>> = {
   proponer_recursos: "operador",
   sms_al_llamante: "operador",
   avisar_distribuidora: "automatica",
+  aviso_ayuntamiento: "automatica",
+  devolver_llamada: "operador",
+  proponer_es_alert: "coordinador",
 };
 
 export type Role = "operador" | "coordinador";
@@ -65,7 +69,16 @@ export const UTILITY_LABELS: Record<UtilityChannel, string> = {
   reposicion_prioritaria: "reposición prioritaria",
 };
 
-/** Argumentos de cada herramienta: solo valores de vocabularios cerrados, números y frases pretraducidas. */
+const MUNICIPAL_TYPES = ["semaforos", "arbol_caido", "via_bloqueada"] as const;
+type MunicipalType = (typeof MUNICIPAL_TYPES)[number];
+function municipalReason(input: PlanInput): MunicipalType | null {
+  if (input.type === "semaforos" || input.type === "arbol_caido") return input.type;
+  return input.risks.includes("via_bloqueada") ? "via_bloqueada" : null;
+}
+const municipalLabel = (reason: MunicipalType) => reason === "via_bloqueada" ? RISK_LABELS[reason] : TYPE_LABELS[reason];
+type Position = Pick<Aml, "lat" | "lng">;
+
+/** Argumentos de cada herramienta: solo datos estructurados y textos fijos. */
 export interface ToolArgs {
   proponer_recursos: { servicio: ResourceService; personas: number; gravedad: number };
   sms_al_llamante: {
@@ -78,7 +91,10 @@ export interface ToolArgs {
     /** Las mismas frases en castellano, para el operador. */
     texto_es: string;
   };
-  avisar_distribuidora: { canal: UtilityChannel; posicion: { lat: number; lng: number } | null; personas: number };
+  avisar_distribuidora: { canal: UtilityChannel; posicion: Position | null; personas: number };
+  aviso_ayuntamiento: { motivo: MunicipalType; posicion: Position | null };
+  devolver_llamada: { llamada: string; telefono: string | null };
+  proponer_es_alert: { zona: Position & { radio_m: number }; texto: string };
 }
 
 // ───────────────────────────── Entrada del planificador ─────────────────────────────
@@ -103,6 +119,8 @@ export interface PlanInput {
   /** En el orden en que llegaron. El nº de llamadas es `calls.length`. */
   calls: PlanCall[];
   provisional: boolean;
+  /** Contexto interno del replay: otros incidentes del motor, nunca copiados del cuerpo de /api/plan. */
+  nearby?: readonly PlanInput[];
 }
 
 export interface CallFacts {
@@ -293,7 +311,7 @@ const RESOURCE_RULES: Record<ResourceService, { purpose: string; triggers: (i: P
     triggers: (i, has) => {
       const t: Trigger[] = [];
       if (i.type === "accidente") t.push({ label: "accidente de tráfico", risks: [] });
-      if (has("trafico")) t.push({ label: riskLabel("trafico"), risks: ["trafico"] });
+      if (has("trafico") && !municipalReason(i)) t.push({ label: riskLabel("trafico"), risks: ["trafico"] });
       return t;
     },
   },
@@ -422,6 +440,55 @@ function utilityRules(input: PlanInput): ProposalOf<"avisar_distribuidora">[] {
   return out;
 }
 
+// ───────────────────────────── Reglas: aviso municipal, rellamada y ES-Alert ─────────────────────────────
+
+function municipalProposal(input: PlanInput, motivo: MunicipalType, origin: ActionOrigin): ProposalOf<"aviso_ayuntamiento"> {
+  const evidence = evidenceOf(input, [{ label: "", risks: motivo === "via_bloqueada" ? [motivo] : [] }]);
+  return make(input, "aviso_ayuntamiento", "movilidad", { motivo, posicion: centroid(input.points) },
+    `${municipalLabel(motivo)}: aviso informativo al ayuntamiento.`, evidence, origin);
+}
+
+function callbackCall(input: PlanInput) {
+  return input.risks.includes("sin_respuesta") ? input.calls.find((c) => c.risks.includes("sin_respuesta")) : undefined;
+}
+
+function callbackProposal(input: PlanInput, c: PlanCall, origin: ActionOrigin): ProposalOf<"devolver_llamada"> {
+  return make(input, "devolver_llamada", c.id, { llamada: c.id, telefono: c.phone },
+    `No responde (${c.id}): devolver la llamada a quien aportó la información.`,
+    { type: input.type, risks: ["sin_respuesta"], callIds: [c.id] }, origin);
+}
+
+const ALERT_DISTANCE_M = 500;
+const ALERT_TEXT = "Vehículos atrapados por inundación en la zona. Evite circular por pasos inundados.";
+
+function trappedVehicle(input: PlanInput) {
+  if (input.provisional || input.type !== "inundacion_vehiculo" || !input.risks.includes("atrapados")) return null;
+  const index = input.calls.findIndex((c) => c.risks.includes("atrapados"));
+  const point = input.points[index];
+  return point ? { point, call: input.calls[index] } : null;
+}
+
+function alertProposals(input: PlanInput, origin: ActionOrigin): ProposalOf<"proponer_es_alert">[] {
+  const current = trappedVehicle(input);
+  if (!current) return [];
+  return (input.nearby ?? []).flatMap((other) => {
+    const nearby = trappedVehicle(other);
+    if (!nearby || other.incidentId === input.incidentId || nearby.call.id === current.call.id) return [];
+    if (haversine(current.point, nearby.point) > ALERT_DISTANCE_M) return [];
+    // Ancla estable por pareja: el mismo plan se deduplica aunque se vuelva por el otro incidente.
+    const [first, second] = input.incidentId < other.incidentId ? [input, other] : [other, input];
+    const point = centroid([current.point, nearby.point])!;
+    const radio_m = Math.ceil(Math.max(...[current.point, nearby.point].map((p) => haversine(point, p) + p.acc)));
+    const callIds = first === input ? [current.call.id, nearby.call.id] : [nearby.call.id, current.call.id];
+    return [make(first, "proponer_es_alert", second.incidentId, { zona: { ...point, radio_m }, texto: ALERT_TEXT },
+      `Vehículos atrapados por agua en dos incidentes próximos (${first.incidentId}, ${second.incidentId}): preparar borrador zonal.`,
+      { type: input.type, risks: ["atrapados"], callIds }, origin)];
+  });
+}
+
+const positionText = (p: Position | null) => p ? `posición ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : "sin posición";
+const phoneTarget = (p: { llamada: string; telefono: string | null }) => p.telefono ? `${p.llamada} (${p.telefono})` : p.llamada;
+
 // ───────────────────────────── Especificación de cada herramienta ─────────────────────────────
 
 type JsonSchema = Record<string, unknown>;
@@ -474,6 +541,9 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
       const servicio = a.servicio as ResourceService;
       const risks = modelRisks(a.riesgos, input);
       if (typeof risks === "string") return risks;
+      if (servicio === "policia_local" && input.type !== "accidente" && municipalReason(input) && risks.every((r) => r === "trafico" || r === "via_bloqueada")) {
+        return "El aviso municipal ya cubre el mismo problema de tráfico";
+      }
       const why = risks.length ? joinEs(risks.map(riskLabel)) : lc(TYPE_LABELS[input.type]);
       const evidence = evidenceOf(input, [{ label: "", risks }]);
       return make(input, "proponer_recursos", servicio, { servicio, personas: input.people, gravedad: input.severity }, `Propuesta de la IA local: ${RESOURCE_LABELS[servicio]} por ${why}.`, evidence, "ia_local");
@@ -546,6 +616,51 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
       return `${where} · ${p.args.personas} ${p.args.personas === 1 ? "persona" : "personas"}`;
     },
     send: (p, at) => receipt("DIS", "Distribuidora eléctrica (simulada)", p, at, `Aviso de ${UTILITY_LABELS[p.args.canal]} registrado para ${p.incidentId}`),
+  },
+  aviso_ayuntamiento: {
+    service: "Ayuntamiento (simulado)",
+    description: "Propone un aviso informativo al ayuntamiento por semáforos, árbol caído o vía bloqueada, según el tipo del incidente.",
+    parameters: () => ({ type: "object", properties: { motivo: { type: "string", enum: [...MUNICIPAL_TYPES] } }, required: ["motivo"] }),
+    modelArgs: ["motivo"],
+    rules: (input) => {
+      const motivo = municipalReason(input);
+      return motivo ? [municipalProposal(input, motivo, "reglas")] : [];
+    },
+    fromModel: (a, input) => {
+      const motivo = municipalReason(input);
+      return motivo && a.motivo === motivo ? municipalProposal(input, motivo, "ia_local") : "El motivo del aviso no corresponde al incidente";
+    },
+    target: () => "ayuntamiento · movilidad",
+    describe: (p) => `${municipalLabel(p.args.motivo)} · ${positionText(p.args.posicion)}`,
+    send: (p, at) => receipt("AYT", "Ayuntamiento (simulado)", p, at, `Aviso informativo registrado para ${p.incidentId}`),
+  },
+  devolver_llamada: {
+    service: "Telefonía (simulada)",
+    description: "Propone devolver la llamada a quien informó por primera vez de que una persona no responde.",
+    parameters: (input) => ({ type: "object", properties: { llamada: { type: "string", enum: input.calls.map((c) => c.id) } }, required: ["llamada"] }),
+    modelArgs: ["llamada"],
+    rules: (input) => {
+      const c = callbackCall(input);
+      return c ? [callbackProposal(input, c, "reglas")] : [];
+    },
+    fromModel: (a, input) => {
+      const c = callbackCall(input);
+      return c && c.id === a.llamada ? callbackProposal(input, c, "ia_local") : "La llamada no aportó la primera información de falta de respuesta";
+    },
+    target: (p) => phoneTarget(p.args),
+    describe: () => "rellamada prioritaria simulada",
+    send: (p, at) => receipt("TEL", "Telefonía (simulada)", p, at, `Rellamada simulada registrada para ${p.args.llamada}`),
+  },
+  proponer_es_alert: {
+    service: "ES-Alert (simulado)",
+    description: "Solicita un borrador para el coordinador humano. Solo es válido si el motor confirma dos incidentes próximos de vehículos atrapados por agua. No aportes texto ni zona.",
+    parameters: () => ({ type: "object", properties: {}, additionalProperties: false }),
+    modelArgs: [],
+    rules: (input) => alertProposals(input, "reglas"),
+    fromModel: (_a, input) => alertProposals(input, "ia_local")[0] ?? "No hay dos incidentes confirmados de vehículos atrapados próximos",
+    target: (p) => `ES-Alert · zona de ${p.incidentId} y ${p.destination}`,
+    describe: (p) => `${positionText(p.args.zona)} · radio ${p.args.zona.radio_m} m · «${p.args.texto}»`,
+    send: (p, at) => receipt("ESA", "ES-Alert (simulado)", p, at, `Borrador aprobado y envío simulado registrado para ${p.incidentId} y ${p.destination}`),
   },
 };
 

@@ -102,3 +102,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Qué se hizo: el control principal de la barra superior son dos pestañas; «Simulación» conserva el selector DANA/Apagón y la reproducción, «En directo (QR)» muestra la bandeja de llamadas del público y solo lo aceptado por el operador. Estado separado por pestaña (`lib/consoleMode.ts`); la simulación retoma donde estaba.
 - Verificación (independiente): `tsc`, 331 tests, `eval` 7/0/2, `eval:apagon` 6/0/1, build con y sin relay y `scripts/e2e.mjs` en verde; capturas `docs/capturas/pestanas-*.png` de escritorio y móvil revisadas.
 - Pendiente: redesplegar en el VPS para que se vea en público; el e2e necesita `npx playwright install chromium` en esta máquina.
+
+## 2026-11-24T23:30 · X07 · hecha (verificación independiente de la política en curso)
+- Qué se hizo: tres herramientas nuevas en `lib/actions.ts` con su política en código (propuesta de ES-Alert solo aprobable por un coordinador humano, aviso informativo automático al ayuntamiento, devolver llamada con aprobación del operador), `lib/report.ts` (parte de situación en Markdown y JSON, rotulado como simulación) y `npm run agente -- --parte archivo.md`.
+- Verificación (worker): 340 tests, `tsc` OK, `eval` 7/0/2 y `eval:apagon` 6/0/1 iguales que antes; `npm run agente` determinista. DANA: 24 acciones, 23 envíos simulados y 1 ES-Alert pendiente (A y F, radio 272 m); D → aviso automático al ayuntamiento; B3 → devolver llamada. Sin coordinador simulado. Ninguna interfaz tocada.
+- Sin ejecutar: `npm run build`, e2e y `--live` con modelo real. El umbral de 500 m para proponer ES-Alert es un supuesto de la demo, no un protocolo oficial.
+- Decisiones: X06 y X07 en DECISIONES (entraron en el commit de las pestañas, 131e105).
+- Siguiente: X08.

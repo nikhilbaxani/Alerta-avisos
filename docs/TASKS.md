@@ -77,7 +77,7 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
   - `lib/waiting.ts` puro: qué llamadas esperarían con N operadores (supuestos de `lib/metrics.ts`), guion del asistente en el idioma del llamante (presentación como asistente automático + instrucciones pretraducidas), escalado inmediato ante riesgo vital. Frases nuevas en `lib/phrases.ts` (sin tocar las existentes) y anotadas en DECISIONES.
   - Integrado en `npm run agente` (opción de operadores, por defecto el de la franja de sala): llamadas atendidas por el agente, duplicados agrupados sin operador y escaladas, con su traza.
   - Tests: nunca atiende una llamada que un operador libre puede coger; escala E1 (dolor torácico) si le toca esperar; `npm run eval` igual que antes.
-- [ ] X07 ES-Alert, aviso al ayuntamiento, devolver llamada y parte de situación (MEMORIA §16.2 y §16.4) · agente: `backend-ia` · deps: X05
+- [x] X07 ES-Alert, aviso al ayuntamiento, devolver llamada y parte de situación (MEMORIA §16.2 y §16.4) · agente: `backend-ia` · deps: X05
   - Tres herramientas nuevas en `lib/actions.ts` con su política (ES-Alert solo con rol coordinador). Tests: A y F (coches atrapados a ~460 m) → propuesta de ES-Alert con zona y texto; D (semáforos) → aviso automático al ayuntamiento; B3 (no responde) → devolver llamada.
   - `lib/report.ts`: parte de situación (Markdown y JSON) desde el estado; `npm run agente` lo imprime al final y lo guarda con `--parte archivo.md`. Sin cifras inventadas, rotulado como simulación.
 - [ ] X08 README y PITCH: de copiloto a agente (MEMORIA §16.5) · agente: `pitch-docs` · deps: X05, X06, X07

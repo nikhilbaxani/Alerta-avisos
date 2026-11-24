@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getScenario } from "@/data/scenarios";
 import { APPROVAL_DELAY_S, formatRun, runAgent, runToJson, summarize } from "@/lib/agent";
 import type { AgentRun } from "@/lib/agent";
+import { approve, dispatch } from "@/lib/actions";
 import { PHRASES } from "@/lib/phrases";
 
 const dana = getScenario("dana-malaga");
@@ -47,6 +48,36 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
     }
   });
 
+  it("A y F: un borrador geolocalizado, sin texto de llamadas ni aprobación simulada", () => {
+    const alerts = run.actions.filter((a) => a.tool === "proponer_es_alert");
+    expect(alerts).toEqual([expect.objectContaining({ proposedAt: tOf("F1"), policy: "coordinador", status: "propuesta", approval: null, receipt: null,
+      evidence: { type: "inundacion_vehiculo", risks: ["atrapados"], callIds: ["A1", "F1"] },
+      args: { zona: { lat: expect.any(Number), lng: expect.any(Number), radio_m: expect.any(Number) }, texto: "Vehículos atrapados por inundación en la zona. Evite circular por pasos inundados." },
+    })]);
+    const [{ key }] = alerts;
+    expect(approve(run.actions, key, "operador", 150)).toEqual({ ok: false, error: "Esta acción la aprueba un coordinador" });
+    expect(dispatch(run.actions, key, 150)).toEqual({ ok: false, error: "Solo se envían acciones aprobadas; esta está propuesta" });
+    expect(approve(run.actions, key, "coordinador", 150)).toMatchObject({ ok: true, action: { status: "aprobada", approval: { by: "coordinador", at: 150 }, receipt: null } });
+    expect(alerts[0]).toMatchObject({ status: "propuesta", approval: null, receipt: null });
+  });
+
+  it("D (semáforos): aviso municipal automático y sin duplicar despacho policial", () => {
+    const actions = actionsOf(run, "D1");
+    expect(actions.filter((a) => a.tool === "aviso_ayuntamiento")).toEqual([expect.objectContaining({
+      status: "enviada", approval: { by: "automatica", at: tOf("D1") }, receipt: { service: "Ayuntamiento (simulado)", reference: expect.stringMatching(/^AYT-/), simulated: true, at: tOf("D1"), detail: expect.any(String) },
+      args: { motivo: "semaforos", posicion: { lat: expect.any(Number), lng: expect.any(Number) } },
+    })]);
+    expect(actions.some((a) => a.destination === "policia_local")).toBe(false);
+  });
+
+  it("B3 (sin respuesta): devuelve la llamada tras aprobación del operador", () => {
+    expect(actionsOf(run, "B3").filter((a) => a.tool === "devolver_llamada")).toEqual([expect.objectContaining({
+      destination: "B3", args: { llamada: "B3", telefono: dana.calls.find((c) => c.id === "B3")!.phone },
+      proposedAt: tOf("B3"), policy: "operador", status: "enviada", approval: { by: "operador", at: tOf("B3") + APPROVAL_DELAY_S },
+      receipt: expect.objectContaining({ reference: expect.stringMatching(/^TEL-/), simulated: true }),
+    })]);
+  });
+
   it("C3 (cables) → aviso automático a la distribuidora en el momento", () => {
     const d = actionsOf(run, "C3").find((a) => a.tool === "avisar_distribuidora")!;
     expect(d).toMatchObject({
@@ -74,6 +105,7 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
 
   it("las automáticas no esperan; las de operador se aprueban unos segundos después", () => {
     for (const a of run.actions) {
+      if (a.policy === "coordinador") continue; // La regla de coordinador tiene su propia prueba.
       expect(a.status).toBe("enviada");
       if (a.policy === "automatica") expect(a.approval).toEqual({ by: "automatica", at: a.proposedAt });
       else expect(a.approval).toEqual({ by: "operador", at: a.proposedAt + APPROVAL_DELAY_S });
@@ -82,7 +114,9 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
     expect(s.prepared).toBe(run.actions.length);
     expect(s.automatic).toBe(run.actions.filter((a) => a.policy === "automatica").length);
     expect(s.approved + s.automatic + s.discarded + s.pending).toBe(s.prepared);
-    expect(s.automatic).toBe(2); // C3 cables y E1 sin luz con persona mayor
+    expect(run.actions.filter((a) => a.approval?.by === "automatica").map((a) => a.tool)).toEqual([
+      "aviso_ayuntamiento", "aviso_ayuntamiento", "avisar_distribuidora", "avisar_distribuidora",
+    ]);
   });
 
   it("es determinista y la traza JSON está rotulada como simulación", async () => {

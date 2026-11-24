@@ -1,4 +1,4 @@
-// npm run agente -- [--escenario apagon] [--operadores N] [--json traza.json] [--live]
+// npm run agente -- [--escenario apagon] [--operadores N] [--json traza.json] [--parte archivo.md] [--live]
 // Reproduce el escenario con el motor real y el agente de acciones e imprime la traza
 // percepción → razonamiento → herramienta → aprobación → resultado. Todo es simulación.
 import { writeFileSync } from "node:fs";
@@ -7,6 +7,7 @@ import { formatRun, rulesPlanner, runAgent, runToJson } from "@/lib/agent";
 import type { Planner } from "@/lib/agent";
 import { getConfig, llmEnabled } from "@/lib/config";
 import { planIncident } from "@/lib/plan";
+import { reportMarkdown, situationReport } from "@/lib/report";
 import { DEFAULT_OPERATORS } from "@/lib/waiting";
 
 /** Valor de una opción: `--opcion valor` o `--opcion=valor`. */
@@ -25,7 +26,7 @@ const SCENARIOS: Record<string, string> = { dana: "dana-malaga", "dana-malaga": 
 
 async function main() {
   if (process.argv.includes("--help")) {
-    console.log(`Uso: npm run agente -- [--escenario dana|apagon] [--operadores N] [--json archivo] [--live]\n--operadores N: entero positivo; por defecto ${DEFAULT_OPERATORS}, como en la franja de sala.`);
+    console.log(`Uso: npm run agente -- [--escenario dana|apagon] [--operadores N] [--json archivo] [--parte archivo.md] [--live]\n--operadores N: entero positivo; por defecto ${DEFAULT_OPERATORS}, como en la franja de sala.\n--json archivo: guarda la traza y el parte en JSON.\n--parte archivo.md: guarda el parte de situación en Markdown.`);
     return;
   }
   const scn = option(["--escenario", "--scenario"]) ?? "dana";
@@ -36,6 +37,12 @@ async function main() {
   const jsonPath = option(["--json"]);
   if (jsonPath === "") {
     console.error("Falta el archivo de --json (p. ej. --json traza.json).");
+    process.exit(1);
+  }
+
+  const reportPath = option(["--parte"]);
+  if (reportPath !== undefined && (!reportPath.trim() || reportPath.startsWith("--"))) {
+    console.error("Falta el archivo de --parte (p. ej. --parte archivo.md).");
     process.exit(1);
   }
 
@@ -59,11 +66,18 @@ async function main() {
   }
 
   const run = await runAgent(getScenario(SCENARIOS[scn]), { planner, operators });
+  const report = situationReport(run);
+  const markdown = reportMarkdown(report);
   console.log(formatRun(run, label));
   if (jsonPath) {
-    writeFileSync(jsonPath, `${JSON.stringify(runToJson(run, label), null, 2)}\n`);
+    writeFileSync(jsonPath, `${JSON.stringify({ ...runToJson(run, label), parte: report }, null, 2)}\n`);
     console.log(`\nTraza completa en JSON: ${jsonPath}`);
   }
+  if (reportPath) {
+    writeFileSync(reportPath, markdown);
+    console.log(`\nParte de situación en Markdown: ${reportPath}`);
+  }
+  process.stdout.write(`\n${markdown}`);
 }
 
 main().catch((e) => {

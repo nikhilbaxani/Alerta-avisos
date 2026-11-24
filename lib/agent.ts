@@ -105,7 +105,13 @@ export async function runAgent(scenario: Scenario, opts: { planner?: Planner; ap
     actions = discardOrphans(actions, state.incidents.map((i) => i.id), c.t);
 
     const inc = state.incidents.find((i) => i.id === state.assignment[c.id])!;
-    const plan = await planner(planInputFrom(inc, facts));
+    const input = planInputFrom(inc, facts);
+    if (inc.type === "inundacion_vehiculo") {
+      input.nearby = state.incidents
+        .filter((other) => other.id !== inc.id && other.type === inc.type && !other.provisional)
+        .map((other) => planInputFrom(other, facts));
+    }
+    const plan = await planner(input);
     const res = addProposals(actions, plan.proposals, c.t);
     actions = res.actions;
     // Las de coordinador (X07) no las aprueba el operador simulado: se quedan pendientes.
