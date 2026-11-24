@@ -108,7 +108,7 @@ export default function Console() {
             {notStartedSim && (
               <div className="welcome">
                 <h2>{scn.name}</h2>
-                <p>{scn.calls.length} llamadas simuladas en {langs} idiomas. Pulsa Iniciar para reproducir el escenario y ver cómo el copiloto agrupa las llamadas repetidas, te pregunta cuando duda y traduce.</p>
+                <p>{scn.calls.length} llamadas simuladas en {langs} idiomas. Pulsa Iniciar para reproducir el escenario y ver cómo el agente agrupa las llamadas repetidas, te pregunta cuando duda y traduce.</p>
                 <div className="welcome-actions">
                   <button className="btn btn-dark btn-lg" onClick={play}><Icon name="play" />Iniciar simulación</button>
                   <button className="btn btn-lg" onClick={() => setHelp(true)}><Icon name="help" />Cómo funciona</button>

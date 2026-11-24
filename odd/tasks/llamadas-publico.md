@@ -60,7 +60,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T9 | S13 | Relay con STT único en la sobremesa (clave, una pasada, traducción por LLM) + opciones de velocidad en `scripts/stt_server.py` | cc86f28 |
 | T10 | S14, S3–S6, S9 | Confirmación del llamante: transcripción visible en `/llamar` y botón «Enviar» antes de publicar | eef24d8 |
 | T11 | S9, S14, S7 | Correcciones tras la verificación final: TTL en compose, cola y cuota con llamadas sin enviar, bandeja tras recargar, documentación de privacidad, cola configurable y posición en la cola | b82f992 |
-| T12 | S15 | Unificar el nombre visible y el logo en «Agente 112» | — |
+| T12 | S15 | Unificar el nombre visible y el logo en «Agente 112» | (este commit) |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log
@@ -95,3 +95,5 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L28** (T11): `PENDING_TTL_SECONDS`, `UPLOAD_LIMIT`, `PENDING_PER_IP` y `MAX_PENDING` pasan al relay; tope de 2 pendientes por IP; con la cola llena se desaloja la `ready` más antigua; descartar, caducar o ser desalojada devuelve la cuota una vez y `UPLOAD_LIMIT` (3×`RATE_LIMIT`) acota las subidas; la bandeja recuerda en `localStorage` los eventos tratados; `ahead` en el estado y «Hay N llamadas por delante de la tuya»; la página no se rinde a los 180 s; el TTL cuenta desde que la transcripción está lista. RED 21 → GREEN; 486 tests, `tsc`, evals y build con relay en verde. Sin probar: compose real, interfaz nueva en navegador, ráfaga de 50 contra el STT real. Aviso: con IP compartida (wifi del evento) los topes por IP limitan a todo el grupo; hay que subirlos en `relay.env`.
 - **L29** (usuario): «es agente 112 par que lo sepa que hay lio con el titulo». En el repositorio conviven «Copiloto 112» (título de la pestaña, `/llamar`, ayuda), «Avance 112» (logo de la barra superior, de un compañero) y «Agente 112» (README, PITCH, parte).
 - **L30** (usuario): «cambia el logo también».
+- **L31** (prueba de carga, VPS con b82f992 y límites 60/60/60): 50 subidas simultáneas por la URL pública (castellano y árabe alternados, desde una sola IP, descartando al terminar): 50 de 50 aceptadas (subida más lenta 3,9 s), 50 de 50 transcritas, 0 errores; primera transcripción a los 14 s, mediana 289 s, p90 514 s, última 562 s (≈11 s por llamada); relay 108 MB. El límite es el Whisper en CPU, en serie.
+- **L32** (T12): nombre visible «Agente 112» en título de pestaña, `/llamar`, ayuda, textos de la consola y franja de simulación; logo `docs/marca/logo-agente-112.svg` (estático; el de «Avance 112» ya no se importa, su carpeta se conserva). 486 tests, `tsc`, build y e2e en verde; capturas `docs/capturas/agente112-*.png` revisadas. Quedan «Copiloto» en comentarios de `server/tailnet-guard.*` y en claves `copiloto112.*` de `localStorage`.

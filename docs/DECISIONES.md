@@ -283,3 +283,8 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - Descartado: solo acortar el TTL global (sigue habiendo ventana de bloqueo y castiga a quien lee despacio); devolver la cuota sin tope de subidas (grabar y descartar sería una forma gratuita de gastar STT); desalojar llamadas en `transcribing` o `sending` (se perdería trabajo o se publicaría a medias); dar 503 con la cola llena aunque haya llamadas abandonadas.
 - Límites conocidos: con una IP compartida (wifi con NAT) el tope por IP afecta a todo el grupo; el desalojo puede retirar la llamada de alguien que aún lee (verá «caducó», puede volver a grabar sin gastar cuota).
 
+
+## 2026-11-25 · T12: el nombre visible del producto es «Agente 112»
+- Decisión: toda la interfaz (título de la pestaña, `/llamar`, ayuda, mensajes) y el logo de la barra superior dicen «Agente 112»; el logo es `docs/marca/logo-agente-112.svg` (estático, sin modificar su arte). Los identificadores, claves de `localStorage` (`copiloto112.*`), ids de test y los documentos históricos no se renombran.
+- Motivo: conviven tres nombres («Copiloto 112», «Avance 112», «Agente 112») y Nick (L29–L30) pide que sea «Agente 112» y que se cambie también el logo.
+- Descartado: mantener «Copiloto 112» en la interfaz; mantener el logo «Avance 112» (animado, de un compañero; su carpeta `docs/marca/avance-112/` se conserva sin usarse).

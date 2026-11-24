@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Copiloto 112",
+  title: "Agente 112",
   description: "Copiloto de IA para salas del 112: agrupa llamadas duplicadas, prioriza y traduce. El operador decide.",
 };
 

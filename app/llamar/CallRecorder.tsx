@@ -67,7 +67,7 @@ export default function CallRecorder() {
   if (!RELAY) {
     return (
       <main className="call-page">
-        <h1>Llamada de prueba al Copiloto 112</h1>
+        <h1>Llamada de prueba al Agente 112</h1>
         <p className="call-notice" role="note"><b>Demo de hackathon. No es un servicio de emergencias. En una emergencia real, llama al 112.</b></p>
         <p>La grabación no está disponible en esta versión.</p>
       </main>
@@ -222,7 +222,7 @@ export default function CallRecorder() {
 
   return (
     <main className="call-page">
-      <h1>Llamada de prueba al Copiloto 112</h1>
+      <h1>Llamada de prueba al Agente 112</h1>
       <p className="call-notice" role="note"><b>Demo de hackathon. No es un servicio de emergencias. En una emergencia real, llama al 112.</b></p>
 
       {/* Tras grabar, la pantalla se queda con lo importante: progreso, texto y botones (sin tener que bajar). */}
@@ -296,7 +296,7 @@ export default function CallRecorder() {
       )}
 
       {phase === "done" && (
-        <p className="call-ok">Enviado al operador. Tu llamada de prueba está en su bandeja; él decide qué hacer con ella. Gracias por probar el Copiloto 112.</p>
+        <p className="call-ok">Enviado al operador. Tu llamada de prueba está en su bandeja; él decide qué hacer con ella. Gracias por probar el Agente 112.</p>
       )}
       {msg && <p className={msg.ok ? "call-ok" : "toast"} role="status">{msg.text}</p>}
     </main>

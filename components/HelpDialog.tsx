@@ -17,11 +17,11 @@ export default function HelpDialog({ open, onClose }: { open: boolean; onClose: 
     <dialog ref={ref} className="help" aria-labelledby="help-h" onClose={onClose} onClick={(e) => e.target === ref.current && onClose()}>
       <div className="help-body">
         <header>
-          <h2 id="help-h">Cómo funciona el Copiloto 112</h2>
+          <h2 id="help-h">Cómo funciona el Agente 112</h2>
           <button className="btn btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </header>
         <p className="help-lead">
-          En una catástrofe mucha gente llama por la misma emergencia y las líneas se saturan. El copiloto agrupa esas
+          En una catástrofe mucha gente llama por la misma emergencia y las líneas se saturan. El agente agrupa esas
           llamadas repetidas, avisa de lo nuevo que aportan y traduce. <b>La IA propone; el operador decide.</b>
         </p>
         <ol className="help-steps">

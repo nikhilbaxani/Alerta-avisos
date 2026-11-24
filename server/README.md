@@ -205,7 +205,7 @@ npx vitest run tests/relay.test.ts
 
 El VPS recibe datos de cualquiera en internet: si alguien lo comprometiera, no debe poder saltar a tus otros equipos de la tailnet. Hay dos capas:
 
-**1. En el VPS (nftables).** `server/tailnet-guard.nft` corta las conexiones *nuevas* que salen del VPS hacia la tailnet (100.64.0.0/10 y `fd7a:115c:a1e0::/48`, salvo MagicDNS 100.100.100.100) y todo lo que salga de los contenedores del Copiloto (puente `br-alerta`) hacia la tailnet o hacia los servicios del VPS publicados en su IP de Tailscale. Lo entrante (tu SSH al VPS, exit node, DNS) y sus respuestas no se tocan.
+**1. En el VPS (nftables).** `server/tailnet-guard.nft` corta las conexiones *nuevas* que salen del VPS hacia la tailnet (100.64.0.0/10 y `fd7a:115c:a1e0::/48`, salvo MagicDNS 100.100.100.100) y todo lo que salga de los contenedores del Agente 112 (puente `br-alerta`) hacia la tailnet o hacia los servicios del VPS publicados en su IP de Tailscale. Lo entrante (tu SSH al VPS, exit node, DNS) y sus respuestas no se tocan.
 
 ```bash
 # Prueba segura: marcha atrás automática a los 5 minutos por si te quedas sin acceso

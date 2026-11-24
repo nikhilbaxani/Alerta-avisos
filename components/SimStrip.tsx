@@ -16,7 +16,7 @@ export default function SimStrip({ s }: { s: ConsoleState }) {
     });
   const c = compare(calls, operators);
   return (
-    <section className="sim" aria-label="Simulación de sala con y sin copiloto">
+    <section className="sim" aria-label="Simulación de sala con y sin agente">
       <label className="sim-ops">
         Simulación con{" "}
         <select value={operators} onChange={(e) => setOperators(Number(e.target.value))} aria-label="Operadores en sala">
@@ -27,9 +27,9 @@ export default function SimStrip({ s }: { s: ConsoleState }) {
       {c.critical ? (
         <p className="sim-result">
           Llamada crítica <b>{c.critical.id}</b> atendida en{" "}
-          <span className="sim-bad">{mmss(c.critical.sin)} sin copiloto</span>
+          <span className="sim-bad">{mmss(c.critical.sin)} sin agente</span>
           <span aria-hidden="true"> → </span>
-          <span className="sim-good">{mmss(c.critical.con)} con copiloto</span>
+          <span className="sim-good">{mmss(c.critical.con)} con agente</span>
         </p>
       ) : (
         <p className="sim-result note">Aparecerá cuando entre una llamada crítica.</p>
@@ -37,8 +37,8 @@ export default function SimStrip({ s }: { s: ConsoleState }) {
       <details className="sim-more">
         <summary>Supuestos</summary>
         <p>
-          No son datos reales: {NEW_CALL_SECONDS} s por llamada nueva y {DUPLICATE_SECONDS} s por repetida; con copiloto se atienden antes las emergencias nuevas más graves.
-          {c.meanNew && <> Espera media de las emergencias nuevas: {mmss(c.meanNew.sin)} sin copiloto y {mmss(c.meanNew.con)} con copiloto.</>}
+          No son datos reales: {NEW_CALL_SECONDS} s por llamada nueva y {DUPLICATE_SECONDS} s por repetida; con agente se atienden antes las emergencias nuevas más graves.
+          {c.meanNew && <> Espera media de las emergencias nuevas: {mmss(c.meanNew.sin)} sin agente y {mmss(c.meanNew.con)} con agente.</>}
         </p>
       </details>
     </section>

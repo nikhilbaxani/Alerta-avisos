@@ -3,8 +3,7 @@ import { PUBLIC_RELAY_URL } from "@/lib/consoleMode";
 import { scenarioEnd } from "@/lib/useConsole";
 import type { ConsoleMode, ConsoleState, EngineStatus, Speed } from "@/lib/useConsole";
 import { SCENARIOS, getScenario } from "@/data/scenarios";
-import animatedLogo from "@/docs/marca/avance-112/avance-112-animado.svg";
-import staticLogo from "@/docs/marca/avance-112/avance-112.png";
+import logo from "@/docs/marca/logo-agente-112.svg";
 import Icon from "./Icon";
 import { mmss } from "./format";
 
@@ -77,11 +76,10 @@ export default function TopBar({
   return (
     <>
       <header className="topbar">
-        <picture className="brand">
-          <source media="(prefers-reduced-motion: reduce)" srcSet={staticLogo.src} />
-          <img className="brand-logo" src={animatedLogo.src} width={1100} height={300}
-            alt="Avance 112. La IA propone. El operador decide." />
-        </picture>
+        <span className="brand">
+          <img className="brand-logo" src={logo.src} width={360} height={80}
+            alt="Agente 112. Coordina, actúa y escala. Decide el operador." />
+        </span>
 
         <div className="mode-picker">
           <div className="mode-tabs" role="tablist" aria-label="Modo de la consola">

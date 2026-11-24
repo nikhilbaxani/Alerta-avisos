@@ -107,8 +107,7 @@ kbd {
   display: block; flex: none; width: 252px; height: 56px; overflow: hidden;
   background: transparent;
 }
-/* Recorta solo el margen transparente del archivo original. */
-.brand-logo { display: block; width: 131%; height: auto; max-width: none; transform: translate(-4%, -19%); }
+.brand-logo { display: block; width: 100%; height: auto; }
 .mode-picker { display: grid; gap: 3px; }
 .mode-tabs { display: inline-flex; align-items: stretch; gap: 2px; border-bottom: 1px solid var(--line); }
 .mode-tabs button {
