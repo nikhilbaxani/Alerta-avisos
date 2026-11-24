@@ -8,9 +8,9 @@ COPY scripts/stt_server.py ./stt_server.py
 ENV STT_MODEL=Systran/faster-whisper-small \
     MAX_CALL_SECONDS=120 \
     HF_HOME=/models
-# Sin root. El volumen nuevo hereda el dueño de /models (stt).
-USER stt
 VOLUME /models
 EXPOSE 8000
+# Arranca como root solo para reparar el dueño de /models (un volumen ya existente puede ser de root) y
+# después cede los privilegios a stt con setpriv (util-linux, incluido en la imagen). Whisper nunca corre como root.
 # Forma shell para expandir las variables. Solo se publica dentro de la red de compose.
-CMD python stt_server.py --device cpu --host 0.0.0.0 --port 8000 --model "$STT_MODEL" --max-seconds "$MAX_CALL_SECONDS"
+CMD chown -R stt:stt /models && exec setpriv --reuid=stt --regid=stt --init-groups python stt_server.py --device cpu --host 0.0.0.0 --port 8000 --model "$STT_MODEL" --max-seconds "$MAX_CALL_SECONDS"
