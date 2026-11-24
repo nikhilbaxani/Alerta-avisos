@@ -44,6 +44,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - Consola: `NEXT_PUBLIC_RELAY_URL`; token del operador desde `?op=` o `localStorage`.
 - **S13** (usuario, L19): «que use el whisper de sobremesa y ya que tontería para no tener más latencia, mira si puede subir la velocidad de whisper también». El relay tiene un único STT (el de la sobremesa por el gateway, con la clave del LLM); sin respaldo en el VPS; una sola pasada de Whisper por llamada y traducción al castellano con el LLM.
 - **S14** (usuario, L20): «al escanear el qr y simular la llamada, dependiendo de lo que tarde en transcribir, proyectar el texto para que en esa simulación, la persona vea si es correcto mas o menos, y darle a un boton de enviar». En `/llamar`, tras grabar, la persona ve el progreso de la transcripción, después el texto transcrito y un botón «Enviar»; la llamada solo llega a la bandeja del operador cuando la persona pulsa «Enviar».
+- **S15** (usuario, L29–L30): «es agente 112 par que lo sepa que hay lio con el titulo» y «cambia el logo también». El nombre del producto a la vista es «Agente 112» en toda la interfaz (consola, `/llamar`, ayuda, título de la pestaña) y en el logo de la barra superior; no deben quedar «Copiloto 112» ni «Avance 112» visibles.
 
 ## Tasks
 
@@ -58,7 +59,8 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T8 | S12 | Pestañas Simulación / En directo en la consola | 131e105, 10618ad |
 | T9 | S13 | Relay con STT único en la sobremesa (clave, una pasada, traducción por LLM) + opciones de velocidad en `scripts/stt_server.py` | cc86f28 |
 | T10 | S14, S3–S6, S9 | Confirmación del llamante: transcripción visible en `/llamar` y botón «Enviar» antes de publicar | eef24d8 |
-| T11 | S9, S14, S7 | Correcciones tras la verificación final: TTL en compose, cola y cuota con llamadas sin enviar, bandeja tras recargar, documentación de privacidad, cola configurable y posición en la cola | (este commit) |
+| T11 | S9, S14, S7 | Correcciones tras la verificación final: TTL en compose, cola y cuota con llamadas sin enviar, bandeja tras recargar, documentación de privacidad, cola configurable y posición en la cola | b82f992 |
+| T12 | S15 | Unificar el nombre visible y el logo en «Agente 112» | — |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log
@@ -91,3 +93,5 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L26** (usuario): «tambien prueba cuantas peticiones a la vez aguanta me interesa mi esperanza es una 50 me parece perfecto». Medido contra el VPS: 50 peticiones simultáneas a `/`, `/llamar` y `/relay/health`, 100 de 100 correctas (medias 1,6 s, 0,8 s y 0,6 s); 100 simultáneas a `/`, 200 de 200.
 - **L27** (usuario): «vale no suba el cambio para nada, que mi compi tiene que subir su cambio de estética». La rama no se sube hasta nuevo aviso.
 - **L28** (T11): `PENDING_TTL_SECONDS`, `UPLOAD_LIMIT`, `PENDING_PER_IP` y `MAX_PENDING` pasan al relay; tope de 2 pendientes por IP; con la cola llena se desaloja la `ready` más antigua; descartar, caducar o ser desalojada devuelve la cuota una vez y `UPLOAD_LIMIT` (3×`RATE_LIMIT`) acota las subidas; la bandeja recuerda en `localStorage` los eventos tratados; `ahead` en el estado y «Hay N llamadas por delante de la tuya»; la página no se rinde a los 180 s; el TTL cuenta desde que la transcripción está lista. RED 21 → GREEN; 486 tests, `tsc`, evals y build con relay en verde. Sin probar: compose real, interfaz nueva en navegador, ráfaga de 50 contra el STT real. Aviso: con IP compartida (wifi del evento) los topes por IP limitan a todo el grupo; hay que subirlos en `relay.env`.
+- **L29** (usuario): «es agente 112 par que lo sepa que hay lio con el titulo». En el repositorio conviven «Copiloto 112» (título de la pestaña, `/llamar`, ayuda), «Avance 112» (logo de la barra superior, de un compañero) y «Agente 112» (README, PITCH, parte).
+- **L30** (usuario): «cambia el logo también».
