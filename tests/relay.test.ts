@@ -77,6 +77,28 @@ function call(base: string, o: { consent?: string | null; type?: string; bytes?:
   return fetch(`${base}/llamar`, { method: "POST", body: fd, headers: { ...(o.origin ? { Origin: o.origin } : {}), ...(o.xff ? { "x-forwarded-for": o.xff } : {}) } });
 }
 
+/** Envía una llamada con el cuerpo partido: la segunda mitad llega tras `gate` (fuerza peticiones solapadas). */
+async function slowCall(base: string, gate: Promise<void>): Promise<number> {
+  const fd = new FormData();
+  fd.set("file", new Blob([new Uint8Array(2000)], { type: "audio/webm" }), "c.webm");
+  fd.set("consent", "1");
+  const req = new Request("http://x/", { method: "POST", body: fd });
+  const bytes = new Uint8Array(await req.arrayBuffer());
+  const u = new URL(`${base}/llamar`);
+  return new Promise<number>((resolve, reject) => {
+    const r = http.request(
+      { host: u.hostname, port: u.port, path: u.pathname, method: "POST", headers: { "content-type": req.headers.get("content-type")!, "content-length": bytes.length } },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      },
+    );
+    r.on("error", reject);
+    r.write(bytes.subarray(0, 100));
+    void gate.then(() => r.end(bytes.subarray(100)));
+  });
+}
+
 /** Lee eventos SSE hasta tener `n` o agotar el tiempo. */
 async function readEvents(base: string, n: number, token = TOKEN): Promise<PublicCallEvent[]> {
   const ctrl = new AbortController();
@@ -329,6 +351,42 @@ describe("relay /llamar + /events", () => {
     for (let i = 0; i < 3; i++) expect((await call(base, { type: "image/png" })).status).toBe(415);
     for (let i = 0; i < 3; i++) expect((await call(base, { consent: "0" })).status).toBe(400);
     expect((await call(base)).status).toBe(202);
+  });
+
+  it("llamadas simultáneas desde la misma IP no superan la cuota (reserva antes de leer el cuerpo)", async () => {
+    const { relay, base } = await boot(fakeStt());
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const pending = Array.from({ length: 8 }, () => slowCall(base, gate));
+    await new Promise((r) => setTimeout(r, 150));
+    open();
+    const codes = await Promise.all(pending);
+    expect(codes.filter((c) => c === 202)).toHaveLength(3);
+    expect(codes.filter((c) => c === 429)).toHaveLength(5);
+    await relay.idle();
+  });
+
+  it("llamadas simultáneas no superan el máximo de la cola", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow = fakeStt();
+    const inner = slow.fetch;
+    slow.fetch = (async (...a: Parameters<typeof fetch>) => {
+      await gate;
+      return inner(...a);
+    }) as typeof fetch;
+    const { relay, base } = await boot(slow, { maxPending: 2, rateLimit: { max: 50, windowMs: 60_000 } });
+    expect((await call(base)).status).toBe(202); // en proceso, fuera de la cola
+    let open!: () => void;
+    const bodies = new Promise<void>((r) => (open = r));
+    const pending = Array.from({ length: 6 }, () => slowCall(base, bodies));
+    await new Promise((r) => setTimeout(r, 150));
+    open();
+    const codes = await Promise.all(pending);
+    expect(codes.filter((c) => c === 202)).toHaveLength(2);
+    expect(codes.filter((c) => c === 503)).toHaveLength(4);
+    release();
+    await relay.idle();
   });
 
   it("un 503 por cola llena no gasta cuota", async () => {

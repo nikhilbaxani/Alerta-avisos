@@ -148,7 +148,7 @@ export function createRelay(opts: RelayOptions) {
     return req.socket.remoteAddress ?? "?";
   }
 
-  /** ¿Ya agotó la cuota? No la consume: solo se cuenta una llamada tras validarla (`recordHit`). */
+  /** ¿Ya agotó la cuota? No la consume: `recordHit` la reserva al entrar y se devuelve si la respuesta no es 202. */
   function rateLimited(ip: string): boolean {
     const now = Date.now();
     for (const [k, v] of hits) {
@@ -159,11 +159,19 @@ export function createRelay(opts: RelayOptions) {
     return (hits.get(ip) ?? []).length >= limit.max;
   }
 
-  function recordHit(ip: string) {
+  function recordHit(ip: string): () => void {
+    const t = Date.now();
     const mine = hits.get(ip) ?? [];
-    mine.push(Date.now());
+    mine.push(t);
     hits.set(ip, mine);
+    return () => {
+      const i = mine.indexOf(t);
+      if (i >= 0) mine.splice(i, 1);
+    };
   }
+
+  /** Llamadas que ya pasaron el control de cola y aún leen o validan el cuerpo. */
+  let reserving = 0;
 
   function publish(ev: PublicCallEvent) {
     history.push(ev);
@@ -250,7 +258,15 @@ export function createRelay(opts: RelayOptions) {
     if (origin && !origins.has(origin)) return json(req, res, 403, { error: "Origen no permitido" });
     const ip = rateKey(clientIp(req));
     if (rateLimited(ip)) return json(req, res, 429, { error: "Demasiadas llamadas desde tu conexión. Espera unos minutos." });
-    if (queue.length >= maxPending) return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
+    if (queue.length + reserving >= maxPending) return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
+    // Cuota y hueco de cola se reservan antes del primer await (sin carreras entre peticiones simultáneas)
+    // y se devuelven si la llamada se rechaza.
+    const release = recordHit(ip);
+    reserving++;
+    res.once("close", () => {
+      reserving--;
+      if (res.statusCode !== 202) release();
+    });
     const ctype = req.headers["content-type"] ?? "";
     if (!ctype.startsWith("multipart/form-data")) return json(req, res, 400, { error: "Se esperaba multipart/form-data" });
     let body: Buffer;
@@ -276,7 +292,6 @@ export function createRelay(opts: RelayOptions) {
     if (file.size === 0) return json(req, res, 400, { error: "El audio está vacío" });
     if (!AUDIO_TYPE.test(file.type)) return json(req, res, 415, { error: "El archivo no es un audio admitido" });
 
-    recordHit(ip); // la cuota solo se gasta con llamadas válidas y aceptadas
     const id = `P${bootTag}${++seq}`;
     const receivedAt = Date.now();
     log(`[relay] ${id} recibida (${Math.round(file.size / 1024)} KB, ip ${short(ip)})`);
