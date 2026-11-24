@@ -13,7 +13,7 @@ Rama: `feature/llamadas-publico`. Leer hasta `## Log`.
 - **S6 · Moderación.** Respuesta del usuario: «me parece bien». Las llamadas del público entran en una bandeja de entrada de la consola; nada pasa al motor ni al mapa hasta que el operador pulsa «Aceptar»; «Descartar» la quita.
 - **S7 · Despliegue.** «Docker disponible» en el VPS: `docker-compose` con Caddy (HTTPS automático), el servicio relay (Node) y Whisper en CPU (`scripts/stt_server.py`). Pasos de despliegue documentados; no desplegamos nosotros.
 - **S8 · Modo simulado intacto.** Sin `NEXT_PUBLIC_RELAY_URL` la consola funciona exactamente igual que hoy y la bandeja no aparece. Si el VPS cae, la consola sigue funcionando.
-- **S9 · Seguridad del endpoint público.** Tamaño máximo 8 MB, tipo `audio/*` o `video/webm|mp4`, consentimiento obligatorio, límite 3 llamadas / 10 min por IP, cola máxima 20 (503 si llena), CORS solo para `ALLOWED_ORIGINS`, el audio solo vive en memoria y se descarta tras transcribir, sin teléfono ni nombre. El flujo `/events` exige `token` (comparación en tiempo constante). La transcripción es texto no confiable: no dispara acciones y se muestra como texto plano.
+- **S9 · Seguridad del endpoint público.** Tamaño máximo 3 MB (la grabadora fija 64 kbps: 2 min ≈ 1 MB), tipo `audio/*` o `video/webm|mp4`, consentimiento obligatorio, límite 3 llamadas / 10 min por IP, cola máxima 20 (503 si llena), CORS solo para `ALLOWED_ORIGINS`, el audio solo vive en memoria y se descarta tras transcribir, sin teléfono ni nombre. El flujo `/events` exige `token` (comparación en tiempo constante). La transcripción es texto no confiable: no dispara acciones y se muestra como texto plano.
 
 ## Contrato compartido (`lib/publicCall.ts`)
 
@@ -45,7 +45,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T2 | S1, S4, S7, S9 | Relay del VPS + Whisper CPU + Docker/Caddy (`server/`, `scripts/stt_server.py`) | 830f196 |
 | T3 | S3, S4, S6, S8 | Página `/llamar` + QR + bandeja de entrada en la consola | 1f2534c |
 | T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | a7fa4eb |
-| T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | (commit de endurecimiento) |
+| T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log
 
@@ -57,3 +57,4 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L6** (verificación independiente): S1–S9 PASS. Hallazgos: audio largo bloquea Whisper (DoS), token dentro de la imagen Docker, XFF primer salto, IPv6 sin agrupar, `?op=` en logs, POST de otros orígenes, transcripción sin límite, STT como root, cuota gastada por peticiones rechazadas.
 - **L7** (revisión nativa aprobada, avisos no bloqueantes): alias genéricos («rincón», «puerto», «alameda») como lugar conocido, bandeja sin reconexión, token incorrecto sin salida, recibo «la verá» falso, fallo de traducción tira la llamada, colisión de ids en el mismo segundo.
 - **L8** (T5): las 16 correcciones aplicadas; 289 tests, tsc, eval, eval:apagon y build en verde. Sin probar: ruta 413 de `stt_server.py` con Whisper real, reconexión y «Cambiar token» de la bandeja, build de las imágenes Docker.
+- **L9** (revisión nativa de T5): corrección exigida 1, carrera de cuota (comprobar y contar separados por un await) → reserva síncrona de cuota y hueco de cola, devuelta si no hay 202 (a91d0ef, tests de peticiones solapadas en RED→GREEN). Corrección exigida 2, volumen de modelos de root tras actualizar → `chown` y `setpriv` al arrancar (dc47872). Revisión aprobada. S9 pasa de 8 MB a 3 MB y la grabadora fija 64 kbps (AAC en iOS). Pendiente aparte (avisos): decodificación sin límite antes del 413, recuperación de lugares de una palabra («aeropuerto», «cuarteles»), tests de la UI de la bandeja, escucha solo IPv4, `setpriv` sin comprobar con Docker real.

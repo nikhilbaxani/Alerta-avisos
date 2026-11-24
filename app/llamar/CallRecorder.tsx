@@ -83,7 +83,8 @@ export default function CallRecorder() {
     setMsg(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
+      // 64 kbps: 2 min ≈ 1 MB en Opus o AAC (iOS), muy por debajo del límite de 3 MB del relay.
+      const mr = new MediaRecorder(stream, { audioBitsPerSecond: 64_000 });
       chunks.current = [];
       mr.ondataavailable = (e) => e.data.size && chunks.current.push(e.data);
       mr.onstop = () => {
