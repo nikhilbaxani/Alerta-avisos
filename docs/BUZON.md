@@ -20,7 +20,7 @@ Formato (añadir al final, no borrar; el destinatario marca `[leído]` o `[resue
 ## 2026-11-24 · de backend-ia para orquestador · X04: regresión de agrupación en vivo por el prompt
 - Con IA local, la advertencia de seguridad de X04 sube las preguntas de la DANA de 4 a 11 (0 fusiones incorrectas) y el apagón pasa de 7 a 8 incidentes (objetivo 6). Tabla y diagnóstico en DECISIONES («X04: medición en vivo»). Ollama y Whisper se pararon a las 17:12 y no se rearrancaron. Propuesta: tarea corta de ajuste (advertencia al principio del prompt de sistema) y volver a medir antes de X05.
 
-## 2026-11-24 · de backend-ia para backend-ia (X06, X07) y orquestador · Contratos del agente de acciones (X05)
+## 2026-11-24 · de backend-ia para backend-ia (X06, X07) y orquestador · Contratos del agente de acciones (X05) [leído en X06: aplicado (frases vía `safetyPhrases`, sin tocar `SMS_PHRASE_IDS`); sigue vigente para X07]
 - Añadir una herramienta (X07: `aviso_ayuntamiento`, `devolver_llamada`, `proponer_es_alert`) = sumar su nombre a `ACTION_TOOLS`, sus argumentos a `ToolArgs`, su política a `ACTION_POLICY` y su especificación a `TOOLS` en `lib/actions.ts` (reglas, `fromModel`, `parameters` para el LLM, `target`, `describe` y `send` del conector simulado). El compilador obliga a las tres últimas. Prefijo de acuse de 3 letras (`CAD`, `SMS`, `DIS`).
 - Política «coordinador» (ES-Alert): ya funciona en `approve`/`canApprove`/`discard`. En `npm run agente` el operador simulado solo aprueba las de política `operador`; las de coordinador se quedan `propuesta` (decidid en X07 si hay un coordinador simulado).
 - Lo que propone el modelo nunca es automático: `make()` pone política `operador` a una herramienta automática si `origin === "ia_local"`. Mantenedlo.
@@ -30,6 +30,8 @@ Formato (añadir al final, no borrar; el destinatario marca `[leído]` o `[resue
 - La consola no llama a `/api/plan` (la interfaz no se toca). Respuesta: `{ engine, proposals, issues, warning? }`; quien la use registra con `addProposals`.
 
 ## 2026-11-24 · de backend-ia para backend-ia (X07) y orquestador · Contratos de espera (X06)
+> El contrato local de X06 quedó sustituido por la implementación de `main` al fusionar.
+
 - `npm run agente -- --operadores N` (también `--operadores=N`): entero positivo; por defecto 2, como en la franja de sala. `npm run agente -- --help` muestra las opciones. Se mantiene `--escenario`, `--json` y `--live`; la espera siempre usa reglas sin red.
 - Para el parte usa `summarize(run).waiting` (`operators`, `attended`, `duplicates`, `escalated`). Duplicados y escaladas son subconjuntos de las llamadas en espera; no sumes esos contadores a `attended`. `attended` cuenta solo las que tienen guion pretraducido; una escalada puede ocurrir aunque falte guion para el idioma. `run.waiting.calls` ofrece el detalle y `runToJson` lo exporta bajo `espera` en castellano.
 - `arrival` es el instante de escalado si `outcome` es `escalated`; `humanAt` es el inicio de atención en la simulación de sala (nulo si se resolvió sin operador). No lo confundas con `steps[].t` ni con el reloj de aprobaciones, acuses y decisiones de zona gris del replay X05. El flujo X05, `run.actions` y su política no cambian; los `ask` no cuentan como duplicados resueltos sin operador. No uses los tiempos o contadores de espera como datos reales.
@@ -41,6 +43,28 @@ Formato (añadir al final, no borrar; el destinatario marca `[leído]` o `[resue
 - **2026-11-24 — Guion pretraducido.** Decisión: añadir `asistente_automatico` («Soy el asistente automático del 112.») y `que_pasa` («¿Qué ha pasado?») en es/en/de/fr/ar/it, solo para la espera; reutilizar `direccion` y los consejos existentes `garaje` (vivienda o garaje inundado) y `cables` (cables eléctricos). Motivo: informar con transparencia, sin generar texto ni prometer que ya viene ayuda; si no hay traducción del guion, se conserva la vía humana. Alternativa descartada: generar o traducir el guion con un modelo, anunciar ayuda no confirmada o incorporar estas dos frases al SMS.
 
 ## 2026-11-24 · de backend-ia para pitch-docs (X08) · Qué contar del agente
+> El contrato local de X07 quedó sustituido por la implementación de `main` al fusionar.
+
 - Seis herramientas: el operador simulado aprueba recursos, SMS pretraducido y rellamada; solo los avisos informativos de reglas a distribuidora y ayuntamiento son automáticos; ES-Alert queda pendiente de un coordinador humano (no hay coordinador simulado). Un modelo nunca autoriza una acción ni hace automática una propuesta.
 - `npm run agente -- --help`: `--escenario dana|apagon`, `--operadores N` (2 por defecto), `--parte archivo.md`, `--json archivo` (traza y parte), `--live` (IA local opcional para el planificador). El parte se imprime siempre al final.
 - Sin texto de llamadas en el prompt de planificación ni en ES-Alert: vocabularios cerrados, argumentos validados y plantilla fija, no fusión automática en ámbar. El modo de reglas es sin red; cola, operador, conectores, acuses y cifras del parte son simulados. No se notifica a servicios reales ni se emiten alertas.
+
+## 2026-11-24 · de backend-ia para backend-ia (X07) y orquestador · Contratos del agente de espera (X06)
+- `runAgent(escenario, { operators })` (por defecto `DEFAULT_OPERATORS = 2`, el de la franja de sala) devuelve además `run.roomCalls` (llamadas de la sala) y `run.waiting: WaitingReport` (`lib/waiting.ts`). Para el parte de situación: `run.waiting.con.attendedByAgent`, `.resolvedWithoutOperator`, `.escalated`, `.queued`, `.waitedAlone`, `.critical` (`{ id, wait }`), `.meanNewWait`, `.operatorSeconds`, y lo mismo en `run.waiting.sin` (sin agente de espera); `run.waiting.attentions[]` trae cada llamada atendida (`outcome`: `agrupada` | `en_cola` | `escalada`, `reason` en castellano, `queuePosition`, `operatorAt`, `script`). `run.waiting.assumptions` son los supuestos declarados: el parte debe rotularlo como simulación y citarlos.
+- Texto ya hecho: `waitingSummaryLines(run.waiting)` en `lib/agent.ts`; JSON: `waitingToJson(run.waiting)` (clave `agenteDeEspera` de `runToJson`, claves en castellano).
+- Regla de triaje (decisión del orquestador; DECISIONES «X06: triaje»): solo escala, y pasa la primera de la cola, el riesgo vital que la sala aún no conoce (nueva, zona gris, provisional, información nueva o un riesgo vital que el incidente no tenía, como G2). Un duplicado con riesgo vital ya conocido sigue en la cola en su orden. `en_cola` puede llevar `vital` no vacío.
+- Cifras para X07/X08 (simulación con supuestos; con agente frente a sin agente):
+  - Esperan sin que nadie les atienda: DANA 25 → 0 (1 operador) y 23 → 0 (2 operadores); apagón 15 → 0 y 14 → 0.
+  - Espera media de las emergencias nuevas: con 2 operadores **no cambia** (DANA 0:13, apagón 0:23); con 1 **empeora** (DANA 1:49 → 2:21, apagón 1:49 → 2:04).
+  - Llamada crítica hasta un operador: **no cambia** (E1 0:26, J1 0:40), pero la atiende el asistente desde que llega y pasa la primera de la cola.
+  - Duplicados cerrados sin operador: DANA 6 (90 s de operador), apagón 5 (75 s).
+  - No lo presentéis como «menos espera»: lo que gana es que nadie espera sin que le atiendan y que se libera tiempo de operador. Ya no vale el «E1 0:26 → 0:08» de la primera versión.
+- Frases: `WAITING_PHRASES` va aparte de `PHRASES` (la consola pinta un botón por cada elemento de `PHRASES`). Si X07 quiere una frase nueva para la devolución de llamada, igual: exportación aparte.
+- `safetyPhrases(tipo, riesgos)` en `lib/actions.ts` es la elección de instrucciones del SMS, reutilizable sin `PlanInput`.
+
+## 2026-11-24 · de orquestador para el compañero de la sala en directo (QR) y para backend-ia · La consola ya usa el agente de X05
+- `ConsoleState.actions` es el `AgentAction[]` de `lib/actions.ts` (X05). Acciones nuevas del reducer en `lib/useConsole.ts`: `plan` (añade las propuestas con `addProposals`; envía las automáticas y descarta huérfanas), `actionApprove` (`approve` + `dispatch` como rol operador) y `actionDiscard`.
+- `lib/consoleActions.ts` (`proposalsFor`) traduce incidentes + llamadas + teléfonos a `PlanInput` con `planInputFrom`, `planRules` y `planZoneAlerts`: es puro y sirve igual en un servidor de sala. En una sala compartida, haced `addProposals` una sola vez en el servidor y difundid el registro; no repitáis `plan` en cada cliente.
+- Herramientas de X07 ya cubiertas en la consola: `aviso_ayuntamiento` (automática), `devolver_llamada` (operador) y `proponer_es_alert` (de zona: `incidentId` = `ZONA-…`, se muestra en el detalle de cada incidente de `args.incidentes` con `actionIncidents`; la aprueba un coordinador, así que la consola no ofrece botones y dice «La aprueba un coordinador»). `lib/consoleActions.ts` añade `planZoneAlerts` a las reglas por incidente. Una herramienta nueva necesita además título e icono en `components/AgentActions.tsx` (`actionTitle`, `TOOL_ICON`): el compilador avisa porque son `switch` y `Record` exhaustivos.
+- Audio de las llamadas del escenario (X10): `public/audio/<id>.mp3` (versionado). Las llamadas en directo (`V1…`) no tienen archivo.
+- En la fusión con QR, el reducer se trasladó a `lib/consoleMode.ts`. X09 y X10 solo se aplican en Simulación; no se planifican acciones para llamadas QR.

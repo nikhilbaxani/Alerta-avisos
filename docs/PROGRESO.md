@@ -91,7 +91,45 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Endurecimiento (T5): Whisper rechaza audio > máximo antes de transcribir, relay a 3 MB, IP real por el último salto de Caddy e IPv6 /64, cuota solo para llamadas válidas, 403 a otros orígenes, transcripción ≤ 4000 caracteres, ids aleatorios por arranque, secretos fuera de la imagen, STT sin root, alias genéricos fuera del nomenclátor, reconexión de la bandeja, token por `#op=` y recibo honesto. 289 tests.
 - Desplegado en oracle-exit detrás de Tailscale Funnel (https://oracle-exit.tail0093c8.ts.net): web, relay y Whisper `base` en CPU; prueba por internet OK (IP real, sin suplantación, llamada aceptada → INC-01).
 
+## 2026-11-24T19:20 · X06 · hecha
+- Qué se hizo: `lib/waiting.ts` (sala con y sin agente de espera con los supuestos de `lib/metrics.ts`, triaje, guion con frases fijas en `WAITING_PHRASES`, separadas de `PHRASES` para no cambiar la consola) e integración en `npm run agente -- --operadores N` (por defecto 2, como la franja de sala).
+- Triaje (decidido por el orquestador tras la primera entrega): escala solo el riesgo vital que la sala aún no conoce (incidente nuevo, zona gris, provisional, información nueva o riesgo vital o gravedad 5 nuevos para el incidente, p. ej. G2); un duplicado con riesgo vital ya conocido sigue en la cola humana en su orden; un duplicado sin riesgo vital se cierra sin operador. La primera versión escalaba también los duplicados conocidos y retrasaba emergencias nuevas (C1 0:19 → 2:07).
+- Resultado (simulación, 2 operadores, DANA): 20 llamadas atendidas por el asistente en vez de esperar sin nadie, 6 duplicados sin operador, 7 escaladas; espera media de emergencias nuevas igual (0:13) y E1 igual (0:26); 1:30 menos de operador. Con 1 operador la espera media empeora (lo vital desconocido pasa delante). No vender como mejora de esperas.
+- Verificación (orquestador): lint OK; 257 tests; `eval` y `eval:apagon` idénticos; `npm run agente` OK; build OK; e2e en modo simulado OK; `PHRASES` sin líneas borradas; interfaz, `data/` y `lib/metrics.ts` sin tocar.
+- Pendiente: revisión del árabe de las frases nuevas por un hablante nativo.
+- Siguiente: X07.
+
+## 2026-11-24 · X07 · hecha y verificada en modo simulado
+- Qué se hizo: herramientas `aviso_ayuntamiento`, `devolver_llamada` y `proponer_es_alert` en `lib/actions.ts`; ES-Alert por zona tras confirmar incidentes distintos, sin duplicados y con aprobación exclusiva de coordinador; `lib/report.ts` genera el parte calculado del estado en Markdown y JSON; la CLI incorpora `--coordinador` y `--parte`.
+- Verificación de la entrega: `npm run lint`, 303 tests, `npm run build`, `npm run eval` (DANA 7 incidentes/0 fusiones incorrectas/2 preguntas) y `npm run eval:apagon` (6/0/1), todos correctos. E2E de consola correcto en modo simulado: decisiones F1/B2, respuesta en árabe, Separar, auditoría, apagón y móvil sin desbordamiento ni errores de consola. Capturas de esta comprobación en `/tmp/alerta-avisos-commit-qa/`, sin reemplazar las capturas versionadas.
+- CLI y exportaciones Markdown/JSON comprobadas: DANA 25 acciones, 24 enviadas y 1 ES-Alert pendiente de coordinador; con `--coordinador`, 25 enviadas; apagón 18 acciones enviadas y sin ES-Alert. Todos los servicios y acuses son simulados. Sin cambios de interfaz ni de `data/`.
+- Límite de la comprobación: el primer E2E con la configuración local de IA devolvió errores 502; al arrancar una instancia con `LLM_BASE_URL` y `STT_BASE_URL` vacíos, el E2E pasó. No se acredita IA real ni se cierra X04b.
+- Entrega adicional: fuentes y exportaciones de marca Avance 112, `docs/texto.md`, `nombres.md` y `pendiente de implementacion-agents.md`, que concreta X08, X04b y las validaciones restantes.
+- Siguiente: X08 (README, PITCH y verificación final para `agente-v1`). X04b sigue pendiente de resolver y medir con IA local.
+
+## 2026-11-24 · Logo Avance 112 en la cabecera
+- Petición de Nick: integrar arriba el GIF de Avance 112 sin fondo, hacer pull antes del push y subir la entrega.
+- Cambio: se reutilizan el GIF transparente y el PNG existentes mediante importaciones locales en `TopBar`; el PNG se selecciona con `prefers-reduced-motion`. Los estilos adaptan la cabecera a móvil y recortan solo el margen transparente del archivo.
+- Verificación: build y TypeScript correctos; Chromium comprueba carga del GIF, píxel con alfa 0, fondo CSS transparente, controles Iniciar/Pausar y ausencia de solapamientos o scroll horizontal a 320, 390, 768, 980, 1024, 1280 y 1440 px. Con movimiento reducido se carga el PNG. Capturas revisadas en `/tmp/alerta-avisos-logo-qa/`.
+- GitHub Pages: exportación estática comprobada en una copia temporal sin rutas API; el GIF y el PNG se incluyen bajo `/Alerta-avisos/_next/static/media/`. La petición autoriza únicamente esta actualización visual de la cabecera, sin modificar la lógica del agente.
+
+## 2026-11-24 · Logo sin repetición en la consola
+- Petición de Nick: reservar el bucle para la futura landing y evitar la repetición en la interfaz.
+- Cambio: `TopBar` utiliza el SVG animado existente, que termina en reposo tras una entrada. El GIF original mantiene su bucle; el PNG sigue siendo la alternativa para movimiento reducido.
+- Verificación: TypeScript correcto y prueba con Chromium en la aplicación local; se observa la entrada, se comparan capturas tras finalizar y después del antiguo periodo de 4,8 s, al pasar el cursor y al usar Iniciar/Pausar. El logo permanece fijo; móvil sin desbordamiento y movimiento reducido con PNG. Captura en `/tmp/alerta-avisos-logo-qa/logo-una-vez.png`.
+
+## 2026-11-24 · X09 · hecha
+- Qué se hizo: la consola usa el agente de acciones de X05–X07 (seis herramientas, incluido el ES-Alert de zona, que solo aprueba un coordinador): `lib/consoleActions.ts` (estado de la consola → `PlanInput`), estado y registro de acciones en `lib/useConsole.ts` y `lib/audit.ts` (traza completa), `components/AgentActions.tsx` y `components/AgentFeed.tsx`, cifra en el resumen y pastilla «por aprobar» en la prioridad. MEMORIA §16 y CLAUDE.md actualizados (la interfaz cambia en X09–X10 por petición de Nick).
+- Verificación: ver el commit; `node scripts/e2e.mjs` aprueba el SMS en árabe y comprueba el registro.
+- Siguiente: X10 (audio de las llamadas).
+
+## 2026-11-24 · X10 · hecha
+- Qué se hizo: audio regenerado para los dos escenarios con MP3 versionado, reproducción en la consola (`components/useCallAudio.ts`), indicador «En línea», «Escuchar/Detener», botón «Sonido»; ids de llamadas en directo `V…`; guion del pitch y README actualizados.
+- Verificación: lint, build, 46 tests, `eval` y `eval:apagon` en verde; `node scripts/e2e.mjs` OK (comprueba los MP3 y «Escuchar»); reproducción automática a ×4 probada con Playwright; `scripts/live-test.mjs` con `mock-ai.mjs` OK; exportación de GitHub Pages servida bajo `/Alerta-avisos/`: suena A1 y no hay peticiones fallidas; capturas revisadas.
+- Pendiente: escucharlo de verdad en el portátil de la demo (volumen del proyector).
+
 ## 2026-11-24T22:40 · X06 · hecha
+- La implementación local de X06 quedó sustituida por la de `main` al fusionar.
 - Qué se hizo: `lib/waiting.ts` (sala simulada con N operadores, cola humana, escalado inmediato por riesgo vital, guion del asistente solo con frases pretraducidas), frases `asistente_automatico` y `que_pasa` en seis idiomas (`lib/phrases.ts`, sin tocar las existentes), integración en `lib/agent.ts` y `npm run agente -- --operadores N` (por defecto 2).
 - Verificación (worker): 331 tests, `tsc` OK, `eval` 7/0/2 con E1 2.º y `eval:apagon` 6/0/1 con J1 1.º, `npm run agente` determinista (DANA, 2 operadores: 22 atendidas por el asistente, 7 duplicados sin operador, 13 escaladas; apagón: 14, 5 y 8). La zona gris nunca se resuelve sin operador. Ninguna interfaz tocada.
 - Sin ejecutar en esta tarea: `npm run build` y e2e (otro agente tenía `.next`); `--live`.
@@ -104,6 +142,7 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Pendiente: redesplegar en el VPS para que se vea en público; el e2e necesita `npx playwright install chromium` en esta máquina.
 
 ## 2026-11-24T23:30 · X07 · hecha (verificación independiente de la política en curso)
+- La implementación local de X07 quedó sustituida por la de `main` al fusionar.
 - Qué se hizo: tres herramientas nuevas en `lib/actions.ts` con su política en código (propuesta de ES-Alert solo aprobable por un coordinador humano, aviso informativo automático al ayuntamiento, devolver llamada con aprobación del operador), `lib/report.ts` (parte de situación en Markdown y JSON, rotulado como simulación) y `npm run agente -- --parte archivo.md`.
 - Verificación (worker): 340 tests, `tsc` OK, `eval` 7/0/2 y `eval:apagon` 6/0/1 iguales que antes; `npm run agente` determinista. DANA: 24 acciones, 23 envíos simulados y 1 ES-Alert pendiente (A y F, radio 272 m); D → aviso automático al ayuntamiento; B3 → devolver llamada. Sin coordinador simulado. Ninguna interfaz tocada.
 - Sin ejecutar: `npm run build`, e2e y `--live` con modelo real. El umbral de 500 m para proponer ES-Alert es un supuesto de la demo, no un protocolo oficial.

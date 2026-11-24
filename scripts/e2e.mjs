@@ -1,8 +1,15 @@
 // Prueba de la consola. Para probar ambos modos y renovar pestanas-*.png, arranca
 // en modo simulado con NEXT_PUBLIC_RELAY_URL=/relay y ejecuta con T8_CAPTURES=1.
+// E2E_CAPTURE_DIR guarda capturas de diagnóstico fuera del repositorio.
+// E2E_CHROMIUM_PATH permite usar un Chromium ya disponible.
 import { chromium } from "playwright";
 const url = process.argv[2] ?? "http://localhost:3112";
-const browser = await chromium.launch();
+const browser = await chromium.launch({
+  args: ["--autoplay-policy=no-user-gesture-required"],
+  executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
+});
+const captureDir = process.env.E2E_CAPTURE_DIR;
+const capture = (page, name) => captureDir && page.screenshot({ path: `${captureDir}/${name}.png` });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 const watchErrors = (pg) => {
@@ -12,7 +19,17 @@ const watchErrors = (pg) => {
 watchErrors(page);
 const fail = (m) => { console.error("FALLA:", m); process.exit(1); };
 const banner = page.getByText(/¿La llamada .* es el mismo incidente/);
+const kpi = async (pg, k) => Number(await pg.locator(`[data-kpi=${k}]`).getAttribute("data-value"));
 
+// Registra los elementos de audio para comprobar que el sonido avanza de verdad (no solo que el botón cambie).
+await page.addInitScript(() => {
+  const play = HTMLMediaElement.prototype.play;
+  window.__audios = [];
+  HTMLMediaElement.prototype.play = function () {
+    window.__audios.push(this);
+    return play.call(this);
+  };
+});
 await page.goto(url);
 await page.getByRole("button", { name: "Velocidad por 10" }).click();
 await page.getByRole("button", { name: "Iniciar", exact: true }).click();
@@ -27,11 +44,14 @@ for (let i = 0; i < 2; i++) {
   if (!(await banner.count())) fail("la zona gris se resolvió sin operador");
   await page.keyboard.press(text.includes("F1") ? "d" : "m");
   await page.waitForTimeout(300);
+  if (i === 1 && captureDir) {
+    await page.locator('.agent-feed .feed-item').first().waitFor({ timeout: 5000 });
+    await capture(page, "simulacion-acciones");
+  }
 }
 if (!asked[0].includes("F1") || !asked[1].includes("B2")) fail(`preguntas inesperadas: ${asked}`);
 await page.getByText(/26 de 26/).waitFor({ timeout: 45000 });
 await page.waitForTimeout(1500);
-const kpi = async (pg, k) => Number(await pg.locator(`[data-kpi=${k}]`).getAttribute("data-value"));
 if ((await kpi(page, "calls")) !== 26 || (await kpi(page, "incidents")) !== 7) fail(`contadores: ${await page.locator(".kpis").innerText()}`);
 
 // Los incidentes se buscan por contenido (tipo, motivo y nº de llamadas), no por su número INC-xx:
@@ -44,7 +64,32 @@ await page.getByRole("button", { name: "¿La persona respira? ¿Está consciente
 const said = await page.locator(".said").innerText();
 if (!/[؀-ۿ]/.test(said)) fail("la respuesta no está en árabe");
 await page.getByRole("button", { name: "Reproducir al llamante" }).click();
-await page.screenshot({ path: "docs/capturas/T19-arabe.png" });
+await capture(page, "T19-arabe");
+
+// Agente de acciones (X05 en la consola): los avisos informativos ya se enviaron solos; el SMS en árabe espera al operador.
+const sentBefore = await kpi(page, "actions");
+if (sentBefore < 2) fail(`el agente no ha enviado los avisos automáticos (${sentBefore})`);
+await page.getByRole("button", { name: /Aprobar y enviar: SMS en árabe/ }).click();
+await page.getByText(/Aprobado y enviado · acuse SMS-[0-9A-F]{6}/).first().waitFor({ timeout: 5000 });
+
+// Audio de la llamada (sin red: MP3 dentro de la app).
+for (const id of ["A1", "E1", "H1"]) {
+  const r = await page.request.get(`${url}/audio/${id}.mp3`);
+  if (r.status() !== 200 || !(r.headers()["content-type"] ?? "").includes("audio")) fail(`falta el audio ${id}`);
+}
+await page.getByRole("button", { name: "Escuchar la llamada E1" }).click();
+await page.getByRole("button", { name: "Detener la llamada E1" }).waitFor({ timeout: 3000 });
+await page.waitForFunction(() => window.__audios.some((a) => a.src.endsWith("/audio/E1.mp3") && !a.paused && !a.error && a.currentTime > 0.3), null, { timeout: 5000 })
+  .catch(() => fail("el audio de E1 no suena (no avanza): ¿faltan los MP3 en public/audio?"));
+await page.getByRole("button", { name: "Detener la llamada E1" }).click();
+if ((await kpi(page, "actions")) !== sentBefore + 1) fail("aprobar el SMS no cuenta como acción enviada");
+
+// ES-Alert (X07): lo propone el agente para la zona de los coches atrapados, pero solo lo aprueba un coordinador.
+await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
+const es = page.locator(".act", { hasText: "ES-Alert a la población" });
+if ((await es.count()) !== 1) fail("falta la tarjeta del ES-Alert en el coche de A");
+if (await es.getByRole("button", { name: /Aprobar y enviar/ }).count()) fail("el operador no debe poder aprobar un ES-Alert");
+if (!(await es.innerText()).includes("La aprueba un coordinador")) fail("el ES-Alert no avisa de que lo aprueba un coordinador");
 
 // Separar una llamada del coche de A (6 llamadas; F es el otro vehículo, con 2).
 await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
@@ -57,6 +102,7 @@ const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("b
 const log = JSON.parse(await (await import("node:fs/promises")).readFile(await dl.path(), "utf8"));
 const kinds = new Set(log.eventos.map((e) => e.kind));
 if (log.llamadas.length !== 26 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
+if (!kinds.has("accion_auto") || !kinds.has("accion_aprobada") || !log.accionesAgente?.length) fail("el registro no incluye las acciones del agente");
 
 // Escenario 2: apagón (una sola pregunta, M1).
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -70,14 +116,14 @@ await p2.keyboard.press("d");
 await p2.getByText(/16 de 16/).waitFor({ timeout: 30000 });
 await p2.waitForTimeout(1500);
 if ((await kpi(p2, "calls")) !== 16 || (await kpi(p2, "incidents")) !== 6) fail("apagón: contadores");
-await p2.screenshot({ path: "docs/capturas/X01-apagon.png" });
+await capture(p2, "X01-apagon");
 
 // Inicio vacío y móvil sin scroll horizontal.
 const empty = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 watchErrors(empty);
 await empty.goto(url);
 await empty.getByText(/Pulsa Iniciar/).waitFor();
-await empty.screenshot({ path: "docs/capturas/final-inicio.png" });
+await capture(empty, "final-inicio");
 const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
 watchErrors(mobile);
 await mobile.goto(url);
@@ -95,6 +141,12 @@ if (await liveTab(empty).isDisabled()) {
   await empty.getByText("En directo no disponible: falta configurar el relay del VPS.", { exact: true }).waitFor();
   if ((await simTab(empty).getAttribute("aria-selected")) !== "true") fail("Simulación no es la vista inicial");
   if (await empty.locator(".inbox").count()) fail("bandeja visible sin relay");
+  const sameRow = await empty.evaluate(() => {
+    const playback = document.querySelector(".playback").getBoundingClientRect();
+    const end = document.querySelector(".topbar-end").getBoundingClientRect();
+    return end.top < playback.bottom && playback.top < end.bottom;
+  });
+  if (!sameRow) fail("la barra superior ocupa más de una fila en escritorio sin relay");
   console.log("T8 OK: En directo (QR) desactivada con aviso sin relay");
 } else {
   const sample = {
@@ -137,6 +189,7 @@ if (await liveTab(empty).isDisabled()) {
     const accept = pg.getByRole("button", { name: "Aceptar llamada P1" });
     await accept.waitFor();
     if (await scenario.count() || await pg.locator(".playback, .clock").count()) fail("controles de simulación visibles en En directo");
+    if (await pg.locator("[data-kpi=actions], .agent-feed").count() || await pg.getByRole("button", { name: "Sonido de las llamadas" }).count()) fail("acciones o audio del escenario visibles en En directo");
     if (await kpi(pg, "calls") || await kpi(pg, "incidents") || await pg.locator(".marker").count()) fail("llamadas sin aceptar en el mapa o en los contadores");
     await pg.getByRole("button", { name: "Descartar llamada P2" }).click();
     if (await kpi(pg, "calls") || await kpi(pg, "incidents")) fail("descartar modificó la cola o los incidentes");
@@ -159,4 +212,4 @@ if (await liveTab(empty).isDisabled()) {
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: DANA 26 → 7, Apagón 16 → 6, zona gris, árabe, Separar, sin errores de consola");
+console.log("E2E OK: DANA 26 → 7, Apagón 16 → 6, zona gris, árabe, acciones del agente, audio, Separar, sin errores de consola");

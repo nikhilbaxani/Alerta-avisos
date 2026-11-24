@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scenario } from "@/data/scenario-dana-malaga";
 import { decide } from "@/lib/cluster";
+import { proposalsFor } from "@/lib/consoleActions";
 import { consoleReducer, initialConsoleState } from "@/lib/consoleMode";
 import type { CallMeta, ConsoleState } from "@/lib/consoleMode";
 import type { ProcessResult } from "@/lib/types";
@@ -58,6 +59,32 @@ function advanceSimWithFirstCall(s: ConsoleState): ConsoleState {
 }
 
 describe("consoleMode", () => {
+  it("conserva el registro del agente en simulación sin planificar sobre llamadas QR", () => {
+    const sim = advanceSimWithFirstCall(initialConsoleState());
+    const proposals = proposalsFor(sim.engine.incidents, sim.calls, { [sampleCall.id]: sampleCall.phone });
+    expect(proposals.length).toBeGreaterThan(0);
+    const plan = { type: "plan", proposals } as const;
+    const planned = consoleReducer(sim, plan);
+    const pending = planned.actions?.find((a) => a.status === "propuesta");
+    expect(pending).toBeDefined();
+    const approval = { type: "actionApprove", key: pending!.key } as const;
+    const sent = consoleReducer(planned, approval);
+    expect(sent.actions.find((a) => a.key === pending!.key)?.status).toBe("enviada");
+    expect(sent.audit.at(-1)?.kind).toBe("accion_aprobada");
+
+    const live = consoleReducer(sent, { type: "mode", mode: "live" });
+    const accepted = consoleReducer(live, { type: "live", ...makeLiveCall() });
+    expect(accepted.arrived).toEqual(["P1"]);
+    const livePlan = { type: "plan", proposals: proposalsFor(accepted.engine.incidents, accepted.calls, {}) } as const;
+    expect(consoleReducer(accepted, livePlan)).toBe(accepted);
+    expect(consoleReducer(accepted, approval)).toBe(accepted);
+    expect(accepted.actions).toEqual([]);
+    const restored = consoleReducer(accepted, { type: "mode", mode: "sim" });
+    expect(restored.actions).toEqual(sent.actions);
+    expect(restored.audit).toEqual(sent.audit);
+    expect(consoleReducer(restored, { type: "reset" }).actions).toEqual([]);
+  });
+
   it("arranca en modo sim vacío y al cambiar a live muestra estado vacío", () => {
     const s0 = initialConsoleState();
     expect(s0.mode).toBe("sim");

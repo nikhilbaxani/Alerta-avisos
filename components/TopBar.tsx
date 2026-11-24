@@ -3,6 +3,8 @@ import { PUBLIC_RELAY_URL } from "@/lib/consoleMode";
 import { scenarioEnd } from "@/lib/useConsole";
 import type { ConsoleMode, ConsoleState, EngineStatus, Speed } from "@/lib/useConsole";
 import { SCENARIOS, getScenario } from "@/data/scenarios";
+import animatedLogo from "@/docs/marca/avance-112/avance-112-animado.svg";
+import staticLogo from "@/docs/marca/avance-112/avance-112.png";
 import Icon from "./Icon";
 import { mmss } from "./format";
 
@@ -13,6 +15,10 @@ interface Props {
   status: EngineStatus;
   pending: number;
   onMode: (mode: ConsoleMode) => void;
+  actionsSent: number;
+  actionsToApprove: number;
+  sound: boolean;
+  onSound: () => void;
   onPlay: () => void;
   onPause: () => void;
   onSpeed: (v: Speed) => void;
@@ -27,6 +33,10 @@ export default function TopBar({
   status,
   pending,
   onMode,
+  actionsSent,
+  actionsToApprove,
+  sound,
+  onSound,
   onPlay,
   onPause,
   onSpeed,
@@ -67,10 +77,11 @@ export default function TopBar({
   return (
     <>
       <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">112</span>
-          <span className="brand-name">Copiloto</span>
-        </div>
+        <picture className="brand">
+          <source media="(prefers-reduced-motion: reduce)" srcSet={staticLogo.src} />
+          <img className="brand-logo" src={animatedLogo.src} width={1100} height={300}
+            alt="Avance 112. La IA propone. El operador decide." />
+        </picture>
 
         <div className="mode-picker">
           <div className="mode-tabs" role="tablist" aria-label="Modo de la consola">
@@ -161,6 +172,15 @@ export default function TopBar({
           >
             <i aria-hidden="true" />{status.label}
           </span>}
+          {isSim && <button
+            className="btn btn-ghost"
+            onClick={onSound}
+            aria-pressed={sound}
+            aria-label="Sonido de las llamadas"
+            title={sound ? (s.speed >= 10 ? "A ×10 las llamadas no suenan solas; puedes escucharlas en su tarjeta" : "Las llamadas suenan al entrar") : "Sonido desactivado"}
+          >
+            <Icon name={sound ? "speaker" : "mute"} /><span className="sr-only">{sound ? "Sonido activado" : "Sonido desactivado"}</span>
+          </button>}
           <button className="btn btn-ghost" onClick={onHelp} aria-label="Cómo funciona"><Icon name="help" /><span className="btn-text">Cómo funciona</span></button>
           <button className="btn btn-ghost" onClick={onExport} disabled={s.audit.length === 0} aria-label="Exportar registro" title="Descarga en JSON cada decisión de la IA y del operador">
             <Icon name="download" /><span className="btn-text">Exportar registro</span>
@@ -168,7 +188,7 @@ export default function TopBar({
         </div>
       </header>
 
-      <section className="kpis" aria-label="Resumen" aria-live="polite">
+      <section className={`kpis${isSim ? " kpis-sim" : ""}`} aria-label="Resumen" aria-live="polite">
         <div className="kpi" data-kpi="calls" data-value={done}>
           <span className="kpi-val">{done}{isSim && <small> / {total}</small>}</span>
           <span className="kpi-label">llamadas recibidas</span>
@@ -185,6 +205,13 @@ export default function TopBar({
           <span className="kpi-val">{pending}</span>
           <span className="kpi-label">{pending === 1 ? "decisión pendiente" : "decisiones pendientes"}</span>
         </div>
+        {isSim && <div className="kpi" data-kpi="actions" data-value={actionsSent}>
+          <span className="kpi-val">{actionsSent}</span>
+          <span className="kpi-label">
+            {actionsSent === 1 ? "acción del agente" : "acciones del agente"}
+            <span className={`kpi-hint ${actionsToApprove > 0 ? "todo" : ""}`}>{actionsToApprove > 0 ? `${actionsToApprove} por aprobar` : "enviadas a servicios"}</span>
+          </span>
+        </div>}
       </section>
     </>
   );

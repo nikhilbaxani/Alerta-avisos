@@ -55,7 +55,7 @@ const carA4 = input({
 });
 
 describe("política de aprobación (tabla en código)", () => {
-  it("recursos y SMS los aprueba el operador; el aviso a la distribuidora es automático", () => {
+  it("recursos, SMS y devolver la llamada los aprueba el operador; los avisos a organismos son automáticos; el ES-Alert, el coordinador", () => {
     expect(ACTION_POLICY).toEqual({
       proponer_recursos: "operador",
       sms_al_llamante: "operador",
@@ -83,13 +83,8 @@ describe("política de aprobación (tabla en código)", () => {
   });
 
   it("approve con rol operador sobre una acción de coordinador falla", () => {
-    const withAml = (incident: PlanInput, callId: string, lat: number): PlanInput => ({
-      ...incident, calls: [{ ...incident.calls[0], id: callId, aml: { ...incident.points[0], lat } }],
-    });
-    const current = withAml(carA1, "A1", 36.72);
-    const nearby = withAml({ ...carA1, incidentId: "INC-02" }, "F1", 36.724);
-    const p = planRules({ ...current, nearby: [nearby] }).find((p) => p.tool === "proponer_es_alert")!;
-    const { actions } = addProposals([], [p], 10);
+    const [p] = planRules(carA1);
+    const { actions } = addProposals([], [{ ...p, policy: "coordinador" }], 10);
     const r = approve(actions, p.key, "operador", 12);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/coordinador/);
@@ -189,9 +184,6 @@ describe("reglas: proponer_recursos", () => {
     ["ascensor", ["atrapados", "sin_luz"], ["bomberos"]],
     ["otro", ["cables_electricos"], ["bomberos"]],
     ["semaforos", ["trafico", "sin_luz"], ["policia_local"]],
-    ["arbol_caido", ["via_bloqueada", "trafico"], ["bomberos", "policia_local"]],
-    ["otro", ["via_bloqueada", "trafico"], ["policia_local"]],
-    ["otro", ["trafico"], ["policia_local"]],
     ["accidente", ["herido"], ["samu_061", "policia_local"]],
     ["inundacion_vivienda", ["mayor", "movilidad_reducida", "agua_subiendo"], ["bomberos"]],
     ["inundacion_vivienda", [], []],

@@ -2,12 +2,6 @@
 
 Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descartada.
 
-## 2026-11-24 · Pestañas Simulación y En directo (QR)
-- Decisión: separar ambas sesiones. DANA y Apagón se eligen dentro de Simulación, cuyo reloj se detiene mientras la pestaña está oculta. En directo tiene su propia bandeja y mapa, y no admite llamadas sin moderar ni llamadas del micrófono local de la consola. Sin relay, su pestaña queda desactivada con un aviso visible.
-- Motivo: poder alternar entre un escenario reproducible y las llamadas del público sin mezclar colas, incidentes ni decisiones.
-- El reloj interno de En directo, que ajusta la prioridad por tiempo de espera, también se pausa mientras se muestra Simulación: para la demo basta con contar el tiempo en que el operador está viendo las llamadas del público, no con medir la espera real.
-- Descartado: añadir «En directo» como tercer escenario del selector y compartir la cola y los controles de reproducción.
-
 ## 2026-10-27 · Mapa SVG propio en lugar de teselas
 - Decisión: dibujar la bahía de Málaga en SVG con coordenadas aproximadas.
 - Motivo: la demo debe funcionar sin red (wifi del hackathon) y sin claves.
@@ -172,11 +166,15 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - IP del cliente: `X-Forwarded-For` desde la derecha saltando direcciones locales y privadas; Caddy confía en saltos privados para conservar la cabecera de Funnel. Pendiente de comprobar en el VPS que Funnel la envía (prueba en `server/README.md`); si no, `RATE_LIMIT=60`.
 
 ## X06: agente de espera
+> La implementación local de X06 quedó sustituida por la de `main` al fusionar.
+
 - **2026-11-24 — Capacidad de sala y reloj de las acciones.** Decisión: simular la cola por separado, con 2 operadores por defecto y 60 s por nueva o ámbar y 15 s por repetida atendida por un humano. Motivo: conservar la reproducción y la auditoría X05 sin confundir el escalado inmediato con el inicio de atención de sala. Alternativa descartada: reordenar el motor o desplazar las aprobaciones en función de la cola.
 - **2026-11-24 — Prioridad y duplicados.** Decisión: encolar el riesgo vital en cuanto se detecta, incluso en duplicados, por delante del resto y sin interrumpir llamadas activas; solo una fusión de alta confianza sin criterio de escalado y con guion disponible libera una línea. Motivo: una llamada repetida puede traer una emergencia y una zona gris exige intervención humana. Alternativa descartada: cerrar toda repetida o tratar la zona gris como fusión automática.
 - **2026-11-24 — Guion pretraducido.** Decisión: añadir `asistente_automatico` («Soy el asistente automático del 112.») y `que_pasa` («¿Qué ha pasado?») en es/en/de/fr/ar/it, solo para la espera; reutilizar `direccion` y los consejos existentes `garaje` (vivienda o garaje inundado) y `cables` (cables eléctricos). Motivo: informar con transparencia, sin generar texto ni prometer que ya viene ayuda; si no hay traducción del guion, se conserva la vía humana. Alternativa descartada: generar o traducir el guion con un modelo, anunciar ayuda no confirmada o incorporar estas dos frases al SMS.
 
 ## 2026-11-24 · X07: ES-Alert queda pendiente de coordinación humana
+> Las entradas locales de X07, incluida la revisión posterior, quedaron sustituidas por la implementación de `main` al fusionar.
+
 - Decisión: no hay coordinador simulado. Una pareja de incidentes confirmados con vehículos atrapados por agua a 500 m o menos genera un único borrador con plantilla fija y zona circular que cubre las posiciones AML y su precisión. El umbral es un supuesto de la demo, no un protocolo oficial.
 - Motivo: reproducir A y F sin confundir corroboración con fusión automática ni atribuir aprobación humana al replay. `/api/plan` valida un solo incidente y descarta ES-Alert sin el contexto del motor; no acepta vecindad ni zona aportada por el cliente o el modelo.
 - Alternativa descartada: simular una aprobación de coordinación, basar la alerta en el número de llamadas a un mismo incidente o redactarla con texto libre.
@@ -199,3 +197,64 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 ## 2026-11-24 · X07: política y posición verificadas antes de actuar
 - Decisión: derivar la política de la herramienta y su origen al registrar, aprobar y enviar; al enviar, comprobar también el rol de la aprobación. Calcular la zona de ES-Alert solo con posiciones AML vinculadas a las llamadas que informan del atrapamiento.
 - Motivo: ni los campos de la propuesta ni la posición de otra llamada son evidencia suficiente. Se descarta confiar en la política copiada o emparejar por índice la lista de llamadas y la de posiciones.
+
+## 2026-11-24 · X06: sala simulada con y sin agente de espera (`lib/waiting.ts`)
+- Decisión: `simulateRoom(llamadas, N, conAgente)` reproduce la sala con los supuestos de `lib/metrics.ts` (60 s por llamada nueva, 15 s por repetida; cola del copiloto: primero emergencias nuevas por gravedad). Sin agente da **exactamente** las esperas de `simulate(…, "con_copiloto")` (test con los dos escenarios y 1–6 operadores), así que la consola y `npm run agente` cuentan lo mismo. `lib/metrics.ts` no se toca. El asistente atiende una llamada solo si, al llegar, ningún operador la coge en ese mismo segundo (test: todo lo que no atiende tiene espera 0; con tantos operadores como llamadas no atiende ninguna).
+- «Primera de su incidente» se calcula con el estado final, como la franja de sala; la decisión del motor (fusión, zona gris, información nueva) es la del momento en que entra la llamada.
+- Supuestos añadidos y declarados en la traza y el JSON: el asistente atiende varias llamadas a la vez; la llamada que atiende y sigue en cola cuesta al operador lo mismo que sin asistente (conservador: no se le descuenta lo que ya recogió el asistente); las escaladas pasan por delante en la cola humana y, entre ellas, se ordenan con el criterio del copiloto (nueva antes que repetida, gravedad, llegada), así E1 queda la primera aunque haya escaladas anteriores de duplicados con información nueva.
+- Indicadores con y sin agente: llegan con todos ocupados, esperan sin que nadie les atienda, atendidas por el asistente, duplicados resueltos sin operador, escaladas, siguen en cola, tiempo de operador, espera de la llamada crítica (`criticalCall` de `lib/metrics.ts`) y espera media de las emergencias nuevas.
+- Descartado: decidir quién espera mirando la simulación sin agente (con el agente cambian las esperas y acabaría atendiendo llamadas que un operador libre podría coger) y añadir un parámetro a `simulate` (la consola lo usa; mejor no tocarlo).
+
+## 2026-11-24 · X06: triaje del asistente de espera (decisión del orquestador)
+- Decisión: la escalada inmediata es para el riesgo vital (`dolor_pecho`, `inconsciente`, `sin_respuesta`, `vida` o gravedad 5) **que la sala aún no conoce**. Por llamada:
+  1. Riesgo vital y además emergencia nueva o zona gris (`decision !== "merge"`), fusión con un provisional, información nueva del motor (A4 «menor», B3 «no responde») o un riesgo vital que el incidente no tenía antes de la llamada → **escala** y pasa la primera de la cola humana.
+  2. Riesgo vital en un duplicado puro (`merge`, no provisional, sin información nueva) cuyos riesgos vitales ya tenía el incidente (A2, A3, A5, A6, F2, B4, G4, J2, K2) → **ni escala ni se cierra**: `en_cola` en su orden normal del copiloto. Motivo: «Duplicado de INC-01 con riesgo vital ya conocido por la sala (…): sigue en la cola humana en su orden, sin pasar por delante.»
+  3. Sin riesgo vital: un duplicado puro se cierra («agrupada») sin ocupar a un operador; el resto (nueva, información nueva, zona gris, provisional) sigue en la cola humana.
+  - Ninguna decisión del motor cambia: una zona gris nunca se cierra sola (test) y `npm run eval`/`eval:apagon` dan la misma salida byte a byte.
+- Detalle añadido por `backend-ia` a la regla del orquestador: «ya conocido» se comprueba con los riesgos y la gravedad del incidente **antes** de la llamada (`WaitingCall.known`), no solo con la información nueva del motor, porque el motor no cuenta `vida` como información nueva (MEMORIA §9). Único caso afectado: **G2** trae `vida` a un garaje que solo tenía «agua subiendo» (gravedad 3). Con la lista de condiciones literal habría ido a la cola sin escalar; con esta comprobación escala («riesgo vital, nuevo para INC-08»). Una gravedad 5 que el incidente no tenía también cuenta como nueva. Nunca escala menos que la lista literal.
+- Motivo: no colar duplicados ya conocidos delante de emergencias nuevas sin dejar de oír ninguna llamada vital. Ninguna llamada con riesgo vital la cierra una máquina: si se cerrara, ninguna persona la oiría (F1 parecía el mismo coche y era otro).
+- Cifras (simulación; con agente frente a sin agente, ambos con la cola del copiloto):
+  - Esperan sin que nadie les atienda: DANA 25 → 0 (1 operador) y 23 → 0 (2 operadores); apagón 15 → 0 y 14 → 0.
+  - Espera media de las emergencias nuevas hasta un operador, con 2 operadores: igual (DANA 0:13, apagón 0:23). Con 1 operador empeora (DANA 1:49 → 2:21, apagón 1:49 → 2:04), porque lo vital que nadie conoce pasa delante de las emergencias nuevas no vitales.
+  - Llamada crítica: un operador la coge igual que sin agente (E1 0:26 con 1 y 2 operadores; J1 0:40). Mientras tanto le atiende el asistente, y pasa la primera de la cola.
+  - Duplicados cerrados sin operador: DANA 6 (11:45 → 10:15 de operador), apagón 5 (8:30 → 7:15).
+- Descartado: la primera versión de X06, que escalaba **cualquier** llamada con riesgo vital, también los duplicados ya conocidos. Con 2 operadores en la DANA escalaban 10 de 19, C1 (árbol caído) esperaba 2:07 en vez de 0:19 y la espera media de las emergencias nuevas subía de 0:13 a 0:24. El 0:08 de E1 que daba aquella versión era un efecto secundario: los duplicados escalados (15 s) pasaban delante de C1 (60 s) y liberaban antes a un operador. También se descarta cerrar duplicados con riesgo vital, porque dejaría una llamada vital sin oír.
+
+## 2026-11-24 · X06: guion del asistente y frases nuevas
+- Decisión: el guion es una lista de frases fijas, sin texto de ningún modelo: «asistente» (presentación como asistente automático y que un operador le atenderá: transparencia de la Ley de IA) → «que_ocurre» → si escala, «escalado» y las instrucciones; si no, las instrucciones y el cierre («ya_avisado» si se agrupa, «en_cola» si sigue en cola). Las instrucciones son la elección del SMS de X05 por tipo y riesgos del incidente al entrar la llamada (`safetyPhrases`, exportada de `lib/actions.ts` sin cambiar su comportamiento). En simulado «lo que dice el llamante» es la llamada del escenario, que entra por el flujo normal.
+- Frases nuevas en `WAITING_PHRASES` de `lib/phrases.ts`, **aparte de `PHRASES`** (la consola pinta un botón por cada elemento de `PHRASES`; test de que sigue con sus 6 ids): «Le atiende el asistente automático del 112. Todos los operadores están ocupados y uno le atenderá lo antes posible.» · «Dígame qué ocurre y dónde está.» · «Le paso con un operador ahora mismo. No cuelgue.» · «Mantenga la calma.» · «He tomado nota. No cuelgue: un operador le atenderá en cuanto quede libre.» · «Ya tenemos el aviso de esta emergencia: no hace falta que espere. Si la situación empeora, vuelva a llamar al 112.» Ninguna va por SMS: `SMS_PHRASE_IDS` no cambia y las acciones de X05 tampoco.
+- **Las traducciones (en, de, fr, ar, it) no son de MEMORIA §11**: las ha escrito `backend-ia` siguiendo el registro de las de §11 (usted/Sie/vous/Lei; en árabe, segunda persona masculina como «حافظ على هدوئك»; «112» en cifras occidentales). Conviene que un hablante nativo revise el árabe antes de usarlas con llamantes reales.
+- Honestidad: «calma» dice «la ayuda está en camino»; el asistente solo la usa si un operador ya ha cogido alguna llamada de esa emergencia en la sala simulada; si no, dice «Mantenga la calma.» (`calma_espera`). Por lo mismo, el cierre de un duplicado dice «Ya tenemos el aviso» y no «la estamos atendiendo» (en la DANA, C2 se cierra cuando C1 aún espera en la cola). Sin traducción al idioma del llamante, el guion va en castellano y la traza lo avisa.
+- Descartado: instrucciones clínicas nuevas para el dolor torácico (no se inventan protocolos sanitarios) y meter las frases en `PHRASES` (cambiaría la consola).
+
+## 2026-11-24 · X06: `npm run agente -- --operadores N`
+- Decisión: por defecto 2, el valor inicial de la franja de sala (`useState(2)` en `components/SimStrip.tsx`; un test lee el archivo y falla si dejan de coincidir). Entero de 1 a 50; si no, error en castellano. La traza añade, bajo la línea de cada llamada que atiende el asistente: por qué (operadores ocupados hasta T+…), idioma, guion original y en castellano, resultado (agrupada sin operador / en cola humana / ESCALADA, con puesto y cuándo la coge un operador) y motivo. Al final, «Agente de espera · SIMULACIÓN» con los indicadores con y sin agente. El JSON añade `agenteDeEspera` (las claves anteriores no cambian). Determinista sin `--live`.
+
+## 2026-11-24 · Logo Avance 112 en la cabecera (petición de Nick)
+- Decisión: sustituir el distintivo «112 / Copiloto» de `components/TopBar.tsx` por el GIF transparente existente de Avance 112. Se importa como recurso local para conservar la ruta correcta tanto en Next.js como en GitHub Pages; con movimiento reducido se muestra el PNG estático. CSS adapta el tamaño y recorta únicamente los márgenes transparentes del lienzo.
+- Motivo: petición explícita de Nick de integrar este logo animado arriba, sin fondo. Esta petición autoriza el cambio acotado de cabecera y estilos pese a la restricción de interfaz de la fase de agentes; no amplía el alcance de X04–X08.
+- Descartado: regenerar o redibujar el logo, añadir un fondo al archivo o utilizar enlaces externos para cargarlo.
+
+## 2026-11-24 · Entrada única del logo en la consola
+- Decisión: la cabecera utiliza `avance-112-animado.svg`, cuya entrada se reproduce una sola vez y termina en reposo. Conserva la transparencia y la alternativa PNG para movimiento reducido.
+- Motivo: Nick pide que el logo no se repita en la interfaz; la repetición se reserva para una futura landing. El GIF original con bucle sigue disponible para ese uso.
+- Descartado: cambiar o recodificar el GIF compartido, o añadir temporizadores en React para sustituirlo después de la entrada.
+
+## 2026-11-24 · Acciones del agente visibles en la consola (X09), sobre el módulo de X05
+- Decisión: la consola no tiene planificador propio: usa `planInputFrom` + `planRules`, `addProposals`, `approve`, `dispatch`, `discard`, `discardOrphans` y `traceOf` de `lib/actions.ts` (X05). `ConsoleState.actions` es el `AgentAction[]` de ese módulo; `lib/consoleActions.ts` solo traduce el estado de la consola (incidentes, llamadas, teléfonos) a `PlanInput`. Las propuestas se recalculan cuando cambian los incidentes y solo se añade lo que falta (clave incidente + herramienta + destino). Las automáticas se envían al añadirlas y quedan en el registro (`accion_auto`); aprobar enviar es un solo clic (`approve` + `dispatch`). El registro exportado lleva la traza completa (`accionesAgente`).
+- Interfaz: tarjeta por acción en el detalle (una por servicio, una por SMS), avisos sobre el mapa al enviar, cifra «acciones del agente» y «N por aprobar» en la prioridad. Las acciones de política `coordinador` (ES-Alert, de zona, X07) se muestran en el detalle de cada incidente de la zona, con su texto fijo en castellano e inglés y sin botones: «La aprueba un coordinador». «N por aprobar» solo cuenta lo que puede aprobar el operador.
+- Motivo: Nick pidió que el agente se vea actuar en el pitch; MEMORIA §16 se actualiza en consecuencia (la interfaz cambia en X09–X10). Un solo planificador evita que la consola y `npm run agente` propongan cosas distintas.
+- Descartado: mi primer planificador (mismo nombre de archivo, otra API), que chocaba con el de X05: se sustituyó por el suyo y se adaptó la interfaz.
+
+## 2026-11-24 · Audio de las llamadas en la consola (X10)
+- Decisión: MP3 de 16 kHz y 24 kbps en `public/audio/` versionados en git (42 llamadas, 1,3 MB), generados con edge-tts una sola vez; los `.wav` siguen ignorados y los usa Whisper. Al entrar una llamada suena solo si no hay otra sonando, para que cada una se oiga entera; a ×10 no suena sola. La voz se elige por teléfono (A2/A6, H1/H3 y J1/J3 suenan igual) y por el género que fija el guion; lluvia solo en la DANA.
+- Motivo: Nick pidió que se oyeran las llamadas en el pitch. Sin red en tiempo de ejecución, también en GitHub Pages (subruta en `NEXT_PUBLIC_BASE_PATH`).
+- Descartado: cortar la llamada anterior al entrar otra (a ×4 se oían fragmentos de 3 s sin sentido) y audio a ×10.
+- Arreglo de paso: las llamadas en directo se numeraban `L1, L2…` y chocaban con las llamadas L1 y L2 del apagón; ahora son `V1, V2…`.
+
+## 2026-11-24 · Pestañas Simulación y En directo (QR)
+- Decisión: separar ambas sesiones. DANA y Apagón se eligen dentro de Simulación, cuyo reloj se detiene mientras la pestaña está oculta. En directo tiene su propia bandeja y mapa, y no admite llamadas sin moderar ni llamadas del micrófono local de la consola. Sin relay, su pestaña queda desactivada con un aviso visible.
+- Motivo: poder alternar entre un escenario reproducible y las llamadas del público sin mezclar colas, incidentes ni decisiones.
+- El reloj interno de En directo, que ajusta la prioridad por tiempo de espera, también se pausa mientras se muestra Simulación: para la demo basta con contar el tiempo en que el operador está viendo las llamadas del público, no con medir la espera real.
+- Descartado: añadir «En directo» como tercer escenario del selector y compartir la cola y los controles de reproducción.
+- Al fusionar X09/X10, el registro de acciones y el audio de escenario quedan en Simulación. En directo no ejecuta el agente ni reproduce audio de escenario; volver a Simulación conserva el registro pero no vuelve a reproducir llamadas anteriores.

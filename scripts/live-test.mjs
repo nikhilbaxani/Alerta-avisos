@@ -9,7 +9,7 @@ await page.getByText(/IA local/).waitFor({ timeout: 8000 });
 await page.getByRole("button", { name: "Grabar" }).click();
 await page.waitForTimeout(1200);
 await page.getByRole("button", { name: "Terminar y enviar" }).click();
-await page.getByText("L1", { exact: true }).first().waitFor({ timeout: 10000 });
+await page.getByText("V1", { exact: true }).first().waitFor({ timeout: 10000 });
 console.log("engine:", await page.locator(".engine").innerText());
 console.log("resumen:", (await page.locator(".kpis").innerText()).replace(/\s+/g, " "));
 await page.screenshot({ path: "docs/capturas/T17-directo.png" });

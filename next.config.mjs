@@ -9,7 +9,7 @@ const nextConfig = {
     output: "export",
     basePath: process.env.PAGES_BASE_PATH || "",
     images: { unoptimized: true },
-    env: { NEXT_PUBLIC_STATIC_EXPORT: "1" },
+    env: { NEXT_PUBLIC_STATIC_EXPORT: "1", NEXT_PUBLIC_BASE_PATH: process.env.PAGES_BASE_PATH || "" },
   }),
 };
 export default nextConfig;

@@ -10,6 +10,8 @@ import {
 } from "@/lib/engine";
 import type { EngineCall, EngineState } from "@/lib/engine";
 import type { Aml, Decision, ProcessResult } from "@/lib/types";
+import { addProposals, approve, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
+import type { AgentAction, Proposal } from "@/lib/actions";
 
 export const PUBLIC_RELAY_URL = (process.env.NEXT_PUBLIC_RELAY_URL ?? "").trim().replace(/\/$/, "");
 
@@ -54,7 +56,8 @@ export interface Reply {
 
 export interface AuditEntry {
   t: number;
-  kind: "fusion_auto" | "incidente_nuevo" | "consulta" | "operador_mismo" | "operador_distinto" | "separar" | "respuesta";
+  kind: "fusion_auto" | "incidente_nuevo" | "consulta" | "operador_mismo" | "operador_distinto" | "separar" | "respuesta"
+    | "accion_auto" | "accion_aprobada" | "accion_descartada";
   callId?: string;
   incidentId?: string;
   detail: string;
@@ -78,6 +81,7 @@ export interface ConsoleModeSnapshot {
   fx: Fx[];
   replies: Reply[];
   audit: AuditEntry[];
+  actions: AgentAction[];
   /** Llamadas en directo (público QR o micrófono), por id. */
   live: Record<string, CallMeta>;
 }
@@ -105,7 +109,10 @@ export type ConsoleAction =
   | { type: "split"; callId: string }
   | { type: "select"; incidentId: string | null }
   | { type: "fxDone"; key: string }
-  | { type: "reply"; reply: Reply };
+  | { type: "reply"; reply: Reply }
+  | { type: "plan"; proposals: Proposal[] }
+  | { type: "actionApprove"; key: string }
+  | { type: "actionDiscard"; key: string };
 
 export const callMeta = (s: ConsoleState, id: string): CallMeta | undefined =>
   s.live[id] ?? (s.mode === "sim" ? sortedCalls(s.scenarioId).find((c) => c.id === id) : undefined);
@@ -127,6 +134,7 @@ function initSnapshot(epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleModeS
     fx: [],
     replies: [],
     audit: [],
+    actions: [],
     live: {},
   };
 }
@@ -384,6 +392,38 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
       return { ...s, selected: a.incidentId };
     case "fxDone":
       return { ...s, fx: s.fx.filter((f) => f.key !== a.key) };
+    case "plan": {
+      if (s.mode !== "sim") return s;
+      const base = discardOrphans(s.actions, s.engine.incidents.map((i) => i.id), s.clock);
+      const { actions, added } = addProposals(base, a.proposals, s.clock);
+      if (added.length === 0 && base.every((x, i) => x === s.actions[i])) return s;
+      const audit: AuditEntry[] = added
+        .filter((x) => x.status === "enviada")
+        .map((x) => ({ t: s.clock, kind: "accion_auto", incidentId: x.incidentId, detail: `Enviado automáticamente a ${toolTarget(x)} (acuse ${x.receipt?.reference}). ${x.reason}` }));
+      return { ...s, actions, audit: audit.length ? [...s.audit, ...audit] : s.audit };
+    }
+    case "actionApprove": {
+      if (s.mode !== "sim") return s;
+      const ok = approve(s.actions, a.key, "operador", s.clock);
+      if (!ok.ok) return s;
+      const sent = dispatch(ok.actions, a.key, s.clock);
+      if (!sent.ok) return s;
+      return {
+        ...s,
+        actions: sent.actions,
+        audit: [...s.audit, { t: s.clock, kind: "accion_aprobada", incidentId: sent.action.incidentId, detail: `El operador aprueba y se envía a ${toolTarget(sent.action)} (acuse ${sent.action.receipt?.reference}). ${sent.action.reason}` }],
+      };
+    }
+    case "actionDiscard": {
+      if (s.mode !== "sim") return s;
+      const r = discard(s.actions, a.key, "operador", s.clock);
+      if (!r.ok) return s;
+      return {
+        ...s,
+        actions: r.actions,
+        audit: [...s.audit, { t: s.clock, kind: "accion_descartada", incidentId: r.action.incidentId, detail: `El operador descarta el envío a ${toolTarget(r.action)}. ${r.action.reason}` }],
+      };
+    }
     case "reply":
       return {
         ...s,

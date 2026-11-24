@@ -80,10 +80,16 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 - [x] X07 ES-Alert, aviso al ayuntamiento, devolver llamada y parte de situación (MEMORIA §16.2 y §16.4) · agente: `backend-ia` · deps: X05
   - Tres herramientas nuevas en `lib/actions.ts` con su política (ES-Alert solo con rol coordinador). Tests: A y F (coches atrapados a ~460 m) → propuesta de ES-Alert con zona y texto; D (semáforos) → aviso automático al ayuntamiento; B3 (no responde) → devolver llamada.
   - `lib/report.ts`: parte de situación (Markdown y JSON) desde el estado; `npm run agente` lo imprime al final y lo guarda con `--parte archivo.md`. Sin cifras inventadas, rotulado como simulación.
+- [x] X09 Acciones del agente visibles en la consola (MEMORIA §16, pedido por Nick para el pitch) · agente: `frontend-consola` · deps: X05
+  - La consola usa `lib/actions.ts` de X05 (`planRules`, `addProposals`, `approve`, `dispatch`, `discard`, `traceOf`) a través de `lib/consoleActions.ts`.
+  - Tarjetas en el detalle (aprobar / descartar), avisos sobre el mapa, cifra «acciones del agente» y «N por aprobar» en la prioridad; registro exportado con `accion_auto`, `accion_aprobada` y la traza `accionesAgente`. `scripts/e2e.mjs` aprueba el SMS en árabe de E1.
+- [x] X10 Audio de las llamadas en la consola (pedido por Nick para el pitch) · agente: `datos-escenario` + `frontend-consola` · deps: T16
+  - `scripts/generate_audio.py`: voz por teléfono (quien vuelve a llamar suena igual), género según el guion, lluvia solo en la DANA y salida `public/audio/<id>.mp3` versionada (42 llamadas, 1,3 MB).
+  - `components/useCallAudio.ts`: suena la llamada que entra si no hay otra sonando (no a ×10), «En línea» en la cola, «Escuchar/Detener» en cada llamada, botón «Sonido» recordado; funciona en GitHub Pages (subruta). Llamadas en directo con prefijo `V` para no chocar con L1/L2 del apagón.
 - [ ] X08 README y PITCH: de copiloto a agente (MEMORIA §16.5) · agente: `pitch-docs` · deps: X05, X06, X07
   - Sección «El agente» en README (qué actúa, política de aprobación, seguridad, `npm run agente`), diapositiva percepción → decisión → acción en `docs/PITCH.md`, preguntas del jurado sobre inyección y automatismos. Métricas como simulación; cifras solo de MEMORIA §3. Sin cambiar el nombre de la interfaz.
   - Verificación final con `/verificar-mvp` y etiqueta `agente-v1`.
 
 ## Fase 7: Llamadas del público (QR)
-- [x] X09 Llamadas del público por QR: `/llamar` → relay en VPS (Whisper CPU + reglas) → bandeja con aprobación del operador · seguimiento: `odd/tasks/llamadas-publico.md`
+- [x] X11 Llamadas del público por QR: `/llamar` → relay en VPS (Whisper CPU + reglas) → bandeja con aprobación del operador · seguimiento: `odd/tasks/llamadas-publico.md`
   - Pendiente fuera del repo: despliegue en el VPS y variable `NEXT_PUBLIC_RELAY_URL` en Vercel.

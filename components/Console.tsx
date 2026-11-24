@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useConsole } from "@/lib/useConsole";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { callMeta, useConsole } from "@/lib/useConsole";
+import { actionIncidents, canApprove } from "@/lib/actions";
+import { proposalsFor } from "@/lib/consoleActions";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import { buildAuditLog } from "@/lib/audit";
 import { STATIC_EXPORT } from "@/lib/config";
 import { getScenario } from "@/data/scenarios";
+import AgentFeed from "./AgentFeed";
+import { useCallAudio } from "./useCallAudio";
 import CallQueue from "./CallQueue";
 import DecisionBanner from "./DecisionBanner";
 import HelpDialog from "./HelpDialog";
@@ -21,6 +25,7 @@ export default function Console() {
   const [status, setStatus] = useState<EngineStatus>({ mode: "simulated", label: "Modo simulado" });
   const [sttUp, setSttUp] = useState(false);
   const [help, setHelp] = useState(false);
+  const audio = useCallAudio(s);
 
   useEffect(() => {
     if (STATIC_EXPORT) return; // GitHub Pages: no hay servidor que consultar
@@ -46,6 +51,22 @@ export default function Console() {
     URL.revokeObjectURL(a.href);
   }, [s, status.label]);
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
+
+  // Agente de acciones (X05): las reglas proponen a partir del estado de los incidentes; las automáticas se envían al añadirse.
+  const proposals = useMemo(() => {
+    if (s.mode !== "sim") return null;
+    const phones = Object.fromEntries(s.arrived.map((id) => [id, callMeta(s, id)?.phone ?? ""]));
+    return proposalsFor(s.engine.incidents, s.calls, phones);
+  }, [s.engine, s.calls, s.arrived, s.live, s.mode, s.scenarioId]);
+  useEffect(() => {
+    if (proposals) dispatch({ type: "plan", proposals });
+  }, [proposals, dispatch]);
+  const approve = useCallback((key: string) => dispatch({ type: "actionApprove", key }), [dispatch]);
+  const discard = useCallback((key: string) => dispatch({ type: "actionDiscard", key }), [dispatch]);
+  const toApprove = s.actions.filter((a) => a.status === "propuesta" && canApprove(a.policy, "operador"));
+  const pendingByIncident: Record<string, number> = {};
+  for (const a of toApprove) for (const id of actionIncidents(a)) pendingByIncident[id] = (pendingByIncident[id] ?? 0) + 1;
+  const sent = s.actions.filter((a) => a.status === "enviada").length;
   const scn = getScenario(s.scenarioId);
   const langs = new Set(scn.calls.map((c) => c.lang)).size;
   const notStartedSim = s.mode === "sim" && s.clock === 0 && !s.running && s.arrived.length === 0;
@@ -58,6 +79,10 @@ export default function Console() {
         status={status}
         pending={pending}
         onMode={(mode) => dispatch({ type: "mode", mode })}
+        actionsSent={sent}
+        actionsToApprove={toApprove.length}
+        sound={audio.enabled}
+        onSound={audio.toggle}
         onPlay={play}
         onPause={() => dispatch({ type: "pause" })}
         onSpeed={(speed: Speed) => dispatch({ type: "speed", speed })}
@@ -69,6 +94,7 @@ export default function Console() {
       <div className={s.mode === "live" ? "main main-live" : "main"} id="console-panel" role="tabpanel" aria-labelledby={s.mode === "sim" ? "tab-sim" : "tab-live"}>
         <CallQueue
           s={s}
+          playing={s.mode === "sim" ? audio.playing : null}
           sttUp={sttUp}
           onSelect={select}
           onLive={(call, result) => dispatch({ type: "live", call, result })}
@@ -78,6 +104,7 @@ export default function Console() {
           <div aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
           <div className="map-wrap">
             <MapView s={s} onSelect={select} onFxDone={fxDone} />
+            {s.mode === "sim" && <AgentFeed actions={s.actions} epoch={s.epoch} />}
             {notStartedSim && (
               <div className="welcome">
                 <h2>{scn.name}</h2>
@@ -98,11 +125,15 @@ export default function Console() {
           {s.mode === "sim" && <SimStrip s={s} />}
         </section>
         <section className="panel side-col" aria-label="Prioridad y detalle">
-          <PriorityList s={s} onSelect={select} />
+          <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
           <IncidentDetail
             key={s.epoch}
             s={s}
             localAI={status.mode === "local"}
+            actions={s.actions}
+            audio={s.mode === "sim" ? audio : undefined}
+            onApprove={approve}
+            onDiscard={discard}
             onSplit={(callId) => dispatch({ type: "split", callId })}
             onReply={(reply) => dispatch({ type: "reply", reply })}
           />
