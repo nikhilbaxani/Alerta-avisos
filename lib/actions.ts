@@ -311,7 +311,7 @@ const RESOURCE_RULES: Record<ResourceService, { purpose: string; triggers: (i: P
     triggers: (i, has) => {
       const t: Trigger[] = [];
       if (i.type === "accidente") t.push({ label: "accidente de tráfico", risks: [] });
-      if (has("trafico") && !municipalReason(i)) t.push({ label: riskLabel("trafico"), risks: ["trafico"] });
+      if (has("trafico")) t.push({ label: riskLabel("trafico"), risks: ["trafico"] });
       return t;
     },
   },
@@ -541,9 +541,6 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
       const servicio = a.servicio as ResourceService;
       const risks = modelRisks(a.riesgos, input);
       if (typeof risks === "string") return risks;
-      if (servicio === "policia_local" && input.type !== "accidente" && municipalReason(input) && risks.every((r) => r === "trafico" || r === "via_bloqueada")) {
-        return "El aviso municipal ya cubre el mismo problema de tráfico";
-      }
       const why = risks.length ? joinEs(risks.map(riskLabel)) : lc(TYPE_LABELS[input.type]);
       const evidence = evidenceOf(input, [{ label: "", risks }]);
       return make(input, "proponer_recursos", servicio, { servicio, personas: input.people, gravedad: input.severity }, `Propuesta de la IA local: ${RESOURCE_LABELS[servicio]} por ${why}.`, evidence, "ia_local");

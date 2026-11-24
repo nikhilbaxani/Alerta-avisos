@@ -223,10 +223,12 @@ describe("POST /api/plan", () => {
     expect(result.proposals.filter((p: { tool: string }) => p.tool === "aviso_ayuntamiento")).toEqual([
       expect.objectContaining({ origin: "reglas", policy: "automatica", args: { motivo: "semaforos", posicion: expect.any(Object) } }),
     ]);
+    expect.soft(result.proposals.filter((p: { tool: string }) => p.tool === "proponer_recursos")).toEqual([
+      expect.objectContaining({ destination: "policia_local", origin: "reglas", policy: "operador" }),
+    ]);
     expect(result.issues).toEqual([
       { tool: "aviso_ayuntamiento", outcome: "corregida", reason: "Se ignoran argumentos no previstos («politica»): quién aprueba lo fija la tabla de política (operador)" },
       { tool: "aviso_ayuntamiento", outcome: "descartada", reason: "El motivo del aviso no corresponde al incidente" },
-      { tool: "proponer_recursos", outcome: "descartada", reason: "El aviso municipal ya cubre el mismo problema de tráfico" },
       { tool: "devolver_llamada", outcome: "descartada", reason: "La llamada no aportó la primera información de falta de respuesta" },
       { tool: "proponer_es_alert", outcome: "descartada", reason: "No hay dos incidentes confirmados de vehículos atrapados próximos" },
     ]);

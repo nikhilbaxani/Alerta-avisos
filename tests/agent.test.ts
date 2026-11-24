@@ -61,13 +61,19 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
     expect(alerts[0]).toMatchObject({ status: "propuesta", approval: null, receipt: null });
   });
 
-  it("D (semáforos): aviso municipal automático y sin duplicar despacho policial", () => {
+  it("D (semáforos con riesgo de tráfico): aviso municipal automático y propuesta policial para el operador", () => {
     const actions = actionsOf(run, "D1");
     expect(actions.filter((a) => a.tool === "aviso_ayuntamiento")).toEqual([expect.objectContaining({
-      status: "enviada", approval: { by: "automatica", at: tOf("D1") }, receipt: { service: "Ayuntamiento (simulado)", reference: expect.stringMatching(/^AYT-/), simulated: true, at: tOf("D1"), detail: expect.any(String) },
+      policy: "automatica", status: "enviada", approval: { by: "automatica", at: tOf("D1") }, receipt: { service: "Ayuntamiento (simulado)", reference: expect.stringMatching(/^AYT-/), simulated: true, at: tOf("D1"), detail: expect.any(String) },
       args: { motivo: "semaforos", posicion: { lat: expect.any(Number), lng: expect.any(Number) } },
     })]);
-    expect(actions.some((a) => a.destination === "policia_local")).toBe(false);
+    const policeAt = tOf("D1") + APPROVAL_DELAY_S;
+    expect(actions.filter((a) => a.destination === "policia_local")).toEqual([expect.objectContaining({
+      tool: "proponer_recursos", policy: "operador", proposedAt: tOf("D1"),
+      evidence: { type: "semaforos", risks: ["trafico"], callIds: ["D1"] },
+      status: "enviada", approval: { by: "operador", at: policeAt },
+      receipt: expect.objectContaining({ service: "CAD (simulado)", simulated: true, at: policeAt }),
+    })]);
   });
 
   it("B3 (sin respuesta): devuelve la llamada tras aprobación del operador", () => {
