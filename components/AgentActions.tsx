@@ -92,3 +92,26 @@ export function ActionCard({ a, tokens, onApprove, onDiscard }: CardProps) {
     </li>
   );
 }
+
+interface ListProps {
+  actions: AgentAction[];
+  provisional: boolean;
+  onApprove: (key: string) => void;
+  onDiscard: (key: string) => void;
+}
+
+/** Lista de acciones de un incidente (la usa la presentación). */
+export default function AgentActions({ actions, provisional, onApprove, onDiscard }: ListProps) {
+  return (
+    <section className="block agent acts-col" aria-label="Acciones del agente">
+      {provisional ? (
+        <p className="note">Decide primero si es el mismo incidente: hasta entonces el agente no prepara acciones.</p>
+      ) : actions.length === 0 ? (
+        <p className="note">Nada que preparar para esta emergencia por ahora.</p>
+      ) : (
+        <ul className="acts">{actions.map((a) => <ActionCard key={a.key} a={a} onApprove={onApprove} onDiscard={onDiscard} />)}</ul>
+      )}
+      <p className="note">Servicios simulados. Solo los avisos informativos a organismos se envían sin aprobación; el resto lo decides tú.</p>
+    </section>
+  );
+}

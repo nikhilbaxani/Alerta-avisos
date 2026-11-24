@@ -24,6 +24,15 @@ El selector de la barra superior cambia entre dos escenarios: **DANA en Málaga*
 5. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
 6. **Tu propia llamada**: en «Escribir una llamada» escribes un incidente (un incendio, un robo…) y el agente propone los recursos que tocan por tipo y riesgos: Bomberos, SAMU 061, Policía local o Policía Nacional. En modo simulado se clasifica por palabras clave (`lib/keywordExtract.ts`); con IA local, con el modelo.
 
+## Presentación interactiva (`/presentacion`)
+
+Se abre con **Ver la presentación** en la bienvenida de la consola, con el icono de la barra superior o directamente en `http://localhost:3000/presentacion`. Son 12 diapositivas en HTML dentro de la propia web. Empiezan por el problema: la DANA de Valencia, el apagón y seis llamadas por el mismo coche. Siguen con piezas **reales** de la consola funcionando: la consola completa en directo, la decisión de la zona gris, las acciones del agente y la respuesta en árabe. Todas responden al ratón y a las teclas `M` y `D`. Al final hay un QR a la página principal, y al pasar de esa diapositiva se abre la consola.
+
+- Teclas: `←` `→` o espacio para avanzar, `F` pantalla completa, `N` notas del orador (el guion de `docs/PITCH.md`). La dirección guarda la diapositiva (`/presentacion#6`).
+- Si llegas a la consola desde la presentación (pasando de la última diapositiva, con el logo o con la ×), aparece abajo a la derecha **Volver a la presentación**, que te devuelve a la diapositiva de la que saliste.
+- El QR apunta a la web desde la que se abre la presentación (en GitHub Pages, la página publicada). Si presentas desde `localhost`, fija la dirección pública con `NEXT_PUBLIC_DEMO_URL=https://… npm run dev`.
+- Funciona sin red: el QR se genera en el navegador (`lib/qr.ts`) y la consola de las diapositivas calcula siempre en modo simulado (`lib/replay.ts` y `useConsole({ offline: true })`).
+
 ## Activar la IA local (GPU NVIDIA)
 
 ```bash

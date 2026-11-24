@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { scenarioEnd } from "@/lib/useConsole";
 import type { ConsoleState, EngineStatus, Speed } from "@/lib/useConsole";
 import { SCENARIOS, getScenario } from "@/data/scenarios";
@@ -17,7 +18,8 @@ interface Props {
   pending: number;
   actionsSent: number;
   actionsToApprove: number;
-  onTheme: () => void;
+  /** Sin ella no hay botón de tema (p. ej. en la presentación). */
+  onTheme?: () => void;
   onPlay: () => void;
   onPause: () => void;
   onSpeed: (v: Speed) => void;
@@ -25,8 +27,9 @@ interface Props {
   onExport: () => void;
   onScenario: (id: string) => void;
   onHelp: () => void;
-  archived: number;
-  onArchive: () => void;
+  archived?: number;
+  /** Sin ella no hay botón de archivo. */
+  onArchive?: () => void;
 }
 
 /** Cabecera única: marca, simulación, cifras de la sala y ajustes. */
@@ -101,17 +104,20 @@ export default function TopBar(p: Props) {
       </section>
 
       <div className="topbar-end">
-        <button
+        {p.onTheme && <button
           className="btn btn-ghost btn-icon"
           onClick={p.onTheme}
           aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
           title={theme === "dark" ? "Modo claro" : "Modo oscuro"}
         >
           <Icon name={theme === "dark" ? "sun" : "moon"} />
-        </button>
-        <button className="btn btn-ghost btn-icon btn-badge" onClick={p.onArchive} aria-label={`Incidencias archivadas (${p.archived})`} title="Incidencias archivadas">
-          <Icon name="archive" />{p.archived > 0 && <span className="dot-count">{p.archived}</span>}
-        </button>
+        </button>}
+        {p.onArchive && (
+          <button className="btn btn-ghost btn-icon btn-badge" onClick={p.onArchive} aria-label={`Incidencias archivadas (${p.archived ?? 0})`} title="Incidencias archivadas">
+            <Icon name="archive" />{!!p.archived && <span className="dot-count">{p.archived}</span>}
+          </button>
+        )}
+        <Link href="/presentacion" className="btn btn-ghost btn-icon deck-link" aria-label="Presentación" title="Presentación"><Icon name="slides" /></Link>
         <button className="btn btn-ghost btn-icon" onClick={p.onHelp} aria-label="Cómo funciona" title="Cómo funciona"><Icon name="help" /></button>
         <button className="btn btn-ghost btn-icon" onClick={p.onExport} disabled={s.audit.length === 0} aria-label="Exportar registro" title="Descarga en JSON cada decisión de la IA y del operador">
           <Icon name="download" />

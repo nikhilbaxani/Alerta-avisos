@@ -46,9 +46,10 @@ interface Props {
   s: ConsoleState;
   onSelect: (id: string) => void;
   onFxDone: (key: string) => void;
-  onFocus: (box: FocusBox) => void;
+  /** Sin ella la ficha del mapa no lleva botones a otras cajas (p. ej. en la presentación). */
+  onFocus?: (box: FocusBox) => void;
   pendingActions: Record<string, number>;
-  onResolve: (id: string) => void;
+  onResolve?: (id: string) => void;
   /** Capas encima del mapa (bienvenida). */
   children?: React.ReactNode;
 }
@@ -367,12 +368,14 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
           {placeOf(selected) && <span className="popup-place">{placeOf(selected)}</span>}
           <p className="popup-summary">{selected.summary}</p>
           {selected.provisional && <p className="decision-note">Pendiente de tu decisión: ¿es {selected.linkedTo}?</p>}
-          <div className="popup-actions">
-            <button className="btn btn-out btn-sm" onClick={() => onFocus("detail")}>Ficha</button>
-            {langs.length > 0 && <button className="btn btn-out btn-sm" onClick={() => onFocus("translate")}>Responder</button>}
-            {todo > 0 && <button className="btn btn-amber btn-sm" onClick={() => onFocus("actions")}>Aprobar ({todo})</button>}
-          </div>
-          <div className="popup-resolve"><ResolveButton incidentId={selected.id} blocker={resolveBlocker(s.engine, selected.id)} onResolve={onResolve} small /></div>
+          {onFocus && (
+            <div className="popup-actions">
+              <button className="btn btn-out btn-sm" onClick={() => onFocus("detail")}>Ficha</button>
+              {langs.length > 0 && <button className="btn btn-out btn-sm" onClick={() => onFocus("translate")}>Responder</button>}
+              {todo > 0 && <button className="btn btn-amber btn-sm" onClick={() => onFocus("actions")}>Aprobar ({todo})</button>}
+            </div>
+          )}
+          {onResolve && <div className="popup-resolve"><ResolveButton incidentId={selected.id} blocker={resolveBlocker(s.engine, selected.id)} onResolve={onResolve} small /></div>}
         </div>
       );
     }
