@@ -1,6 +1,10 @@
 /**
  * Relay del VPS para las llamadas del público (S1, S4, S9).
- *   POST /llamar   multipart (file + consent=1) → 202 {id}; procesa en cola: Whisper → reglas → evento
+ *   POST /llamar   multipart (file + consent=1) → 202 {id}; el id es secreto (128 bits). Procesa en cola: Whisper.
+ *                  La llamada queda PENDIENTE en memoria: no se publica hasta que la persona la confirma (S14).
+ *   GET  /llamar/:id          → {status: transcribing|ready|failed|expired|sent, transcript?, language?, error?}
+ *   POST /llamar/:id/enviar   → publica el evento exactamente una vez (idempotente)
+ *   DELETE /llamar/:id        → «Volver a grabar»: descarta la llamada
  *   GET  /events   SSE (token obligatorio): últimos 50 eventos + en vivo
  *   GET  /health   {ok, queue, maxCallSeconds}
  * Uso: npx tsx server/relay.ts   (variables de entorno: ver server/README.md)
@@ -141,8 +145,10 @@ export interface RelayOptions {
   rateLimit?: { max: number; windowMs: number };
   /** Confía en X-Forwarded-For desde la derecha, saltando direcciones locales/privadas (solo detrás de Caddy/Funnel). */
   trustProxy?: boolean;
-  /** Llamadas en espera (sin contar la que se procesa). */
+  /** Llamadas retenidas sin enviar (en transcripción o esperando «Enviar»), sin contar una en proceso. */
   maxPending?: number;
+  /** Tiempo que una llamada pendiente espera a «Enviar» antes de caducar y liberar su memoria (ms). */
+  pendingTtlMs?: number;
   maxBytes?: number;
   heartbeatMs?: number;
   replay?: number;
@@ -157,6 +163,7 @@ export interface RelayOptions {
 }
 
 const MB = 1024 * 1024;
+const SECRET_ID = /^[0-9a-f]{32}$/;
 const AUDIO_TYPE = /^(audio\/[\w.+-]+|video\/(webm|mp4))(;.*)?$/i;
 
 const short = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 8);
@@ -166,6 +173,32 @@ function sameToken(a: string, b: string): boolean {
   const ha = createHash("sha256").update(a).digest();
   const hb = createHash("sha256").update(b).digest();
   return timingSafeEqual(ha, hb);
+}
+
+/** Estado de una llamada pendiente de confirmación. `discarded` es interno (nunca se devuelve: el id pasa a 404). */
+type PendingStatus = "transcribing" | "ready" | "failed" | "expired" | "sent" | "discarded";
+interface Built {
+  language: string;
+  extraction: Extraction;
+  location: PublicLocation;
+  translation: string | null;
+  extractor: "llm" | "rules";
+  extractMs: number;
+}
+interface Pending {
+  label: string; // id público del evento (P<tag><n>); es lo único que se escribe en los logs
+  status: PendingStatus;
+  ip: string;
+  /** Audio: solo hasta terminar la transcripción (y la traducción de Whisper si hace falta). */
+  file?: Blob;
+  transcript?: string;
+  language?: string;
+  durationS?: number;
+  sttMs?: number;
+  error?: string;
+  built?: Promise<Built | null>;
+  sending?: Promise<void>;
+  timers: ReturnType<typeof setTimeout>[];
 }
 
 class TooBig extends Error {}
@@ -205,6 +238,9 @@ export function createRelay(opts: RelayOptions) {
   const history: PublicCallEvent[] = [];
   const clients = new Set<http.ServerResponse>();
   const hits = new Map<string, number[]>();
+  const pendingTtlMs = opts.pendingTtlMs ?? 300_000;
+  /** Llamadas del público por id secreto. Las enviadas, caducadas o fallidas quedan como marca ligera hasta 2×TTL. */
+  const pending = new Map<string, Pending>();
   const queue: (() => Promise<void>)[] = [];
   let running = false;
   let seq = 0;
@@ -287,26 +323,32 @@ export function createRelay(opts: RelayOptions) {
     return { text: j.text.trim(), language: String(j.language ?? ""), duration: dur };
   }
 
-  async function processCall(id: string, file: Blob, receivedAt: number) {
+  const held = () => {
+    let n = 0;
+    for (const p of pending.values()) if (p.status === "transcribing" || p.status === "ready") n++;
+    return n;
+  };
+
+  /** Libera todo lo pesado de una llamada (audio, texto, extracción). */
+  function release(p: Pending) {
+    p.file = undefined;
+    p.transcript = undefined;
+    p.built = undefined;
+  }
+
+  function fail(p: Pending, error: string) {
+    p.status = "failed";
+    p.error = error;
+    release(p);
+  }
+
+  /** Extracción en segundo plano: LLM (con respaldo a reglas) o reglas (+ pasada translate de Whisper). Nunca rechaza. */
+  async function build(p: Pending): Promise<Built | null> {
+    const id = p.label;
+    const transcript = p.transcript ?? "";
+    let language = p.language ?? "";
+    const t0 = Date.now();
     try {
-      const t0 = Date.now();
-      const first = await stt(file, "transcribe");
-      const sttMs = Date.now() - t0;
-      if (!Number.isFinite(first.duration) || first.duration > maxCall + 5) {
-        log(`[relay] ${id} descartada: duración ${Math.round(first.duration)} s supera el máximo`);
-        return;
-      }
-      if (!first.text) {
-        log(`[relay] ${id} descartada: sin voz reconocible`);
-        return;
-      }
-      // Sin idioma válido del STT, solo el LLM puede aportarlo (en la misma petición de extracción).
-      let language = /^[a-z]{2}$/.test(first.language) ? first.language : "";
-      if (!language && !opts.llmExtract) {
-        log(`[relay] ${id} descartada: idioma no reconocido`);
-        return;
-      }
-      const transcript = first.text.slice(0, MAX_TRANSCRIPT_CHARS);
       let extraction: Extraction | null = null;
       let location: PublicLocation | null = null;
       let translation: string | null = null;
@@ -338,14 +380,15 @@ export function createRelay(opts: RelayOptions) {
       if (!extraction || !location) {
         if (!language) {
           log(`[relay] ${id} descartada: idioma no reconocido`);
-          return;
+          return null;
         }
         // Una sola pasada de Whisper por llamada: con LLM configurado nunca se pide `translate` (si el LLM falla,
-        // las reglas trabajan con la transcripción). Sin LLM, como siempre.
-        if (language !== "es" && !opts.llmExtract) {
+        // las reglas trabajan con la transcripción). Sin LLM, como siempre; va delante en la cola serie del STT.
+        if (language !== "es" && !opts.llmExtract && p.file) {
+          const file = p.file;
           // Si la traducción falla o tarda demasiado, la llamada sigue: las reglas usan la transcripción.
           try {
-            translation = (await stt(file, "translate")).text.slice(0, MAX_TRANSCRIPT_CHARS) || null;
+            translation = (await inQueue(() => stt(file, "translate"))).text.slice(0, MAX_TRANSCRIPT_CHARS) || null;
           } catch (e) {
             log(`[relay] ${id} sin traducción: ${e instanceof Error ? e.message : "desconocido"}`);
           }
@@ -355,29 +398,110 @@ export function createRelay(opts: RelayOptions) {
         location = res.location;
         extractor = "rules";
       }
+      return { language, extraction, location, translation, extractor, extractMs: Date.now() - t0 };
+    } catch (e) {
+      log(`[relay] ${id} error al extraer: ${e instanceof Error ? e.message : "desconocido"}`);
+      return null;
+    } finally {
+      p.file = undefined; // el audio se descarta en cuanto no hace falta más
+    }
+  }
 
-      const ev: PublicCallEvent = {
-        id,
-        receivedAt: new Date(receivedAt).toISOString(),
-        durationS: first.duration,
-        language,
-        transcript,
-        translation_en: translation,
-        extraction,
-        location,
-        extractor,
-        timings: { sttMs, totalMs: Date.now() - t0 },
-      };
-      if (!isPublicCallEvent(ev)) {
-        log(`[relay] ${id} descartada: el evento no cumple el contrato`);
-        return;
+  /** Transcribe (paso de la cola serie). Deja la llamada en «ready» y lanza la extracción sin esperar a «Enviar». */
+  async function processCall(p: Pending) {
+    if (p.status !== "transcribing" || !p.file) return; // descartada o caducada mientras esperaba turno
+    const id = p.label;
+    try {
+      const t0 = Date.now();
+      const first = await stt(p.file, "transcribe");
+      const sttMs = Date.now() - t0;
+      if (p.status !== "transcribing") return release(p); // descartada o caducada durante la transcripción
+      if (!Number.isFinite(first.duration) || first.duration > maxCall + 5) {
+        log(`[relay] ${id} descartada: duración ${Math.round(first.duration)} s supera el máximo`);
+        return fail(p, "La llamada es demasiado larga. Graba una más corta.");
       }
-      publish(ev);
-      log(`[relay] ${id} publicada (${language}, ${Math.round(first.duration)} s, stt ${sttMs} ms, ${extractor})`);
+      if (!first.text) {
+        log(`[relay] ${id} descartada: sin voz reconocible`);
+        return fail(p, "No hemos podido entender voz en el audio. Vuelve a grabar y habla cerca del micrófono.");
+      }
+      // Sin idioma válido del STT, solo el LLM puede aportarlo (en la misma petición de extracción).
+      const language = /^[a-z]{2}$/.test(first.language) ? first.language : "";
+      if (!language && !opts.llmExtract) {
+        log(`[relay] ${id} descartada: idioma no reconocido`);
+        return fail(p, "No hemos reconocido el idioma del audio. Vuelve a grabar.");
+      }
+      p.transcript = first.text.slice(0, MAX_TRANSCRIPT_CHARS);
+      p.language = language;
+      p.durationS = first.duration;
+      p.sttMs = sttMs;
+      p.status = "ready";
+      log(`[relay] ${id} transcrita (${language || "?"}, ${Math.round(first.duration)} s, stt ${sttMs} ms): esperando «Enviar»`);
+      p.built = build(p);
     } catch (e) {
       if (e instanceof SttError && e.status === 413) log(`[relay] ${id} descartada: audio demasiado largo (STT 413)`);
       else log(`[relay] ${id} error: ${e instanceof Error ? e.message : "desconocido"}`);
+      if (p.status === "transcribing") {
+        fail(p, e instanceof SttError && e.status === 413 ? "La llamada es demasiado larga. Graba una más corta." : "No se pudo transcribir el audio. Vuelve a grabar.");
+      }
     }
+  }
+
+  /** Publica la llamada confirmada: espera a la extracción (si sigue en curso) y emite el evento una sola vez. */
+  async function publishPending(p: Pending) {
+    const built = await p.built;
+    if (p.status !== "ready") return; // descartada o caducada mientras se esperaba
+    const id = p.label;
+    if (!built) return fail(p, "No se pudo procesar la llamada. Vuelve a grabar.");
+    const sttMs = p.sttMs ?? 0;
+    const ev: PublicCallEvent = {
+      id,
+      receivedAt: new Date().toISOString(),
+      durationS: p.durationS ?? 0,
+      language: built.language,
+      transcript: p.transcript ?? "",
+      translation_en: built.translation,
+      extraction: built.extraction,
+      location: built.location,
+      extractor: built.extractor,
+      timings: { sttMs, totalMs: sttMs + built.extractMs },
+    };
+    if (!isPublicCallEvent(ev)) {
+      log(`[relay] ${id} descartada: el evento no cumple el contrato`);
+      return fail(p, "No se pudo procesar la llamada. Vuelve a grabar.");
+    }
+    publish(ev);
+    p.status = "sent";
+    release(p);
+    log(`[relay] ${id} publicada (${built.language}, ${Math.round(ev.durationS)} s, stt ${sttMs} ms, ${built.extractor})`);
+  }
+
+  /** Añade una tarea al principio de la cola serie del STT (alguien está esperando) y devuelve su resultado. */
+  function inQueue<T>(fn: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      queue.unshift(() => fn().then(resolve, reject));
+      void drain();
+    });
+  }
+
+  function expire(p: Pending) {
+    if (p.status === "transcribing" || p.status === "ready") {
+      p.status = "expired";
+      p.error = "La llamada caducó antes de enviarse. Vuelve a grabar.";
+      release(p);
+      log(`[relay] ${p.label} caducada sin enviar`);
+    }
+  }
+
+  function track(id: string, p: Pending) {
+    pending.set(id, p);
+    const t1 = setTimeout(() => expire(p), pendingTtlMs);
+    // Pasado el doble del TTL se olvida del todo (el id vuelve a ser 404).
+    const t2 = setTimeout(() => {
+      if (pending.get(id) === p) pending.delete(id);
+    }, pendingTtlMs * 2);
+    t1.unref();
+    t2.unref();
+    p.timers = [t1, t2];
   }
 
   async function drain() {
@@ -395,7 +519,7 @@ export function createRelay(opts: RelayOptions) {
     if (origin && !origins.has(origin)) return json(req, res, 403, { error: "Origen no permitido" });
     const ip = rateKey(clientIp(req));
     if (rateLimited(ip)) return json(req, res, 429, { error: "Demasiadas llamadas desde tu conexión. Espera unos minutos." });
-    if (queue.length + reserving >= maxPending) return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
+    if (held() + reserving > maxPending) return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
     // Cuota y hueco de cola se reservan antes del primer await (sin carreras entre peticiones simultáneas)
     // y se devuelven si la llamada se rechaza.
     const release = recordHit(ip);
@@ -429,12 +553,57 @@ export function createRelay(opts: RelayOptions) {
     if (file.size === 0) return json(req, res, 400, { error: "El audio está vacío" });
     if (!AUDIO_TYPE.test(file.type)) return json(req, res, 415, { error: "El archivo no es un audio admitido" });
 
-    const id = `P${bootTag}${++seq}`;
-    const receivedAt = Date.now();
-    log(`[relay] ${id} recibida (${Math.round(file.size / 1024)} KB, ip ${short(ip)})`);
-    queue.push(() => processCall(id, file, receivedAt));
+    const label = `P${bootTag}${++seq}`;
+    const id = randomBytes(16).toString("hex"); // 128 bits: quien tiene el id es quien grabó
+    log(`[relay] ${label} recibida (${Math.round(file.size / 1024)} KB, ip ${short(ip)})`);
+    const p: Pending = { label, status: "transcribing", ip, file, timers: [] };
+    track(id, p);
+    queue.push(() => processCall(p));
     void drain();
     json(req, res, 202, { id });
+  }
+
+  /** GET/POST enviar/DELETE sobre una llamada pendiente: mismas reglas de Origin que POST /llamar, sin token ni cuota. */
+  async function handlePending(req: http.IncomingMessage, res: http.ServerResponse, id: string, action: "status" | "send" | "discard") {
+    const origin = req.headers.origin;
+    if (origin && !origins.has(origin)) return json(req, res, 403, { error: "Origen no permitido" });
+    res.setHeader("Cache-Control", "no-store");
+    const p = SECRET_ID.test(id) ? pending.get(id) : undefined;
+    if (!p) return json(req, res, 404, { error: "No encontramos esa llamada. Puede que haya caducado: vuelve a grabar." });
+
+    if (action === "status") {
+      if (p.status === "ready") return json(req, res, 200, { status: "ready", transcript: p.transcript, language: p.language });
+      if (p.status === "failed" || p.status === "expired") return json(req, res, 200, { status: p.status, error: p.error });
+      return json(req, res, 200, { status: p.status });
+    }
+
+    if (action === "discard") {
+      if (p.status === "sent") return json(req, res, 409, { status: "sent", error: "La llamada ya se envió al operador." });
+      p.timers.forEach(clearTimeout);
+      p.status = "discarded";
+      release(p);
+      pending.delete(id);
+      log(`[relay] ${p.label} descartada por la persona`);
+      return json(req, res, 200, { ok: true });
+    }
+
+    // send
+    if (p.status === "expired") return json(req, res, 410, { status: "expired", error: p.error });
+    if (p.status === "transcribing") return json(req, res, 409, { status: "transcribing", error: "Todavía se está transcribiendo la llamada." });
+    if (p.status === "failed") return json(req, res, 409, { status: "failed", error: p.error });
+    if (p.status === "ready") {
+      // Un solo publicador por llamada: las peticiones simultáneas esperan a la misma promesa.
+      p.sending ??= publishPending(p).catch((e) => {
+        log(`[relay] ${p.label} error al publicar: ${e instanceof Error ? e.message : "desconocido"}`);
+        fail(p, "No se pudo procesar la llamada. Vuelve a grabar.");
+      });
+      await p.sending;
+    }
+    const st = p.status as PendingStatus;
+    if (st === "sent") return json(req, res, 200, { status: "sent" });
+    if (st === "failed") return json(req, res, 502, { status: "failed", error: p.error });
+    if (st === "expired") return json(req, res, 410, { status: "expired", error: p.error });
+    return json(req, res, 404, { error: "No encontramos esa llamada. Puede que haya caducado: vuelve a grabar." });
   }
 
   function handleEvents(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -464,7 +633,7 @@ export function createRelay(opts: RelayOptions) {
     if (req.method === "OPTIONS") {
       cors(req, res);
       if (res.hasHeader("Access-Control-Allow-Origin")) {
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type");
         res.setHeader("Access-Control-Max-Age", "600");
       }
@@ -481,6 +650,17 @@ export function createRelay(opts: RelayOptions) {
         if (!res.headersSent) json(req, res, 500, { error: "Error interno del relay" });
       });
       return;
+    }
+    const m = /^\/llamar\/([^/]+)(\/enviar)?$/.exec(url.pathname);
+    if (m) {
+      const action = m[2] ? (req.method === "POST" ? "send" : null) : req.method === "GET" ? "status" : req.method === "DELETE" ? "discard" : null;
+      if (action) {
+        handlePending(req, res, m[1], action).catch((e) => {
+          log(`[relay] error: ${e instanceof Error ? e.message : "desconocido"}`);
+          if (!res.headersSent) json(req, res, 500, { error: "Error interno del relay" });
+        });
+        return;
+      }
     }
     json(req, res, 404, { error: "No encontrado" });
   };
@@ -512,6 +692,7 @@ export function start() {
     trustProxy: process.env.TRUST_PROXY === "1",
     llmExtract: llmEnabled(cfg) ? createLlmExtractor(cfg, llmTimeoutMs) : undefined,
     llmTimeoutMs,
+    pendingTtlMs: envInt("PENDING_TTL_SECONDS", 300) * 1000,
   });
   const port = envInt("PORT", 8080);
   // 0.0.0.0 por defecto (Docker: Caddy llega por la red de compose). En local, HOST=127.0.0.1.

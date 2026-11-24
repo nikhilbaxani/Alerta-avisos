@@ -77,6 +77,16 @@ function call(base: string, o: { consent?: string | null; type?: string; bytes?:
   return fetch(`${base}/llamar`, { method: "POST", body: fd, headers: { ...(o.origin ? { Origin: o.origin } : {}), ...(o.xff ? { "x-forwarded-for": o.xff } : {}) } });
 }
 
+/** Graba, espera a la transcripción y la envía (el llamante pulsa «Enviar»). Devuelve el id secreto y la respuesta de enviar. */
+async function deliver(base: string, relay: { idle: () => Promise<void> }, o: Parameters<typeof call>[1] = {}) {
+  const res = await call(base, o);
+  expect(res.status).toBe(202);
+  const { id } = await res.json();
+  await relay.idle();
+  const sent = await fetch(`${base}/llamar/${id}/enviar`, { method: "POST" });
+  return { id: id as string, sent };
+}
+
 /** Envía una llamada con el cuerpo partido: la segunda mitad llega tras `gate` (fuerza peticiones solapadas). */
 async function slowCall(base: string, gate: Promise<void>): Promise<number> {
   const fd = new FormData();
@@ -140,8 +150,9 @@ describe("relay /llamar + /events", () => {
     const res = await call(base);
     expect(res.status).toBe(202);
     const { id } = await res.json();
-    expect(id).toBe("P1");
+    expect(id).toMatch(/^[0-9a-f]{32}$/); // id secreto (128 bits), no el id público del evento
     await relay.idle();
+    expect((await fetch(`${base}/llamar/${id}/enviar`, { method: "POST" })).status).toBe(200);
     const reader = sse.body!.getReader();
     let text = "";
     while (!text.includes("event: call")) text += new TextDecoder().decode((await reader.read()).value);
@@ -231,23 +242,20 @@ describe("relay /llamar + /events", () => {
 
   it("duración mayor que el máximo + 5 s → sin evento", async () => {
     const { relay, base } = await boot(fakeStt({ duration: 126 }));
-    expect((await call(base)).status).toBe(202);
-    await relay.idle();
+    await deliver(base, relay);
     expect(await readEvents(base, 1)).toHaveLength(0);
   });
 
   it("duración justo en máximo + 5 s se acepta", async () => {
     const { relay, base } = await boot(fakeStt({ duration: 125 }));
-    await call(base);
-    await relay.idle();
+    await deliver(base, relay);
     expect(await readEvents(base, 1)).toHaveLength(1);
   });
 
   it("idioma distinto de es → segunda pasada translate y translation_en", async () => {
     const stt = fakeStt({ language: "en", text: "There is a fire" });
     const { relay, base } = await boot(stt);
-    await call(base);
-    await relay.idle();
+    await deliver(base, relay);
     expect(stt.calls.map((c) => c.task)).toEqual(["transcribe", "translate"]);
     const [ev] = await readEvents(base, 1);
     expect(ev.translation_en).toBe("There is a fire");
@@ -257,8 +265,7 @@ describe("relay /llamar + /events", () => {
   it("castellano → sin llamada translate y translation_en null", async () => {
     const stt = fakeStt();
     const { relay, base } = await boot(stt);
-    await call(base);
-    await relay.idle();
+    await deliver(base, relay);
     expect(stt.calls.map((c) => c.task)).toEqual(["transcribe"]);
     const [ev] = await readEvents(base, 1);
     expect(ev.translation_en).toBeNull();
@@ -266,8 +273,7 @@ describe("relay /llamar + /events", () => {
 
   it("fallo de STT → sin evento y el relay sigue vivo", async () => {
     const { relay, base } = await boot(fakeStt({ fail: true }));
-    expect((await call(base)).status).toBe(202);
-    await relay.idle();
+    await deliver(base, relay);
     expect(await readEvents(base, 1)).toHaveLength(0);
     expect((await fetch(`${base}/health`)).status).toBe(200);
   });
@@ -288,8 +294,7 @@ describe("relay /llamar + /events", () => {
 
   it("una conexión nueva recibe los últimos 50 eventos", async () => {
     const { relay, base } = await boot(fakeStt(), { rateLimit: { max: 100, windowMs: 60_000 } });
-    for (let i = 0; i < 52; i++) await call(base, { bytes: 100 });
-    await relay.idle();
+    for (let i = 0; i < 52; i++) await deliver(base, relay, { bytes: 100 });
     const evs = await readEvents(base, 60);
     expect(evs).toHaveLength(50);
     expect(evs[0].id).toBe("P3");
@@ -299,11 +304,14 @@ describe("relay /llamar + /events", () => {
   it("tras reiniciar el relay los ids no se repiten (etiqueta de arranque)", async () => {
     const a = await boot(fakeStt(), { bootTag: "AB1" });
     const b = await boot(fakeStt(), { bootTag: "CD2" });
-    const idA = (await (await call(a.base)).json()).id;
-    const idB = (await (await call(b.base)).json()).id;
-    expect(idA).not.toBe(idB);
-    expect(idA).toMatch(PUBLIC_CALL_ID);
-    expect(idB).toMatch(PUBLIC_CALL_ID);
+    await deliver(a.base, a.relay);
+    await deliver(b.base, b.relay);
+    const [evA] = await readEvents(a.base, 1);
+    const [evB] = await readEvents(b.base, 1);
+    expect(evA.id).not.toBe(evB.id);
+    expect(evA.id).toMatch(PUBLIC_CALL_ID);
+    expect(evB.id).toMatch(PUBLIC_CALL_ID);
+    expect(evA.id).toBe("PAB11");
     const tags = Array.from({ length: 40 }, () => defaultBootTag());
     for (const t of tags) expect(t).toMatch(/^[0-9A-Z]{1,3}$/);
     // Aleatoria: no depende del segundo actual (dos arranques seguidos no chocan).
@@ -312,8 +320,7 @@ describe("relay /llamar + /events", () => {
 
   it("con el extractor de reglas real produce un evento válido con ubicación conocida", async () => {
     const { relay, base } = await boot(fakeStt(), { extract: undefined });
-    expect((await call(base)).status).toBe(202);
-    await relay.idle();
+    await deliver(base, relay);
     const [ev] = await readEvents(base, 1);
     expect(isPublicCallEvent(ev)).toBe(true);
     expect(ev.extraction.incident_type).toBe("incendio");
@@ -417,10 +424,17 @@ describe("relay /llamar + /events", () => {
     }) as typeof fetch;
     const { relay, base } = await boot(slow, { maxPending: 1 });
     const codes: number[] = [];
-    for (let i = 0; i < 4; i++) codes.push((await call(base)).status);
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await call(base);
+      codes.push(r.status);
+      if (r.status === 202) ids.push((await r.json()).id);
+    }
     expect(codes).toEqual([202, 202, 503, 503]);
     release();
     await relay.idle();
+    // Las dos transcritas siguen retenidas hasta «Enviar» o «Volver a grabar»: se descartan para liberar la cola.
+    for (const id of ids) await fetch(`${base}/llamar/${id}`, { method: "DELETE" });
     expect((await call(base)).status).toBe(202); // 3.ª llamada aceptada de 3
     expect((await call(base)).status).toBe(429);
   });
@@ -439,8 +453,7 @@ describe("relay /llamar + /events", () => {
   it("si falla la pasada translate, la llamada se publica con translation_en null", async () => {
     const stt = fakeStt({ language: "en", text: "There is a fire", failTranslate: true });
     const { relay, base } = await boot(stt);
-    expect((await call(base)).status).toBe(202);
-    await relay.idle();
+    await deliver(base, relay);
     expect(stt.calls.map((c) => c.task)).toEqual(["transcribe", "translate"]);
     const [ev] = await readEvents(base, 1);
     expect(ev).toBeTruthy();
@@ -451,8 +464,7 @@ describe("relay /llamar + /events", () => {
   it("transcripción y traducción se recortan a 4000 caracteres", async () => {
     const stt = fakeStt({ language: "en", text: "x".repeat(9000), translation: "y".repeat(9000) });
     const { relay, base } = await boot(stt);
-    await call(base);
-    await relay.idle();
+    await deliver(base, relay);
     const [ev] = await readEvents(base, 1);
     expect(isPublicCallEvent(ev)).toBe(true);
     expect(ev.transcript).toHaveLength(4000);
@@ -462,8 +474,7 @@ describe("relay /llamar + /events", () => {
   it("STT responde 413 (audio demasiado largo) → llamada descartada con línea de log", async () => {
     const lines: string[] = [];
     const { relay, base } = await boot(fakeStt({ fail: true, status: 413 }), { log: (m) => lines.push(m) });
-    expect((await call(base)).status).toBe(202);
-    await relay.idle();
+    await deliver(base, relay);
     expect(await readEvents(base, 1)).toHaveLength(0);
     expect(lines.some((l) => /P1 descartada.*(largo|413)/.test(l))).toBe(true);
   });
@@ -516,8 +527,7 @@ describe("relay /llamar + /events", () => {
     it("una transcripción con HTML llega intacta como texto", async () => {
       const html = `<script>alert(1)</script> <img src=x onerror=alert(2)> incendio en calle Larios`;
       const { relay, base } = await boot(fakeStt({ text: html }));
-      await call(base);
-      await relay.idle();
+      await deliver(base, relay);
       const [ev] = await readEvents(base, 1);
       expect(ev.transcript).toBe(html);
     });
@@ -542,8 +552,7 @@ describe("relay /llamar + /events", () => {
         };
       };
       const { relay, base } = await boot(stt, { llmExtract });
-      expect((await call(base)).status).toBe(202);
-      await relay.idle();
+      await deliver(base, relay);
       expect(stt.calls.map((c) => c.task)).toEqual(["transcribe"]);
       const [ev] = await readEvents(base, 1);
       expect(isPublicCallEvent(ev)).toBe(true);
@@ -564,8 +573,7 @@ describe("relay /llamar + /events", () => {
         location_text: "",
       });
       const a = await boot(sttKnown, { llmExtract: llmEmptyLoc });
-      await call(a.base);
-      await a.relay.idle();
+      await deliver(a.base, a.relay);
       const [evA] = await readEvents(a.base, 1);
       expect(evA.extractor).toBe("llm");
       expect(evA.location.known).toBe(true);
@@ -574,8 +582,7 @@ describe("relay /llamar + /events", () => {
 
       const sttUnknown = fakeStt({ language: "es", text: "Hay un problema cerca del puente" });
       const b = await boot(sttUnknown, { llmExtract: llmEmptyLoc });
-      await call(b.base);
-      await b.relay.idle();
+      await deliver(b.base, b.relay);
       const [evB] = await readEvents(b.base, 1);
       expect(evB.extractor).toBe("llm");
       expect(evB.location.known).toBe(false);
@@ -590,8 +597,7 @@ describe("relay /llamar + /events", () => {
         throw new Error("LLM 503");
       };
       const { relay, base } = await boot(stt, { llmExtract, log: (m) => lines.push(m) });
-      expect((await call(base)).status).toBe(202);
-      await relay.idle();
+      await deliver(base, relay);
       expect(stt.calls.map((c) => c.task)).toEqual(["transcribe"]);
       const [ev] = await readEvents(base, 1);
       expect(isPublicCallEvent(ev)).toBe(true);
@@ -605,8 +611,7 @@ describe("relay /llamar + /events", () => {
       const stt = fakeStt({ language: "en", text: "Fire in Larios street", translation: "Fire in Larios street" });
       const llmExtract = () => new Promise<Extraction>((resolve) => setTimeout(() => resolve(EXTRACTION), 250));
       const { relay, base } = await boot(stt, { llmExtract, llmTimeoutMs: 30, log: (m) => lines.push(m) });
-      expect((await call(base)).status).toBe(202);
-      await relay.idle();
+      await deliver(base, relay);
       expect(stt.calls.map((c) => c.task)).toEqual(["transcribe"]);
       const [ev] = await readEvents(base, 1);
       expect(isPublicCallEvent(ev)).toBe(true);
@@ -629,8 +634,7 @@ describe("relay /llamar + /events", () => {
           severity: 1, // orden inyectada: el suelo debe subirlo a 5
         }) as unknown as Extraction;
       const { relay, base } = await boot(stt, { llmExtract });
-      await call(base);
-      await relay.idle();
+      await deliver(base, relay);
       const [ev] = await readEvents(base, 1);
       expect(isPublicCallEvent(ev)).toBe(true);
       expect(ev.extractor).toBe("llm");
@@ -655,8 +659,7 @@ describe("relay /llamar + /events", () => {
     const tasks = (g: { seen: Seen[] }) => g.seen.map((x) => String(x.form.get("task")));
     const send = async (g: ReturnType<typeof gw>, over: Partial<RelayOptions> = {}, lines: string[] = []) => {
       const { relay, base } = await boot(g.stt, { sttBaseUrl: "https://gw.test/v1", sttModel: "whisper", log: (m) => lines.push(m), ...over });
-      expect((await call(base)).status).toBe(202);
-      await relay.idle();
+      await deliver(base, relay);
       return readEvents(base, 1);
     };
     const ok = (o: object) => () => Response.json(o);
@@ -810,5 +813,315 @@ describe("relay /llamar + /events", () => {
       expect(ex.language).toBe("ar");
       expect(ex.translation_es).toBe("x");
     });
+  });
+});
+
+describe("confirmación del llamante (S14): la llamada solo se publica con «Enviar»", () => {
+  const url = (base: string, id: string, tail = "") => `${base}/llamar/${id}${tail}`;
+  const status = async (base: string, id: string) => (await fetch(url(base, id))).json();
+  const enviar = (base: string, id: string, h: Record<string, string> = {}) => fetch(url(base, id, "/enviar"), { method: "POST", headers: h });
+  const accept = async (base: string, o: Parameters<typeof call>[1] = {}) => {
+    const r = await call(base, o);
+    expect(r.status).toBe(202);
+    return (await r.json()).id as string;
+  };
+  /** STT que espera a `gate` (transcripción lenta). */
+  function gatedStt(reply?: Parameters<typeof fakeStt>[0]) {
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const stt = fakeStt(reply);
+    const inner = stt.fetch;
+    stt.fetch = (async (...a: Parameters<typeof fetch>) => {
+      await gate;
+      return inner(...a);
+    }) as typeof fetch;
+    return { stt, open };
+  }
+  const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
+
+  it("tras transcribir queda en «ready» con el texto, y nada llega al SSE ni al histórico hasta «Enviar»", async () => {
+    const { relay, base } = await boot(fakeStt());
+    const id = await accept(base);
+    await relay.idle();
+    expect(await status(base, id)).toEqual({ status: "ready", transcript: "Hay un incendio en la calle Larios", language: "es" });
+    expect(await readEvents(base, 1)).toHaveLength(0); // conexión nueva: el histórico está vacío
+    expect((await enviar(base, id)).status).toBe(200);
+    const evs = await readEvents(base, 2);
+    expect(evs).toHaveLength(1);
+    expect(isPublicCallEvent(evs[0])).toBe(true);
+  });
+
+  it("mientras el STT trabaja el estado es «transcribing» sin texto; «Enviar» entonces → 409 y sigue sin publicar", async () => {
+    const { stt, open } = gatedStt();
+    const { relay, base } = await boot(stt);
+    const id = await accept(base);
+    expect(await status(base, id)).toEqual({ status: "transcribing" });
+    const early = await enviar(base, id);
+    expect(early.status).toBe(409);
+    expect((await early.json()).error).toMatch(/transcrib/i);
+    open();
+    await relay.idle();
+    expect((await status(base, id)).status).toBe("ready");
+    expect(await readEvents(base, 1)).toHaveLength(0);
+  });
+
+  it("«Enviar» publica una sola vez (idempotente, también si llegan a la vez)", async () => {
+    const lines: string[] = [];
+    const { relay, base } = await boot(fakeStt(), { log: (m) => lines.push(m) });
+    const id = await accept(base);
+    await relay.idle();
+    const [a, b] = await Promise.all([enviar(base, id), enviar(base, id)]);
+    const c = await enviar(base, id);
+    for (const r of [a, b, c]) {
+      expect(r.status).toBe(200);
+      expect((await r.json()).status).toBe("sent");
+    }
+    expect(await readEvents(base, 5)).toHaveLength(1);
+    expect(lines.filter((l) => l.includes("publicada"))).toHaveLength(1);
+    expect(await status(base, id)).toEqual({ status: "sent" }); // sin texto una vez enviada
+  });
+
+  it("«Volver a grabar» (DELETE) descarta la llamada: nada se publica y el id deja de existir", async () => {
+    const { relay, base } = await boot(fakeStt());
+    const id = await accept(base);
+    await relay.idle();
+    const del = await fetch(url(base, id), { method: "DELETE" });
+    expect(del.status).toBe(200);
+    expect((await fetch(url(base, id))).status).toBe(404);
+    expect((await enviar(base, id)).status).toBe(404);
+    expect((await fetch(url(base, id), { method: "DELETE" })).status).toBe(404);
+    expect(await readEvents(base, 1)).toHaveLength(0);
+  });
+
+  it("descartar una llamada que aún espera turno de STT la saca de la cola sin transcribirla", async () => {
+    const { stt, open } = gatedStt();
+    const { relay, base } = await boot(stt);
+    await accept(base);
+    const second = await accept(base);
+    expect((await fetch(url(base, second), { method: "DELETE" })).status).toBe(200);
+    open();
+    await relay.idle();
+    expect(stt.calls).toHaveLength(1);
+  });
+
+  it("descartar durante la transcripción: el resultado se ignora", async () => {
+    const { stt, open } = gatedStt();
+    const { relay, base } = await boot(stt);
+    const id = await accept(base);
+    await fetch(url(base, id), { method: "DELETE" });
+    open();
+    await relay.idle();
+    expect((await fetch(url(base, id))).status).toBe(404);
+    expect(await readEvents(base, 1)).toHaveLength(0);
+  });
+
+  it("caduca tras PENDING_TTL: «expired», sin texto, «Enviar» → 410 y no se publica; luego se olvida (404)", async () => {
+    const { relay, base } = await boot(fakeStt(), { pendingTtlMs: 60 });
+    const id = await accept(base);
+    await relay.idle();
+    expect((await status(base, id)).status).toBe("ready");
+    await tick(100);
+    expect(await status(base, id)).toEqual({ status: "expired", error: expect.stringMatching(/caduc/i) });
+    const late = await enviar(base, id);
+    expect(late.status).toBe(410);
+    expect((await late.json()).status).toBe("expired");
+    expect(await readEvents(base, 1)).toHaveLength(0);
+    await tick(100);
+    expect((await fetch(url(base, id))).status).toBe(404);
+  });
+
+  it("una llamada caducada libera su hueco en la cola", async () => {
+    const { relay, base } = await boot(fakeStt(), { pendingTtlMs: 60, maxPending: 1, rateLimit: { max: 50, windowMs: 60_000 } });
+    await accept(base);
+    await accept(base);
+    await relay.idle();
+    expect((await call(base)).status).toBe(503);
+    await tick(100);
+    expect((await call(base)).status).toBe(202);
+  });
+
+  it("id desconocido o con forma no válida → 404 en castellano en las tres rutas, también para «P1»", async () => {
+    const { base } = await boot(fakeStt());
+    for (const id of ["0".repeat(32), "P1", "x".repeat(40)]) {
+      for (const r of [await fetch(url(base, id)), await enviar(base, id), await fetch(url(base, id), { method: "DELETE" })]) {
+        expect(r.status).toBe(404);
+        expect((await r.json()).error).toMatch(/llamada/i);
+      }
+    }
+  });
+
+  it("el id es secreto: 128 bits en hexadecimal, distinto del id del evento y no consecutivo", async () => {
+    const { relay, base } = await boot(fakeStt(), { rateLimit: { max: 50, windowMs: 60_000 } });
+    const ids = [await accept(base), await accept(base), await accept(base)];
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{32}$/);
+    expect(new Set(ids).size).toBe(3);
+    await relay.idle();
+    await enviar(base, ids[0]);
+    const [ev] = await readEvents(base, 1);
+    expect(ids).not.toContain(ev.id);
+    expect(ev.id).toBe("P1");
+  });
+
+  it("las llamadas pendientes cuentan contra la cola: con maxPending=1 caben 2 (una en curso + 1) hasta que se envían o descartan", async () => {
+    const { relay, base } = await boot(fakeStt(), { maxPending: 1, rateLimit: { max: 50, windowMs: 60_000 } });
+    const a = await accept(base);
+    const b = await accept(base);
+    await relay.idle(); // ya transcritas, pero siguen retenidas en memoria
+    const full = await call(base);
+    expect(full.status).toBe(503);
+    expect((await full.json()).error).toBeTruthy();
+    await enviar(base, a); // enviada: libera el hueco
+    expect((await call(base)).status).toBe(202);
+    expect((await call(base)).status).toBe(503);
+    await fetch(url(base, b), { method: "DELETE" }); // descartada: libera el hueco
+    expect((await call(base)).status).toBe(202);
+  });
+
+  it("el límite por IP sigue en el POST: consultar el estado no gasta cuota, y la 4.ª llamada → 429", async () => {
+    const { relay, base } = await boot(fakeStt());
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) ids.push(await accept(base));
+    await relay.idle();
+    for (let i = 0; i < 20; i++) for (const id of ids) expect((await fetch(url(base, id))).status).toBe(200);
+    await enviar(base, ids[0]);
+    expect((await call(base)).status).toBe(429);
+  });
+
+  it("la extracción del LLM empieza antes de «Enviar» (mientras la persona lee)", async () => {
+    let started = 0;
+    const llmExtract = async (): Promise<Extraction> => {
+      started++;
+      return EXTRACTION;
+    };
+    const { relay, base } = await boot(fakeStt(), { llmExtract });
+    const id = await accept(base);
+    await relay.idle();
+    await tick();
+    expect(started).toBe(1);
+    expect(await readEvents(base, 1)).toHaveLength(0);
+    await enviar(base, id);
+    await enviar(base, id);
+    expect(started).toBe(1);
+    const [ev] = await readEvents(base, 1);
+    expect(ev.extractor).toBe("llm");
+  });
+
+  it("la transcripción se muestra sin esperar al LLM; «Enviar» espera a la extracción y publica al terminar", async () => {
+    let finish!: () => void;
+    const slow = new Promise<void>((r) => (finish = r));
+    const llmExtract = async (): Promise<Extraction> => {
+      await slow;
+      return EXTRACTION;
+    };
+    const { relay, base } = await boot(fakeStt(), { llmExtract });
+    const id = await accept(base);
+    await relay.idle();
+    expect((await status(base, id)).status).toBe("ready"); // LLM aún sin terminar
+    let answered = false;
+    const pending = enviar(base, id).then((r) => {
+      answered = true;
+      return r;
+    });
+    await tick(60);
+    expect(answered).toBe(false);
+    expect(await readEvents(base, 1)).toHaveLength(0);
+    finish();
+    const r = await pending;
+    expect(r.status).toBe(200);
+    const [ev] = await readEvents(base, 1);
+    expect(ev.extractor).toBe("llm");
+  });
+
+  it("si el LLM falla, «Enviar» publica igualmente con el extractor de reglas", async () => {
+    const lines: string[] = [];
+    const llmExtract = async (): Promise<Extraction> => {
+      throw new Error("LLM 503");
+    };
+    const { relay, base } = await boot(fakeStt(), { llmExtract, log: (m) => lines.push(m) });
+    const id = await accept(base);
+    await relay.idle();
+    expect((await status(base, id)).status).toBe("ready");
+    expect((await enviar(base, id)).status).toBe(200);
+    const [ev] = await readEvents(base, 1);
+    expect(ev.extractor).toBe("rules");
+    expect(lines.some((l) => l.includes("P1 LLM no disponible (LLM 503): reglas"))).toBe(true);
+  });
+
+  it("un fallo del STT deja «failed» con un mensaje en castellano sin texto de la llamada; «Enviar» → 409", async () => {
+    const lines: string[] = [];
+    const { relay, base } = await boot(fakeStt({ fail: true }), { log: (m) => lines.push(m) });
+    const id = await accept(base);
+    await relay.idle();
+    const st = await status(base, id);
+    expect(st.status).toBe("failed");
+    expect(st.error).toMatch(/volver a grabar|grabar/i);
+    expect(st.transcript).toBeUndefined();
+    const r = await enviar(base, id);
+    expect(r.status).toBe(409);
+    expect((await r.json()).status).toBe("failed");
+    expect(await readEvents(base, 1)).toHaveLength(0);
+    // Una llamada fallida no retiene hueco ni se puede publicar; descartarla es válido.
+    expect((await fetch(url(base, id), { method: "DELETE" })).status).toBe(200);
+  });
+
+  it("duración excesiva y audio sin voz → «failed» con motivo", async () => {
+    const a = await boot(fakeStt({ duration: 130 }));
+    const ia = await accept(a.base);
+    await a.relay.idle();
+    expect(await status(a.base, ia)).toEqual({ status: "failed", error: expect.stringMatching(/larg|duraci/i) });
+    const b = await boot(fakeStt({ text: "  " }));
+    const ib = await accept(b.base);
+    await b.relay.idle();
+    expect(await status(b.base, ib)).toEqual({ status: "failed", error: expect.stringMatching(/voz|oír|entender/i) });
+  });
+
+  it("Origin no permitido → 403 en GET, enviar y DELETE (sin publicar); el permitido recibe CORS", async () => {
+    const { relay, base } = await boot(fakeStt());
+    const id = await accept(base);
+    await relay.idle();
+    const evil = { Origin: "https://evil.example" };
+    for (const r of [await fetch(url(base, id), { headers: evil }), await enviar(base, id, evil), await fetch(url(base, id), { method: "DELETE", headers: evil })]) {
+      expect(r.status).toBe(403);
+      expect(r.headers.get("access-control-allow-origin")).toBeNull();
+      expect((await r.json()).error).toMatch(/origen/i);
+    }
+    expect((await status(base, id)).status).toBe("ready"); // intacta
+    const ok = await fetch(url(base, id), { headers: { Origin: ORIGIN } });
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    const pre = await fetch(url(base, id), { method: "OPTIONS", headers: { Origin: ORIGIN, "Access-Control-Request-Method": "DELETE" } });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-methods")).toContain("DELETE");
+    expect(await readEvents(base, 1)).toHaveLength(0);
+  });
+
+  it("las respuestas de estado no se guardan en caché", async () => {
+    const { relay, base } = await boot(fakeStt());
+    const id = await accept(base);
+    await relay.idle();
+    expect((await fetch(url(base, id))).headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("los logs no contienen el texto de la llamada ni el id secreto", async () => {
+    const lines: string[] = [];
+    const { relay, base } = await boot(fakeStt(), { log: (m) => lines.push(m) });
+    const id = await accept(base);
+    await relay.idle();
+    await enviar(base, id);
+    const all = lines.join("\n");
+    expect(all).not.toContain(id);
+    expect(all).not.toContain("incendio en la calle");
+  });
+
+  it("sin LLM y en otro idioma, la pasada translate ocurre en segundo plano antes de «Enviar» y el audio se descarta", async () => {
+    const stt = fakeStt({ language: "en", text: "There is a fire" });
+    const { relay, base } = await boot(stt);
+    const id = await accept(base);
+    await relay.idle();
+    await tick();
+    expect(stt.calls.map((c) => c.task)).toEqual(["transcribe", "translate"]);
+    await enviar(base, id);
+    const [ev] = await readEvents(base, 1);
+    expect(ev.translation_en).toBe("There is a fire");
   });
 });

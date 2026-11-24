@@ -56,8 +56,8 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T6 | S10, S9 | Despliegue todo-en-VPS con Funnel: web estática + Caddy interno + relay + stt |681c66f, a503651, ec272ec, 0ffe47d |
 | T7 | S11, S2, S5 | Extracción con el LLM del sobremesa en el relay, reglas como respaldo |90f5720, d03bbd9 |
 | T8 | S12 | Pestañas Simulación / En directo en la consola | 131e105, 10618ad |
-| T9 | S13 | Relay con STT único en la sobremesa (clave, una pasada, traducción por LLM) + opciones de velocidad en `scripts/stt_server.py` | — |
-| T10 | S14, S3–S6, S9 | Confirmación del llamante: transcripción visible en `/llamar` y botón «Enviar» antes de publicar | — |
+| T9 | S13 | Relay con STT único en la sobremesa (clave, una pasada, traducción por LLM) + opciones de velocidad en `scripts/stt_server.py` | cc86f28 |
+| T10 | S14, S3–S6, S9 | Confirmación del llamante: transcripción visible en `/llamar` y botón «Enviar» antes de publicar | (este commit) |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log
@@ -83,3 +83,5 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L19** (usuario): «vale, pero que use el whisper de sobremesa y ya que tontería para no tener más latencia, mira si puede subir la velocidad de whisper también. Y queda algo más por implementar lo de antes?»
 - **L20** (usuario): «como pruebo esto? y haz esto que al escanear el qr y simular la llamada, dependiendo de lo que tarde en transcribir, proyectar el texto para que en esa simulación, la persona vea si es correcto mas o menos, y darle a un boton de enviar»
 - **L21** (T9): relay con un único STT (`STT_BASE_URL`, `STT_MODEL`, `STT_API_KEY` con reutilización de `LLM_API_KEY` solo en el mismo origen, `STT_TIMEOUT_MS`), una pasada de Whisper por llamada con LLM configurado, idioma y `translation_es` desde el LLM, servicio `stt` local opcional (perfil `local-stt`), `--beam-size` y `--cpu-threads` en `scripts/stt_server.py`. RED 11 fallos → GREEN 64/64 en `tests/relay.test.ts`; 439 tests, `tsc` y evals en verde. Medición en la sobremesa: 6 hilos ≈ 8,5 s (4 hilos ≈ 10,3 s; `beam` apenas influye). Sin probar: compose/Docker, gateway real con el relay nuevo, línea «ES:» de la bandeja.
+- **L22** (sobremesa): Whisper reconstruido con `STT_CPU_THREADS=6`: A1 8,9 s y E1 9,1–9,5 s (antes 11,2 y 11,7 s).
+- **L23** (T10): la llamada queda pendiente en el relay hasta «Enviar»; `POST /llamar` → `202 {id}` aleatorio de 128 bits, `GET /llamar/:id`, `POST /llamar/:id/enviar` (idempotente), `DELETE /llamar/:id`, `PENDING_TTL_SECONDS` (300). La extracción empieza en cuanto hay transcripción. RED 21 fallos → GREEN 85/85 en `tests/relay.test.ts`; 460 tests, `tsc`, evals y build con relay en verde; comprobado en navegador a 390×844 contra un relay simulado y micrófono falso (capturas `docs/capturas/llamar-transcribiendo.png` y `llamar-revision.png`). Las llamadas pendientes de «Enviar» cuentan para la cola (20). Sin probar: relay, STT y LLM reales de extremo a extremo, micrófono real, iOS Safari, `DELETE` a través de Funnel y Caddy.
