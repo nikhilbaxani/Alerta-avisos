@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 310" width="1000" height="310" font-family="Archivo, 'Helvetica Neue', Arial, sans-serif">
+  <title>Las tres zonas de decisión del Copiloto 112</title>
+  <rect width="1000" height="310" fill="#E9EDF0"/>
+
+  <text x="60" y="34" font-size="17" font-weight="700" fill="#15222E">¿Es la misma emergencia? Puntuación entre una llamada nueva y el incidente más parecido</text>
+  <text x="60" y="54" font-size="13" fill="#15222E">Ejemplos del escenario DANA en Málaga (modo simulado)</text>
+
+  <!-- Etiquetas de ejemplos -->
+  <text x="165.6" y="104" text-anchor="middle" font-size="13" fill="#15222E"><tspan font-weight="700">B1 · 0,12</tspan> · vivienda frente a coche</text>
+  <line x1="165.6" y1="110" x2="165.6" y2="125" stroke="#15222E" stroke-width="1.5"/>
+
+  <text x="634" y="76" text-anchor="end" font-size="13" fill="#15222E"><tspan font-weight="700">B2 · 0,66</tspan> · la hija llama desde otro barrio</text>
+  <line x1="640.8" y1="70" x2="640.8" y2="125" stroke="#15222E" stroke-width="1.5"/>
+  <line x1="636" y1="70" x2="640.8" y2="70" stroke="#15222E" stroke-width="1.5"/>
+
+  <text x="674" y="104" font-size="13" fill="#15222E"><tspan font-weight="700">F1 · 0,69</tspan> · otro coche a 347 m</text>
+  <line x1="667.2" y1="98" x2="667.2" y2="125" stroke="#15222E" stroke-width="1.5"/>
+  <line x1="667.2" y1="98" x2="672" y2="98" stroke="#15222E" stroke-width="1.5"/>
+
+  <text x="940" y="76" text-anchor="end" font-size="13" fill="#15222E"><tspan font-weight="700">A3 · 0,92</tspan> · el mismo coche</text>
+  <line x1="869.6" y1="82" x2="869.6" y2="125" stroke="#15222E" stroke-width="1.5"/>
+
+  <!-- Barra -->
+  <rect x="60" y="130" width="396" height="54" fill="#FFFFFF" stroke="#15222E" stroke-width="2"/>
+  <rect x="456" y="130" width="290.4" height="54" fill="#F2A900" stroke="#15222E" stroke-width="2"/>
+  <rect x="746.4" y="130" width="193.6" height="54" fill="#15222E" stroke="#15222E" stroke-width="2"/>
+  <text x="258" y="155" text-anchor="middle" font-size="15" font-weight="700" fill="#15222E">Incidente nuevo</text>
+  <text x="258" y="174" text-anchor="middle" font-size="12" fill="#15222E">se abre otro anillo en el mapa</text>
+  <text x="601.2" y="155" text-anchor="middle" font-size="15" font-weight="700" fill="#15222E">Decide el operador</text>
+  <text x="601.2" y="174" text-anchor="middle" font-size="12" fill="#15222E">banner ámbar · teclas M / D</text>
+  <text x="843.2" y="155" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">Fusión automática</text>
+  <text x="843.2" y="174" text-anchor="middle" font-size="12" fill="#FFFFFF">reversible con «Separar»</text>
+
+  <!-- Marcas de los ejemplos -->
+  <circle cx="165.6" cy="130" r="5" fill="#15222E"/>
+  <circle cx="640.8" cy="130" r="5" fill="#15222E"/>
+  <circle cx="667.2" cy="130" r="5" fill="#15222E"/>
+  <circle cx="869.6" cy="130" r="5" fill="#FFFFFF" stroke="#15222E" stroke-width="2"/>
+
+  <!-- Escala -->
+  <text x="60" y="204" text-anchor="middle" font-size="13" fill="#15222E">0</text>
+  <text x="456" y="204" text-anchor="middle" font-size="13" font-weight="700" fill="#15222E">0,45</text>
+  <text x="746.4" y="204" text-anchor="middle" font-size="13" font-weight="700" fill="#15222E">0,78</text>
+  <text x="940" y="204" text-anchor="middle" font-size="13" fill="#15222E">1</text>
+
+  <!-- Fórmula -->
+  <line x1="60" y1="222" x2="940" y2="222" stroke="#C3CCD4" stroke-width="1.5"/>
+  <text x="60" y="248" font-size="15" font-weight="700" fill="#15222E">puntuación = 0,45 · espacio + 0,30 · tipo + 0,25 · texto</text>
+  <text x="60" y="272" font-size="13" fill="#15222E"><tspan font-weight="700">espacio:</tspan> distancia entre posiciones AML o la dirección que menciona el llamante · <tspan font-weight="700">texto:</tspan> palabras clave en común</text>
+  <text x="60" y="293" font-size="13" fill="#15222E"><tspan font-weight="700">tipo:</tspan> si no encaja, la puntuación es 0 (unos semáforos apagados nunca se fusionan con una vivienda inundada)</text>
+</svg>

@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 430" width="1100" height="430" font-family="Archivo, 'Helvetica Neue', Arial, sans-serif">
+  <title>Flujo de una llamada en el Copiloto 112</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#15222E"/>
+    </marker>
+  </defs>
+  <rect width="1100" height="430" fill="#E9EDF0"/>
+
+  <!-- Zona de IA local -->
+  <rect x="222" y="72" width="406" height="186" rx="12" fill="none" stroke="#2B6CB0" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="425" y="60" text-anchor="middle" font-size="14" font-weight="700" fill="#2B6CB0">IA local en la GPU de la sala</text>
+  <text x="752" y="60" text-anchor="middle" font-size="14" font-weight="700" fill="#15222E">Reglas explicables, sin IA</text>
+
+  <!-- 1 Llamada -->
+  <rect x="20" y="85" width="175" height="160" rx="8" fill="#FFFFFF" stroke="#15222E" stroke-width="2"/>
+  <text x="107.5" y="115" text-anchor="middle" font-size="16" font-weight="700" fill="#15222E">1 · Llamada</text>
+  <text x="107.5" y="145" text-anchor="middle" font-size="13" fill="#15222E">Audio del llamante</text>
+  <text x="107.5" y="166" text-anchor="middle" font-size="13" fill="#15222E">en cualquier idioma</text>
+  <text x="107.5" y="194" text-anchor="middle" font-size="13" fill="#15222E">+ posición AML</text>
+  <text x="107.5" y="215" text-anchor="middle" font-size="13" fill="#15222E">del móvil (±15–20 m)</text>
+
+  <!-- 2 Transcripción -->
+  <rect x="235" y="85" width="175" height="160" rx="8" fill="#FFFFFF" stroke="#15222E" stroke-width="2"/>
+  <text x="322.5" y="115" text-anchor="middle" font-size="16" font-weight="700" fill="#15222E">2 · Transcripción</text>
+  <text x="322.5" y="145" text-anchor="middle" font-size="13" fill="#15222E">Whisper</text>
+  <text x="322.5" y="166" text-anchor="middle" font-size="13" fill="#15222E">audio → texto</text>
+  <text x="322.5" y="194" text-anchor="middle" font-size="13" fill="#15222E">árabe, inglés, alemán,</text>
+  <text x="322.5" y="215" text-anchor="middle" font-size="13" fill="#15222E">francés, italiano…</text>
+
+  <!-- 3 Extracción -->
+  <rect x="440" y="85" width="175" height="160" rx="8" fill="#FFFFFF" stroke="#15222E" stroke-width="2"/>
+  <text x="527.5" y="115" text-anchor="middle" font-size="16" font-weight="700" fill="#15222E">3 · Extracción</text>
+  <text x="527.5" y="145" text-anchor="middle" font-size="13" fill="#15222E">LLM local → JSON</text>
+  <text x="527.5" y="166" text-anchor="middle" font-size="13" fill="#15222E">tipo · lugar · claves</text>
+  <text x="527.5" y="187" text-anchor="middle" font-size="13" fill="#15222E">riesgos · gravedad</text>
+  <text x="527.5" y="215" text-anchor="middle" font-size="13" fill="#15222E">+ traducción</text>
+  <text x="527.5" y="234" text-anchor="middle" font-size="13" fill="#15222E">al castellano</text>
+
+  <!-- 4 Agrupación -->
+  <rect x="665" y="85" width="175" height="160" rx="8" fill="#FFFFFF" stroke="#15222E" stroke-width="2"/>
+  <text x="752.5" y="115" text-anchor="middle" font-size="16" font-weight="700" fill="#15222E">4 · Agrupación</text>
+  <text x="752.5" y="145" text-anchor="middle" font-size="13" fill="#15222E">compara con los</text>
+  <text x="752.5" y="166" text-anchor="middle" font-size="13" fill="#15222E">incidentes abiertos:</text>
+  <text x="752.5" y="194" text-anchor="middle" font-size="13" fill="#15222E">espacio · tipo · texto</text>
+  <text x="752.5" y="215" text-anchor="middle" font-size="13" fill="#15222E">→ puntuación de 0 a 1</text>
+
+  <!-- Flechas entre pasos -->
+  <line x1="195" y1="165" x2="233" y2="165" stroke="#15222E" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="410" y1="165" x2="438" y2="165" stroke="#15222E" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="615" y1="165" x2="663" y2="165" stroke="#15222E" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Tres salidas -->
+  <line x1="840" y1="165" x2="888" y2="65" stroke="#15222E" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="840" y1="165" x2="888" y2="165" stroke="#15222E" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="840" y1="165" x2="888" y2="265" stroke="#15222E" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="890" y="25" width="195" height="80" rx="8" fill="#15222E"/>
+  <text x="987.5" y="58" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF">≥ 0,78 · Fusionar</text>
+  <text x="987.5" y="82" text-anchor="middle" font-size="13" fill="#FFFFFF">automático y reversible</text>
+
+  <rect x="890" y="125" width="195" height="80" rx="8" fill="#F2A900" stroke="#15222E" stroke-width="2"/>
+  <text x="987.5" y="158" text-anchor="middle" font-size="15" font-weight="700" fill="#15222E">0,45–0,78 · Preguntar</text>
+  <text x="987.5" y="182" text-anchor="middle" font-size="13" fill="#15222E">decide el operador</text>
+
+  <rect x="890" y="225" width="195" height="80" rx="8" fill="#FFFFFF" stroke="#15222E" stroke-width="2"/>
+  <text x="987.5" y="258" text-anchor="middle" font-size="15" font-weight="700" fill="#15222E">&lt; 0,45 · Nuevo</text>
+  <text x="987.5" y="282" text-anchor="middle" font-size="13" fill="#15222E">incidente nuevo en el mapa</text>
+
+  <!-- Pie -->
+  <line x1="20" y1="330" x2="1085" y2="330" stroke="#C3CCD4" stroke-width="1.5"/>
+  <text x="20" y="360" font-size="14" fill="#15222E"><tspan font-weight="700">Después:</tspan> la cola de prioridad ordena los incidentes (gravedad, riesgo vital, personas, información nueva y espera)</text>
+  <text x="20" y="383" font-size="14" fill="#15222E">y el operador responde con frases que el sistema dice con voz en el idioma del llamante.</text>
+  <text x="20" y="412" font-size="14" fill="#C61F2B"><tspan font-weight="700">Sin GPU ni red:</tspan> modo simulado con extracciones preparadas y exactamente el mismo algoritmo de agrupación.</text>
+</svg>

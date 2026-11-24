@@ -37,3 +37,18 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 ## 2026-10-28 · Segundo escenario en archivo aparte
 - Decisión: `data/scenario-apagon-malaga.ts` y `data/scenarios.ts` (registro). El archivo de la DANA no se toca. Los ids de llamada no se repiten entre escenarios (A–G frente a H–M).
 - Motivo: la API busca el mock por `callId` en todos los escenarios y las reglas prohíben editar el escenario original.
+
+## 2026-11-24 · IA local nativa, sin Docker
+- Decisión: `scripts/ia-local.sh` arranca Ollama (binario en `~/.local/ollama`) y `scripts/stt_server.py`, un servidor propio de faster-whisper compatible con la API de OpenAI (`/v1/models`, `/v1/audio/transcriptions`), en `.venv-stt` con `av<19` y `nvidia-cublas-cu12`.
+- Motivo: en el portátil de Nick Docker no ve la GPU (falta nvidia-container-toolkit, que requiere sudo) y solo había 17 GB libres; la ruta Docker ocupaba unos 15 GB.
+- Descartado: `docker-compose.gpu.yml` + speaches (se mantiene como alternativa en `setup-modelos.sh`).
+
+## 2026-11-24 · Prompt de extracción con definiciones y escala de gravedad
+- Decisión: `EXTRACTION_SYSTEM` define cada tipo y cada riesgo (`Record<…>` obliga a cubrir el vocabulario), fija una escala de gravedad 1–5 y pide palabras clave y lugares siempre en castellano. Algoritmo, umbrales, `gold` y guiones sin tocar.
+- Motivo: con qwen2.5:7b real, la gravedad salía 1–2 puntos baja, había palabras clave en otros idiomas y tipos confundidos (H3 ascensor → médica). Eval real antes: DANA 7 incidentes / 4 preguntas, apagón 7/6; 0 fusiones incorrectas siempre.
+- Pendiente: el 7B varía entre ejecuciones (B2 llegó a salir «médica»); el último ajuste (médica frente a vivienda) no se ha medido aún con la IA real.
+
+## 2026-11-24 · Versión estática en GitHub Pages
+- Decisión: con `GITHUB_PAGES=1`, `next.config.mjs` hace `output: "export"`; el workflow quita `app/api` y el cliente (`STATIC_EXPORT`) usa directamente el plan B del navegador (mismo algoritmo con las extracciones del escenario).
+- Motivo: enlace público estable para equipo y jurado sin depender del portátil. Probado en local: 26 → 7, 0 errores de consola, 0 peticiones fallidas, escritorio y móvil.
+- Descartado: túneles (localtunnel devolvía 408 y se cerraba) y Vercel (requiere cuenta; sigue siendo viable).

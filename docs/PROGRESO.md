@@ -56,3 +56,9 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 ## 2026-10-28T04:10 · X02 · hecha
 - `lib/metrics.ts` (simulación de sala con N operadores: sin copiloto por orden de llegada, con copiloto primero incidentes nuevos por gravedad y duplicados a 15 s) + franja `components/SimStrip.tsx` + 3 tests. Supuestos declarados en la interfaz y en PITCH (no son datos reales). `npx tsx scripts/sim-metrics.ts` imprime la comparación por escenario y operadores.
 - Estado: T01–T22 y X01–X03 hechas, etiqueta `mvp-v1` (sobre T22). Pendiente solo lo que requiere a Nick: IA real con GPU (`bash scripts/setup-modelos.sh`, `npm run eval -- --live`).
+
+## 2026-11-24 · IA real en GPU, GitHub Pages y documento del proyecto (con Nick)
+- IA local nativa (Ollama v0.40.17 + Whisper small en la RTX 4070): Whisper 0,4–0,9 s por llamada; qwen2.5:7b 4–9 s (más con la GPU a 89 °C, que baja a 210–420 MHz). `eval --live`: 0 fusiones incorrectas en las 5 ejecuciones, pero más preguntas de las previstas (ver DECISIONES).
+- Prompt de extracción ajustado; evals simulados, 33 tests y build en verde.
+- GitHub Pages: workflow + exportación estática probada en local. `docs/PROYECTO.md` con capturas y diagramas (`docs/img/`).
+- Pendiente: medir con IA real el último ajuste del prompt; activar Pages en GitHub.
