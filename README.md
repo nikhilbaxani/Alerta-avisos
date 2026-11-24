@@ -45,6 +45,55 @@ Todo se configura con `.env.local` (plantilla en `.env.example`): `LLM_BASE_URL`
 
 Audio de las llamadas simuladas: los MP3 ya vienen en `public/audio/` (1,3 MB) y la consola los reproduce sin red (botón **Sonido** en la barra superior; a ×10 no suenan solas, pero cada llamada tiene **Escuchar**). Para regenerarlos: `python3 -m venv .venv-audio && .venv-audio/bin/pip install edge-tts && .venv-audio/bin/python scripts/generate_audio.py` (o Piper). Crea `<id>.wav` (para Whisper, ignorado por git) y `<id>.mp3`, con filtro de teléfono y lluvia en la DANA.
 
+## El agente
+
+El agente usa el tipo de incidente, los riesgos, la gravedad, las llamadas asociadas y la ubicación para preparar acciones. Primero aplica reglas deterministas; un incidente provisional en ámbar no recibe acciones hasta que el operador decida. **Todos los conectores son simulados**: el registro y el acuse no implican que se haya movilizado un recurso, enviado un SMS, hecho una rellamada ni difundido una alerta. Ningún servicio real recibe nada.
+
+| Herramienta | Qué hace en la simulación | Aprobación |
+|---|---|---|
+| `proponer_recursos` | Prepara una propuesta para bomberos, SAMU o Policía Local en el sistema de despacho (CAD). | Operador |
+| `sms_al_llamante` | Prepara un SMS de seguridad con frases pretraducidas en el idioma del llamante. | Operador |
+| `avisar_distribuidora` | Avisa de cables en el suelo o de un corte que afecta a personas vulnerables. | Automática con registro, solo por reglas |
+| `aviso_ayuntamiento` | Avisa de semáforos apagados, un árbol caído o una vía bloqueada. No sustituye una propuesta de movilizar a la Policía Local. | Automática con registro, solo por reglas |
+| `devolver_llamada` | Prepara una rellamada prioritaria cuando llega como novedad que la persona en peligro no responde. | Operador |
+| `proponer_es_alert` | Prepara una zona y un mensaje de plantilla en castellano e inglés; por ejemplo, ante varios vehículos atrapados por agua en incidentes cercanos. | Siempre un coordinador humano; no basta el operador |
+
+### Seguridad y aprobación
+
+- La política está en [`lib/actions.ts`](lib/actions.ts) y tiene [pruebas](tests/actions.test.ts). Solo los avisos informativos a la distribuidora y al ayuntamiento disparados por reglas pueden registrarse como enviados sin aprobación. El modelo puede añadir propuestas, no quitar las de las reglas ni autorizar envíos: cualquier propuesta suya pasa por aprobación del operador como mínimo; ES-Alert sigue reservado al coordinador.
+- La extracción y la traducción al castellano delimitan la transcripción como dato no confiable; el juez de la zona gris delimita también el texto que compara. El código aplica a la extracción del modelo una gravedad mínima según el tipo y los riesgos detectados. Ese suelo no corrige un riesgo que el modelo no haya detectado.
+- El planificador recibe datos estructurados, no transcripciones ni resúmenes libres. `POST /api/plan` valida las herramientas y sus argumentos y devuelve propuestas; no envía nada. Las rutas `/api/process`, `/api/translate`, `/api/transcribe` y `/api/plan` validan sus entradas y limitan su tamaño.
+
+### Asistente de espera y parte de situación
+
+En la sala simulada, el asistente interviene solo cuando todos los operadores están ocupados. Se presenta como asistente automático, pregunta qué ocurre y dónde, y da las instrucciones de seguridad que correspondan con frases fijas en el idioma del llamante (en castellano si falta traducción). Si detecta un riesgo vital que la sala aún no conoce, lo escala de inmediato y da prioridad a la llamada en la cola humana; eso no interrumpe una llamada ya en curso. Un duplicado con riesgo vital ya conocido sigue en la cola. Solo cierra sin operador los duplicados que el motor agrupa con un incidente confirmado y que no aportan información nueva ni indican riesgo vital. Nunca resuelve la zona gris.
+
+Al final, el **parte de situación**, rotulado como simulación, recoge llamadas e incidentes, líneas liberadas por agrupación, prioridades y sus motivos, zonas de referencia, estados de las acciones y métricas de la sala con y sin asistente de espera.
+
+### Dónde se ve en la consola
+
+En **Simulación**, el detalle del incidente muestra las tarjetas de «Acciones del agente», con **Aprobar y enviar** o **Descartar** cuando corresponde al operador. ES-Alert se muestra sin esos botones en los incidentes de la zona. Los envíos simulados aparecen sobre el mapa con su acuse; la cabecera cuenta las acciones enviadas, la cola marca las propuestas por aprobar y el registro JSON incluye la traza de acciones. **En directo (QR)** no genera acciones ni reproduce el audio del escenario.
+
+### Ejecutar el agente en terminal
+
+```bash
+npm run agente
+npm run agente -- --escenario apagon
+```
+
+Sin opciones reproduce la DANA sin servidor, con extracciones del guion y un operador simulado que resuelve la zona gris con la referencia del escenario y aprueba lo que corresponde a su rol. Imprime la traza (percepción → motivo → herramienta → aprobación → resultado), el guion de espera y el parte.
+
+| Opción | Comportamiento |
+|---|---|
+| `--escenario dana\|apagon` | Selecciona el escenario. |
+| `--operadores N` | Configura la sala simulada: entero de 1 a 50; por defecto, 2. |
+| `--coordinador` | Simula la aprobación del coordinador. Sin esta opción, ES-Alert queda pendiente si se propone. No equivale a una aprobación real ni difunde una alerta. |
+| `--parte archivo.md` | Guarda también el parte de situación en Markdown. |
+| `--json archivo.json` | Guarda la traza completa y el parte en JSON. |
+| `--live` | Añade propuestas del modelo local al plan de reglas si está configurado. La extracción sigue siendo la del guion; sin modelo configurado se usan las reglas. No activa la pestaña QR. |
+
+También se admiten los alias `--scenario`, `--operators`, `--coordinator` y `--report`. La CLI no ofrece una pantalla de ayuda: `--help` se ignora y, si va solo, ejecuta la DANA.
+
 ## Llamadas del público por QR (opcional)
 
 El público escanea el QR de la consola, abre `/llamar` en el móvil y graba una llamada de prueba (sin mínimo, máximo 2 minutos). Dice qué pasa y **dónde** (calle o barrio de Málaga). El audio va a un relay en un VPS que lo transcribe con Whisper en CPU, extrae tipo, riesgos y lugar con un LLM si se configura, con reglas deterministas de respaldo (`lib/rules.ts`, `lib/gazetteer.ts`) y lo envía por SSE a la **bandeja «Llamadas del público»** de la consola. Nada entra en el mapa ni en la agrupación hasta que el operador pulsa **Aceptar**. Si no se reconoce el lugar, la llamada nunca se fusiona sola.
