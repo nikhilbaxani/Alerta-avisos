@@ -2,7 +2,7 @@
 
 Agente de IA para las salas del 112 en España. En una catástrofe (DANA, apagón) **agrupa las llamadas que hablan del mismo incidente**, **detecta las que traen información nueva** y **traduce en tiempo real** a quien no habla castellano. La IA propone; **el operador decide**. Los modelos corren **en local**.
 
-![Consola a mitad del escenario, con una decisión pendiente](docs/capturas/T08-escritorio-decision.png)
+![Consola a mitad del escenario, con una decisión pendiente](docs/capturas/consola-decision.png)
 
 ## Arrancar en modo simulado (2 comandos, sin GPU, sin wifi, sin claves)
 
@@ -11,7 +11,7 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-Pulsa **Iniciar** (velocidad ×4 o ×10). Verás 26 llamadas en 6 idiomas convertirse en 7 incidentes. Dos veces la consola se para en **ámbar** y pregunta: `M` = mismo incidente, `D` = incidente distinto. En el modo simulado la agrupación y la prioridad **se calculan igual** con el algoritmo real; solo la extracción de cada llamada viene del guion. La demo no hace ninguna petición externa (mapa SVG propio, fuente instalada con npm).
+Pulsa **Iniciar** (velocidad ×4 o ×10). Verás 26 llamadas en 6 idiomas convertirse en 7 incidentes. Dos veces la consola se para en **ámbar** y pregunta: `M` = mismo incidente, `D` = incidente distinto. En el modo simulado la agrupación y la prioridad **se calculan igual** con el algoritmo real; solo la extracción de cada llamada viene del guion. La demo no hace ninguna petición externa: el mapa es una ortofoto del IGN incluida en la aplicación (sin teselas) y la fuente se instala con npm. El botón **Cómo funciona** lo explica todo en un minuto; el mapa se arrastra y se acerca con la rueda o con + y −.
 
 El selector de la barra superior cambia entre dos escenarios: **DANA en Málaga** (26 llamadas, 6 idiomas) y **Apagón en Málaga** (16 llamadas: ascensores, semáforos, oxígeno domiciliario y una residencia sin luz), para ver que el sistema generaliza.
 
@@ -59,6 +59,7 @@ navegador (consola) ── POST /api/process ──▶ servidor Next.js (sin est
 - `lib/engine.ts`: estado de incidentes (fusionar, provisional, confirmar, **Separar**), puro y probado.
 - `lib/priority.ts`: gravedad, personas, riesgo vital, información nueva y tiempo sin atender.
 - Sin base de datos: el estado vive en el cliente. Sin teselas ni fuentes externas.
+- Mapa: ortofoto PNOA © Instituto Geográfico Nacional (CC BY 4.0) en `assets/map/`, generada una sola vez con `python3 scripts/build_satellite.py` (descarga del WMS del IGN y rellena los huecos del mosaico sobre el mar). Misma proyección que `lib/map.ts`.
 
 ## Comprobaciones
 

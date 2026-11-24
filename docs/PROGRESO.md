@@ -70,3 +70,9 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Aviso de entorno: `.env.local` apunta a la IA local; si está parada, la consola cae al plan B del navegador pero registra 502 en la consola del navegador. Para la demo sin GPU, arrancar con `LLM_BASE_URL= STT_BASE_URL= npm run dev`.
 - Decisiones: 5 entradas X04 en DECISIONES.
 - Siguiente: X05 (X04b espera a la IA local).
+
+## 2026-11-24 · Mapa satelital y rediseño de la interfaz (con Nick)
+- Qué se hizo: ortofoto PNOA del IGN incluida en la app (`scripts/build_satellite.py`, `assets/map/`), mapa con arrastre y zoom; rediseño de barra superior, resumen, llamadas, aviso de decisión, prioridad, detalle, respuesta traducida, simulación, bienvenida y ayuda (`components/`, `app/globals.css`). Ver DECISIONES.
+- Verificación: `npm run lint`, `npm run build`, 33 tests, `npm run eval` (7 incidentes, 0 fusiones incorrectas, 2 preguntas, E1 2.º) y `eval:apagon` en verde; `node scripts/e2e.mjs` OK (adaptado a los nuevos contadores); `node scripts/capturas.mjs` sin errores de consola ni scroll horizontal en móvil; capturas `docs/capturas/consola-*.png` y `movil-*.png` revisadas. Exportación de GitHub Pages probada en una copia: las imágenes salen con la subruta.
+- Llamada en directo (`scripts/live-test.mjs` con `mock-ai.mjs`) OK con el botón renombrado a «Grabar».
+- Pendiente: probar la interfaz nueva con la IA real en GPU.

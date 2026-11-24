@@ -5,8 +5,11 @@ import { useConsole } from "@/lib/useConsole";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import { buildAuditLog } from "@/lib/audit";
 import { STATIC_EXPORT } from "@/lib/config";
+import { getScenario } from "@/data/scenarios";
 import CallQueue from "./CallQueue";
 import DecisionBanner from "./DecisionBanner";
+import HelpDialog from "./HelpDialog";
+import Icon from "./Icon";
 import IncidentDetail from "./IncidentDetail";
 import MapView from "./MapView";
 import PriorityList from "./PriorityList";
@@ -17,6 +20,7 @@ export default function Console() {
   const { s, dispatch, fxDone } = useConsole();
   const [status, setStatus] = useState<EngineStatus>({ mode: "simulated", label: "Modo simulado" });
   const [sttUp, setSttUp] = useState(false);
+  const [help, setHelp] = useState(false);
 
   useEffect(() => {
     if (STATIC_EXPORT) return; // GitHub Pages: no hay servidor que consultar
@@ -31,6 +35,7 @@ export default function Console() {
 
   const select = useCallback((id: string) => dispatch({ type: "select", incidentId: id }), [dispatch]);
   const decide = useCallback((incidentId: string, same: boolean) => dispatch({ type: "decide", incidentId, same }), [dispatch]);
+  const play = useCallback(() => dispatch({ type: "play" }), [dispatch]);
   const exportLog = useCallback(() => {
     const blob = new Blob([JSON.stringify(buildAuditLog(s, status.label), null, 2)], { type: "application/json" });
     const a = document.createElement("a");
@@ -40,6 +45,9 @@ export default function Console() {
     URL.revokeObjectURL(a.href);
   }, [s, status.label]);
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
+  const scn = getScenario(s.scenarioId);
+  const langs = new Set(scn.calls.map((c) => c.lang)).size;
+  const notStarted = s.clock === 0 && !s.running && s.arrived.length === 0;
 
   return (
     <div className="console">
@@ -47,29 +55,34 @@ export default function Console() {
         s={s}
         status={status}
         pending={pending}
-        onPlay={() => dispatch({ type: "play" })}
+        onPlay={play}
         onPause={() => dispatch({ type: "pause" })}
         onSpeed={(speed: Speed) => dispatch({ type: "speed", speed })}
         onReset={() => dispatch({ type: "reset" })}
         onExport={exportLog}
         onScenario={(id) => dispatch({ type: "scenario", id })}
+        onHelp={() => setHelp(true)}
       />
       <main className="main">
         <CallQueue s={s} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
-        <section className="center" aria-label="Mapa e incidentes">
-          <div className="map-wrap"><MapView s={s} onSelect={select} onFxDone={fxDone} /></div>
-          <div>
-            <DecisionBanner s={s} onDecide={decide} />
-            <SimStrip s={s} />
-            <div className="legend" aria-hidden="true">
-              <span><i style={{ background: "rgba(198,31,43,.3)", borderColor: "var(--red)" }} />Riesgo vital</span>
-              <span><i style={{ background: "rgba(21,34,46,.2)" }} />Incidente</span>
-              <span><i style={{ background: "rgba(242,169,0,.4)", borderColor: "var(--amber)", borderStyle: "dashed" }} />Por decidir</span>
-              <span>Los puntos son llamadas con su posición AML</span>
-            </div>
+        <section className="center" aria-label="Mapa y decisiones">
+          <div aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
+          <div className="map-wrap">
+            <MapView s={s} onSelect={select} onFxDone={fxDone} />
+            {notStarted && (
+              <div className="welcome">
+                <h2>{scn.name}</h2>
+                <p>{scn.calls.length} llamadas simuladas en {langs} idiomas. Pulsa Iniciar para reproducir el escenario y ver cómo el copiloto agrupa las llamadas repetidas, te pregunta cuando duda y traduce.</p>
+                <div className="welcome-actions">
+                  <button className="btn btn-dark btn-lg" onClick={play}><Icon name="play" />Iniciar simulación</button>
+                  <button className="btn btn-lg" onClick={() => setHelp(true)}><Icon name="help" />Cómo funciona</button>
+                </div>
+              </div>
+            )}
           </div>
+          <SimStrip s={s} />
         </section>
-        <section className="col" aria-label="Prioridad e incidente">
+        <section className="panel side-col" aria-label="Prioridad y detalle">
           <PriorityList s={s} onSelect={select} />
           <IncidentDetail
             s={s}
@@ -79,6 +92,7 @@ export default function Console() {
           />
         </section>
       </main>
+      <HelpDialog open={help} onClose={() => setHelp(false)} />
     </div>
   );
 }

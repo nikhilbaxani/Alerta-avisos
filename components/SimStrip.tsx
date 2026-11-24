@@ -17,26 +17,30 @@ export default function SimStrip({ s }: { s: ConsoleState }) {
   const c = compare(calls, operators);
   return (
     <section className="sim" aria-label="Simulación de sala con y sin copiloto">
-      <div className="sim-row">
-        <b>Simulación de sala</b>
-        <label>
-          Operadores{" "}
-          <select value={operators} onChange={(e) => setOperators(Number(e.target.value))}>
-            {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
-      </div>
+      <label className="sim-ops">
+        Simulación con{" "}
+        <select value={operators} onChange={(e) => setOperators(Number(e.target.value))} aria-label="Operadores en sala">
+          {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>{" "}
+        {operators === 1 ? "operador" : "operadores"}
+      </label>
       {c.critical ? (
-        <p>
-          Espera hasta atender la llamada crítica {c.critical.id}: <b>{mmss(c.critical.sin)}</b> sin copiloto · <b className="good">{mmss(c.critical.con)}</b> con copiloto.
-          {c.meanNew && <> Espera media de los incidentes nuevos: {mmss(c.meanNew.sin)} frente a {mmss(c.meanNew.con)}.</>}
+        <p className="sim-result">
+          Llamada crítica <b>{c.critical.id}</b> atendida en{" "}
+          <span className="sim-bad">{mmss(c.critical.sin)} sin copiloto</span>
+          <span aria-hidden="true"> → </span>
+          <span className="sim-good">{mmss(c.critical.con)} con copiloto</span>
         </p>
       ) : (
-        <p className="note">Aparecerá cuando entre una llamada crítica.</p>
+        <p className="sim-result note">Aparecerá cuando entre una llamada crítica.</p>
       )}
-      <p className="note">
-        Supuestos de la simulación, no datos reales: {NEW_CALL_SECONDS} s por llamada nueva, {DUPLICATE_SECONDS} s por duplicado, y con copiloto se atienden primero los incidentes nuevos por gravedad.
-      </p>
+      <details className="sim-more">
+        <summary>Supuestos</summary>
+        <p>
+          No son datos reales: {NEW_CALL_SECONDS} s por llamada nueva y {DUPLICATE_SECONDS} s por repetida; con copiloto se atienden antes las emergencias nuevas más graves.
+          {c.meanNew && <> Espera media de las emergencias nuevas: {mmss(c.meanNew.sin)} sin copiloto y {mmss(c.meanNew.con)} con copiloto.</>}
+        </p>
+      </details>
     </section>
   );
 }

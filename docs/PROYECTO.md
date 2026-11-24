@@ -2,7 +2,7 @@
 
 > Borrador de trabajo para completar y comparar ideas. Cifras: solo las de `docs/MEMORIA.md` §3, con su fuente.
 
-![Consola al final del escenario DANA](capturas/final-escritorio-final.png)
+![Consola al final del escenario DANA](capturas/consola-final.png)
 
 ## Qué es
 
@@ -29,9 +29,15 @@ La IA propone y el operador decide. Todo funciona en local.
 
 ## Cómo se ve
 
-| Zona gris con IA real (GPU, 24-nov-2026) | Respuesta en árabe |
+| Zona gris: la IA pregunta | Respuesta en árabe |
 |---|---|
-| ![Decisión F1](capturas/gpu-ia-local-decision.png) | ![E1 en árabe](capturas/T19-arabe.png) |
+| ![Decisión F1](capturas/consola-decision.png) | ![E1 en árabe](capturas/T19-arabe.png) |
+
+| Detalle en Campanillas (ortofoto IGN) | Móvil |
+|---|---|
+| ![Campanillas](capturas/consola-campanillas.png) | ![Móvil](capturas/movil-decision.png) |
+
+La captura con IA real en GPU (24-nov-2026, interfaz anterior) está en `capturas/gpu-ia-local-decision.png`.
 
 ## Estado
 
