@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useConsole } from "@/lib/useConsole";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import { buildAuditLog } from "@/lib/audit";
+import { STATIC_EXPORT } from "@/lib/config";
 import CallQueue from "./CallQueue";
 import DecisionBanner from "./DecisionBanner";
 import IncidentDetail from "./IncidentDetail";
@@ -18,6 +19,7 @@ export default function Console() {
   const [sttUp, setSttUp] = useState(false);
 
   useEffect(() => {
+    if (STATIC_EXPORT) return; // GitHub Pages: no hay servidor que consultar
     fetch("/api/status")
       .then((r) => r.json())
       .then((d) => {

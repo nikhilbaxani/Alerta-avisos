@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { DEFAULT_SCENARIO_ID, getScenario } from "@/data/scenarios";
 import { decide } from "@/lib/cluster";
+import { STATIC_EXPORT } from "@/lib/config";
 import {
   applyDecision,
   confirmDifferent,
@@ -277,6 +278,7 @@ export function useConsole() {
     const incidents = ref.current.engine.incidents.map(snapshot);
     (async () => {
       try {
+        if (STATIC_EXPORT) throw new Error("Versión estática: sin servidor"); // directo al plan B
         const res = await fetch("/api/process", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

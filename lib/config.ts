@@ -16,5 +16,8 @@ export function getConfig(env: Record<string, string | undefined> = process.env)
   };
 }
 
+/** Versión estática (GitHub Pages): sin servidor, la consola calcula todo en el navegador en modo simulado. */
+export const STATIC_EXPORT = process.env.NEXT_PUBLIC_STATIC_EXPORT === "1";
+
 export const llmEnabled = (c: AppConfig) => c.llmBaseUrl !== "";
 export const sttEnabled = (c: AppConfig) => c.sttBaseUrl !== "";

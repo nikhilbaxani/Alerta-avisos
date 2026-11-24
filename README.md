@@ -31,6 +31,10 @@ bash scripts/setup-modelos.sh      # levanta Ollama + speaches con Docker y desc
 npm run dev                        # la barra superior pasa a «IA local: <modelo>»
 ```
 
+Sin Docker ni sudo (si Docker no ve la GPU): `bash scripts/ia-local.sh` arranca Ollama (`~/.local/ollama`) y un servidor de Whisper propio (`scripts/stt_server.py`), y crea `.env.local`. Para pararlos: `bash scripts/ia-local.sh stop`. Con IA real, reproduce el escenario a ×1.
+
+**Versión web (modo simulado):** cada push a `main` publica la consola en GitHub Pages (`.github/workflows/pages.yml`). Requisito: *Settings → Pages → Source: GitHub Actions*.
+
 | VRAM | LLM | Voz a texto |
 |---|---|---|
 | 8 GB | `qwen2.5:7b-instruct` | `faster-whisper-small` |

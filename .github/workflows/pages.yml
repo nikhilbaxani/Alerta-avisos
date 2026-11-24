@@ -1,0 +1,52 @@
+# Publica la consola en GitHub Pages (https://<usuario>.github.io/<repo>/) en MODO SIMULADO.
+# Pages solo sirve archivos estáticos: se quitan las rutas /api y la consola calcula todo en el navegador
+# con el mismo algoritmo y las extracciones del escenario. La IA local no está disponible en esta versión.
+# Requisito: Settings → Pages → Source: «GitHub Actions».
+name: GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - id: pages
+        uses: actions/configure-pages@v6
+      - run: npm ci
+      - name: Quitar las rutas /api (Pages no ejecuta servidor)
+        run: rm -rf app/api
+      - name: Exportación estática
+        run: npm run build
+        env:
+          GITHUB_PAGES: "1"
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
