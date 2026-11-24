@@ -1,4 +1,4 @@
-import { CITY_LABELS, RESOURCE_LABELS, canApprove, toolService, toolTarget } from "@/lib/actions";
+import { CITY_LABELS, RESOURCE_LABELS, actionIncidents, canApprove, toolService, toolTarget } from "@/lib/actions";
 import type { ActionTool, AgentAction } from "@/lib/actions";
 import Icon from "./Icon";
 import type { IconName } from "./Icon";
@@ -36,70 +36,61 @@ const whoText = (a: AgentAction) => {
   return a.approval?.by === "automatica" ? "Enviado automáticamente" : "Aprobado y enviado";
 };
 
-interface Props {
-  actions: AgentAction[];
-  provisional: boolean;
+interface CardProps {
+  a: AgentAction;
   onApprove: (key: string) => void;
   onDiscard: (key: string) => void;
+  /** Abre el incidente (o los de la zona) al pulsar su etiqueta. */
+  onIncident?: (id: string) => void;
 }
 
-/** Tarjetas de las acciones que prepara el agente para el incidente seleccionado. */
-export default function AgentActions({ actions, provisional, onApprove, onDiscard }: Props) {
+/** Tarjeta de una acción que prepara el agente: aprobar/descartar si le toca al operador, o su estado. */
+export function ActionCard({ a, onApprove, onDiscard, onIncident }: CardProps) {
+  const state = a.status === "enviada" ? "sent" : a.status === "descartada" ? "discarded" : "pending";
+  const mine = canApprove(a.policy, "operador");
+  const title = actionTitle(a);
+  const incs = actionIncidents(a);
   return (
-    <section className="block agent" aria-labelledby="agent-h">
-      <h3 id="agent-h"><Icon name="agent" size={15} />Acciones del agente</h3>
-      {provisional ? (
-        <p className="note">Decide primero si es el mismo incidente: hasta entonces el agente no prepara acciones.</p>
-      ) : actions.length === 0 ? (
-        <p className="note">Nada que preparar para esta emergencia por ahora.</p>
-      ) : (
-        <ul className="acts">
-          {actions.map((a) => {
-            const state = a.status === "enviada" ? "sent" : a.status === "descartada" ? "discarded" : "pending";
-            const mine = canApprove(a.policy, "operador");
-            const title = actionTitle(a);
-            return (
-              <li key={a.key} className={`act st-${state}`}>
-                <span className="act-icon" aria-hidden="true"><Icon name={TOOL_ICON[a.tool]} size={18} /></span>
-                <div className="act-body">
-                  <span className="act-title">{title}</span>
-                  <span className="act-target">{a.reason}</span>
-                  {a.tool === "sms_al_llamante" && (
-                    <p className="act-sms">
-                      <span lang={a.args.idioma} dir={a.args.idioma === "ar" ? "rtl" : "ltr"}>{a.args.texto}</span>
-                      <small>«{a.args.texto_es}»</small>
-                    </p>
-                  )}
-                  {a.tool === "proponer_es_alert" && (
-                    <p className="act-sms">
-                      <span>{a.args.texto_es}</span>
-                      <small lang="en">{a.args.texto_en}</small>
-                    </p>
-                  )}
-                  {state === "pending" && mine && (
-                    <div className="act-buttons">
-                      <button className="btn btn-dark btn-sm" onClick={() => onApprove(a.key)} aria-label={`Aprobar y enviar: ${title}`}>
-                        <Icon name="check" size={15} />Aprobar y enviar
-                      </button>
-                      <button className="btn btn-sm" onClick={() => onDiscard(a.key)} aria-label={`Descartar: ${title}`}>Descartar</button>
-                      <span className="act-who">Necesita tu aprobación · {toolService(a)}</span>
-                    </div>
-                  )}
-                  {state === "pending" && !mine && <span className="act-who">La aprueba un {a.policy}: {toolTarget(a)}</span>}
-                  {state === "sent" && a.receipt && (
-                    <span className="act-status ok" role="status">
-                      <Icon name="check" size={15} />
-                      {whoText(a)} · acuse {a.receipt.reference} · {mmss(a.receipt.at)}
-                    </span>
-                  )}
-                  {state === "discarded" && <span className="act-status">{whoText(a)}{a.discarded ? ` · ${mmss(a.discarded.at)}` : ""}</span>}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <p className="note">Servicios simulados. Solo los avisos informativos a organismos se envían sin aprobación; el resto lo decides tú.</p>
-    </section>
+    <li className={`act st-${state === "pending" && !mine ? "coord" : state}`}>
+      <span className="act-icon" aria-hidden="true"><Icon name={TOOL_ICON[a.tool]} size={18} /></span>
+      <div className="act-body">
+        <span className="act-top">
+          <span className="act-title">{title}</span>
+          {onIncident && incs.map((id) => (
+            <button key={id} className="act-inc" onClick={() => onIncident(id)} aria-label={`Ver ${id}`}>{id}</button>
+          ))}
+        </span>
+        <span className="act-target">{a.reason}</span>
+        {a.tool === "sms_al_llamante" && (
+          <p className="act-sms">
+            <span lang={a.args.idioma} dir={a.args.idioma === "ar" ? "rtl" : "ltr"}>{a.args.texto}</span>
+            <small>«{a.args.texto_es}»</small>
+          </p>
+        )}
+        {a.tool === "proponer_es_alert" && (
+          <p className="act-sms">
+            <span>{a.args.texto_es}</span>
+            <small lang="en">{a.args.texto_en}</small>
+          </p>
+        )}
+        {state === "pending" && mine && (
+          <div className="act-buttons">
+            <button className="btn btn-dark btn-sm" onClick={() => onApprove(a.key)} aria-label={`Aprobar y enviar: ${title}`}>
+              <Icon name="check" size={15} />Aprobar y enviar
+            </button>
+            <button className="btn btn-sm" onClick={() => onDiscard(a.key)} aria-label={`Descartar: ${title}`}>Descartar</button>
+            <span className="act-who">Necesita tu aprobación · {toolService(a)}</span>
+          </div>
+        )}
+        {state === "pending" && !mine && <span className="act-who">La aprueba un {a.policy}: {toolTarget(a)}</span>}
+        {state === "sent" && a.receipt && (
+          <span className="act-status ok" role="status">
+            <Icon name="check" size={15} />
+            {whoText(a)} · acuse {a.receipt.reference} · {mmss(a.receipt.at)}
+          </span>
+        )}
+        {state === "discarded" && <span className="act-status">{whoText(a)}{a.discarded ? ` · ${mmss(a.discarded.at)}` : ""}</span>}
+      </div>
+    </li>
   );
 }
