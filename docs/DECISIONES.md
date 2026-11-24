@@ -52,3 +52,8 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - Decisión: con `GITHUB_PAGES=1`, `next.config.mjs` hace `output: "export"`; el workflow quita `app/api` y el cliente (`STATIC_EXPORT`) usa directamente el plan B del navegador (mismo algoritmo con las extracciones del escenario).
 - Motivo: enlace público estable para equipo y jurado sin depender del portátil. Probado en local: 26 → 7, 0 errores de consola, 0 peticiones fallidas, escritorio y móvil.
 - Descartado: túneles (localtunnel devolvía 408 y se cerraba) y Vercel (requiere cuenta; sigue siendo viable).
+
+## 2026-11-24 · Traducción al castellano en una llamada aparte
+- Decisión: `translation_es` ya no se pide en el JSON de extracción; si la llamada no está en castellano, `processCall` hace una segunda llamada solo de traducción (`TO_SPANISH_SYSTEM`). Si falla, queda `null` y la consola enseña el original.
+- Motivo: con qwen2.5:7b real la traducción salía `null` en muchas llamadas extranjeras (K2, A2, C3) y la de E1 inventaba lugares («estación de Abú Umar», porque Whisper quita la puntuación del árabe). Con la llamada aparte, las 5 probadas traducen; E1 dice «Mi padre tiene 70 años…». Cuesta ~2 s más por llamada extranjera.
+- Pendiente: el `summary_es` de E1 todavía puede inventar el nombre de la estación.

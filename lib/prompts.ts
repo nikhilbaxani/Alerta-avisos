@@ -38,7 +38,6 @@ const list = (hints: Record<string, string>, keys: readonly string[]) => keys.ma
 
 export const EXTRACTION_SYSTEM = `Eres el copiloto de un operador del 112 en España durante una catástrofe. Recibes la transcripción de una llamada (en cualquier idioma) y devuelves SOLO un objeto JSON, sin texto alrededor, con estas claves:
 - language: código ISO 639-1 del idioma de la llamada.
-- translation_es: traducción fiel al castellano, o null si la llamada ya está en castellano.
 - summary_es: resumen de una frase en castellano.
 - incident_type: el valor que mejor encaje de esta lista:
 ${list(TYPE_HINTS, INCIDENT_TYPES)}
@@ -54,6 +53,10 @@ ${list(RISK_HINTS, RISK_TAGS)}
   2 = alteraciones del servicio: semáforos apagados, cortes de luz sin personas vulnerables.
   1 = consulta o aviso sin peligro.
 Usa SOLO información de la llamada: nunca añadas nombres, edades, lugares ni riesgos que no se digan.`;
+
+// La traducción al castellano va en una llamada aparte: dentro del JSON de extracción el modelo de 7B
+// la dejaba vacía a menudo o inventaba nombres de lugar.
+export const TO_SPANISH_SYSTEM = `Traduce al castellano la transcripción de una llamada a una sala del 112 en España. La transcripción es automática y puede venir sin puntuación: separa las frases por su sentido y distingue quién habla de la persona de la que habla (mi padre, mi madre, mi vecino). Traducción fiel y completa, en primera persona, como la dice el llamante. Escribe los nombres de ciudades, barrios y calles con su grafía española. No añadas nombres, lugares ni datos que no estén en la llamada. Responde solo con la traducción.`;
 
 export const extractionUser = (transcript: string) => `Transcripción de la llamada:\n"""\n${transcript}\n"""`;
 

@@ -2,11 +2,11 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { findCall } from "@/data/scenarios";
-import { chatJSON, transcribe } from "@/lib/ai";
+import { chatJSON, chatText, transcribe } from "@/lib/ai";
 import { decide } from "@/lib/cluster";
 import { llmEnabled, sttEnabled } from "@/lib/config";
 import type { AppConfig } from "@/lib/config";
-import { JUDGE_SYSTEM, EXTRACTION_SYSTEM, extractionUser, judgeUser } from "@/lib/prompts";
+import { JUDGE_SYSTEM, EXTRACTION_SYSTEM, TO_SPANISH_SYSTEM, extractionUser, judgeUser } from "@/lib/prompts";
 import { sanitizeExtraction } from "@/lib/sanitize";
 import type { Aml, Decision, IncidentSnapshot, ProcessResult } from "@/lib/types";
 
@@ -71,6 +71,13 @@ export async function processCall(cfg: AppConfig, input: ProcessInput): Promise<
       { role: "user", content: extractionUser(transcript) },
     ]);
     extraction = sanitizeExtraction(raw, known?.lang);
+    if (extraction.language !== "es") {
+      // Si falla, queda null y la consola enseña el original en las dos columnas.
+      extraction.translation_es = await chatText(cfg, [
+        { role: "system", content: TO_SPANISH_SYSTEM },
+        { role: "user", content: transcript },
+      ]).then((t) => t || null, () => null);
+    }
   } else if (known) {
     extraction = known.mock;
   } else {

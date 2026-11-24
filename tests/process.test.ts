@@ -43,4 +43,13 @@ describe("processCall (IA local simulada)", () => {
     expect(r.decision.action).toBe("ask");
     expect(r.decision.judge?.same).toBe(true);
   });
+
+  it("traduce aparte las llamadas que no están en castellano", async () => {
+    const answers = [JSON.stringify({ ...call("A2").mock, translation_es: null }), "Hay un coche atrapado bajo el puente."];
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: answers.shift() } }] })));
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await processCall(getConfig({ LLM_BASE_URL: "http://x/v1" }), { callId: "A2", aml: call("A2").aml, incidents: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(r.extraction.translation_es).toBe("Hay un coche atrapado bajo el puente.");
+  });
 });
