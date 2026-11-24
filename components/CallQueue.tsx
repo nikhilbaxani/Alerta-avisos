@@ -3,6 +3,7 @@ import { callMeta } from "@/lib/useConsole";
 import type { CallMeta, ConsoleState } from "@/lib/useConsole";
 import type { ProcessResult } from "@/lib/types";
 import Icon from "./Icon";
+import Inbox from "./Inbox";
 import LivePanel from "./LivePanel";
 import { langName, mmss } from "./format";
 
@@ -22,6 +23,7 @@ export default function CallQueue({ s, sttUp, onSelect, onLive }: Props) {
         <h2 id="calls-h">Llamadas entrantes</h2>
         <span className="panel-count">{s.arrived.length} de {total}</span>
       </div>
+      <Inbox s={s} onLive={onLive} />
       <LivePanel s={s} sttUp={sttUp} onCall={onLive} />
       {list.length === 0 ? (
         <p className="empty">Aquí aparecerán las llamadas según entren, de la más reciente a la más antigua.</p>
