@@ -2,6 +2,11 @@
 
 Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descartada.
 
+## 2026-11-24 · Entrada única del logo en la consola
+- Decisión: la cabecera utiliza `avance-112-animado.svg`, cuya entrada se reproduce una sola vez y termina en reposo. Conserva la transparencia y la alternativa PNG para movimiento reducido.
+- Motivo: Nick pide que el logo no se repita en la interfaz; la repetición se reserva para una futura landing. El GIF original con bucle sigue disponible para ese uso.
+- Descartado: cambiar o recodificar el GIF compartido, o añadir temporizadores en React para sustituirlo después de la entrada.
+
 ## 2026-11-24 · Logo Avance 112 en la cabecera (petición de Nick)
 - Decisión: sustituir el distintivo «112 / Copiloto» de `components/TopBar.tsx` por el GIF transparente existente de Avance 112. Se importa como recurso local para conservar la ruta correcta tanto en Next.js como en GitHub Pages; con movimiento reducido se muestra el PNG estático. CSS adapta el tamaño y recorta únicamente los márgenes transparentes del lienzo.
 - Motivo: petición explícita de Nick de integrar este logo animado arriba, sin fondo. Esta petición autoriza el cambio acotado de cabecera y estilos pese a la restricción de interfaz de la fase de agentes; no amplía el alcance de X04–X08.

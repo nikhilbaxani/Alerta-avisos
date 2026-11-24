@@ -1,7 +1,7 @@
 import { scenarioEnd } from "@/lib/useConsole";
 import type { ConsoleState, EngineStatus, Speed } from "@/lib/useConsole";
 import { SCENARIOS, getScenario } from "@/data/scenarios";
-import animatedLogo from "@/docs/marca/avance-112/avance-112.gif";
+import animatedLogo from "@/docs/marca/avance-112/avance-112-animado.svg";
 import staticLogo from "@/docs/marca/avance-112/avance-112.png";
 import Icon from "./Icon";
 import { mmss } from "./format";

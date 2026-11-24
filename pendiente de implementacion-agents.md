@@ -53,8 +53,9 @@ Responsable previsto: `pitch-docs`. Dependencias: X05, X06 y X07 verificadas.
   cuando se cumplan los criterios. Después, marcar X08 como hecha.
 
 La entrega de marca «Avance 112» está en `docs/marca/avance-112/` con sus fuentes,
-SVG, PNG y animaciones. Por petición posterior de Nick, su GIF transparente ya
-se integra en la cabecera, con PNG estático para movimiento reducido. La
+SVG, PNG y animaciones. Por petición posterior de Nick, el logo transparente ya
+se integra en la cabecera mediante el SVG de entrada única, con PNG estático
+para movimiento reducido. El GIF con repetición se reserva para la futura landing. La
 documentación del agente conserva el nombre aprobado en MEMORIA §16.5 hasta
 que se revise el relato en X08.
 

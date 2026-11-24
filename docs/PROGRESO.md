@@ -105,3 +105,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Cambio: se reutilizan el GIF transparente y el PNG existentes mediante importaciones locales en `TopBar`; el PNG se selecciona con `prefers-reduced-motion`. Los estilos adaptan la cabecera a móvil y recortan solo el margen transparente del archivo.
 - Verificación: build y TypeScript correctos; Chromium comprueba carga del GIF, píxel con alfa 0, fondo CSS transparente, controles Iniciar/Pausar y ausencia de solapamientos o scroll horizontal a 320, 390, 768, 980, 1024, 1280 y 1440 px. Con movimiento reducido se carga el PNG. Capturas revisadas en `/tmp/alerta-avisos-logo-qa/`.
 - GitHub Pages: exportación estática comprobada en una copia temporal sin rutas API; el GIF y el PNG se incluyen bajo `/Alerta-avisos/_next/static/media/`. La petición autoriza únicamente esta actualización visual de la cabecera, sin modificar la lógica del agente.
+
+## 2026-11-24 · Logo sin repetición en la consola
+- Petición de Nick: reservar el bucle para la futura landing y evitar la repetición en la interfaz.
+- Cambio: `TopBar` utiliza el SVG animado existente, que termina en reposo tras una entrada. El GIF original mantiene su bucle; el PNG sigue siendo la alternativa para movimiento reducido.
+- Verificación: TypeScript correcto y prueba con Chromium en la aplicación local; se observa la entrada, se comparan capturas tras finalizar y después del antiguo periodo de 4,8 s, al pasar el cursor y al usar Iniciar/Pausar. El logo permanece fijo; móvil sin desbordamiento y movimiento reducido con PNG. Captura en `/tmp/alerta-avisos-logo-qa/logo-una-vez.png`.
