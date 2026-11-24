@@ -72,38 +72,39 @@ export default function TopBar({
           <span className="brand-name">Copiloto</span>
         </div>
 
-        <div className="mode-tabs" role="tablist" aria-label="Modo de la consola">
-          <button
-            ref={simTabRef}
-            type="button"
-            role="tab"
-            id="tab-sim"
-            aria-controls="console-panel"
-            aria-selected={isSim}
-            tabIndex={isSim ? 0 : -1}
-            onClick={() => onMode("sim")}
-            onKeyDown={onTabKeyDown}
-          >
-            Simulación
-          </button>
-          <button
-            ref={liveTabRef}
-            type="button"
-            role="tab"
-            id="tab-live"
-            aria-controls="console-panel"
-            aria-selected={!isSim}
-            tabIndex={!isSim ? 0 : -1}
-            disabled={!relayEnabled}
-            aria-describedby={!relayEnabled ? "live-unavailable" : undefined}
-            onClick={() => relayEnabled && onMode("live")}
-            onKeyDown={onTabKeyDown}
-          >
-            En directo (QR)
-          </button>
+        <div className="mode-picker">
+          <div className="mode-tabs" role="tablist" aria-label="Modo de la consola">
+            <button
+              ref={simTabRef}
+              type="button"
+              role="tab"
+              id="tab-sim"
+              aria-controls="console-panel"
+              aria-selected={isSim}
+              tabIndex={isSim ? 0 : -1}
+              onClick={() => onMode("sim")}
+              onKeyDown={onTabKeyDown}
+            >
+              Simulación
+            </button>
+            <button
+              ref={liveTabRef}
+              type="button"
+              role="tab"
+              id="tab-live"
+              aria-controls="console-panel"
+              aria-selected={!isSim}
+              tabIndex={!isSim ? 0 : -1}
+              disabled={!relayEnabled}
+              aria-describedby={!relayEnabled ? "live-unavailable" : undefined}
+              onClick={() => relayEnabled && onMode("live")}
+              onKeyDown={onTabKeyDown}
+            >
+              En directo (QR)
+            </button>
+          </div>
+          {!relayEnabled && <p className="mode-notice" id="live-unavailable">{LIVE_UNAVAILABLE}</p>}
         </div>
-
-        {!relayEnabled && <p className="mode-notice" id="live-unavailable">{LIVE_UNAVAILABLE}</p>}
 
         {isSim ? (
           <>

@@ -108,6 +108,7 @@ kbd {
   background: var(--red); color: #fff; font-weight: 800; font-size: 15px; font-variation-settings: "wdth" 80; letter-spacing: .02em;
 }
 .brand-name { font-size: 19px; font-weight: 750; font-variation-settings: "wdth" 85; }
+.mode-picker { display: grid; gap: 3px; }
 .mode-tabs { display: inline-flex; align-items: stretch; gap: 2px; border-bottom: 1px solid var(--line); }
 .mode-tabs button {
   border: 0; border-bottom: 3px solid transparent; background: transparent;
@@ -117,7 +118,8 @@ kbd {
 .mode-tabs button:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
 .mode-tabs button[aria-selected="true"] { color: var(--ink); font-weight: 750; border-bottom-color: var(--ink); }
 .mode-tabs button:disabled { opacity: .48; cursor: not-allowed; }
-.mode-notice { max-width: 22ch; color: var(--ink-2); font-size: 12px; line-height: 1.25; }
+/* El aviso usa el ancho de las pestañas sin ensanchar su grupo. */
+.mode-notice { width: 0; min-width: 100%; color: var(--ink-2); font-size: 12px; line-height: 1.25; }
 .live-indicator {
   display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 36px;
   border-radius: var(--radius); background: var(--ok-bg); border: 1px solid #b5dcc6;
@@ -384,9 +386,8 @@ kbd {
   .brand-name { display: none; }
   .playback .btn-dark { flex: 1; }
   .topbar-end { order: 2; margin-left: auto; gap: 0; }
-  .mode-tabs { order: 3; flex-basis: 100%; }
+  .mode-picker { order: 3; flex-basis: 100%; }
   .mode-tabs button { flex: 1; }
-  .mode-notice { order: 4; flex-basis: 100%; max-width: none; }
   .scn { order: 5; flex-basis: 100%; }
   .playback { order: 6; flex-wrap: wrap; }
   .live-indicator { order: 5; flex-basis: 100%; justify-content: space-between; }

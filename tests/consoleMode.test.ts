@@ -35,7 +35,7 @@ function makeLiveCall(id = "P1", t = 0): { call: CallMeta; result: ProcessResult
   return { call, result };
 }
 
-function advanceSimWithFirstCall(s: ConsoleState): ConsoleState {
+function beginFirstSimCall(s: ConsoleState) {
   let next = consoleReducer(s, { type: "play" });
   next = consoleReducer(next, { type: "tick", dt: sampleCall.t + 1 });
   const id = next.queue[0];
@@ -49,7 +49,12 @@ function advanceSimWithFirstCall(s: ConsoleState): ConsoleState {
     engine: { stt: "Transcripción del guion", llm: "Modo simulado" },
     timings: { sttMs: 0, llmMs: 0, totalMs: 0 },
   };
-  return consoleReducer(next, { type: "processed", epoch: next.epoch, id, result });
+  return { state: next, processed: { type: "processed", epoch: next.epoch, id, result } as const };
+}
+
+function advanceSimWithFirstCall(s: ConsoleState): ConsoleState {
+  const { state, processed } = beginFirstSimCall(s);
+  return consoleReducer(state, processed);
 }
 
 describe("consoleMode", () => {
@@ -101,6 +106,32 @@ describe("consoleMode", () => {
     expect(s.mode).toBe("live");
     expect(s.engine.incidents).toHaveLength(1);
     expect(s.arrived).toEqual(["P1"]);
+  });
+
+  it("S12: un resultado de sim en curso llega a sim aunque esté abierta la pestaña QR", () => {
+    const { state, processed } = beginFirstSimCall(initialConsoleState());
+    const live = consoleReducer(state, { type: "mode", mode: "live" });
+    expect(live.saved.sim?.inflight).toBe(sampleCall.id);
+
+    const completed = consoleReducer(live, processed);
+    expect(completed.mode).toBe("live");
+    expect(completed.engine.incidents).toHaveLength(0);
+    expect(completed.saved.sim?.inflight).toBeNull();
+    expect(completed.saved.sim?.engine.incidents).toHaveLength(1);
+  });
+
+  it("S12: aceptar una llamada QR deja la sesión de sim idéntica", () => {
+    const sim = advanceSimWithFirstCall(initialConsoleState());
+    const live = consoleReducer(sim, { type: "mode", mode: "live" });
+    const before = JSON.stringify(live.saved.sim);
+    const { call, result } = makeLiveCall();
+    const accepted = consoleReducer(live, { type: "live", call, result });
+    expect(accepted.arrived).toContain(call.id);
+    expect(JSON.stringify(accepted.saved.sim)).toBe(before);
+
+    const restored = consoleReducer(accepted, { type: "mode", mode: "sim" });
+    expect(restored.arrived).not.toContain(call.id);
+    expect(restored.recs[call.id]).toBeUndefined();
   });
 
   it("cambiar de escenario en sim no toca el estado de live", () => {

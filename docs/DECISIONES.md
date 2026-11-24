@@ -5,6 +5,7 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 ## 2026-11-24 · Pestañas Simulación y En directo (QR)
 - Decisión: separar ambas sesiones. DANA y Apagón se eligen dentro de Simulación, cuyo reloj se detiene mientras la pestaña está oculta. En directo tiene su propia bandeja y mapa, y no admite llamadas sin moderar ni llamadas del micrófono local de la consola. Sin relay, su pestaña queda desactivada con un aviso visible.
 - Motivo: poder alternar entre un escenario reproducible y las llamadas del público sin mezclar colas, incidentes ni decisiones.
+- El reloj interno de En directo, que ajusta la prioridad por tiempo de espera, también se pausa mientras se muestra Simulación: para la demo basta con contar el tiempo en que el operador está viendo las llamadas del público, no con medir la espera real.
 - Descartado: añadir «En directo» como tercer escenario del selector y compartir la cola y los controles de reproducción.
 
 ## 2026-10-27 · Mapa SVG propio en lugar de teselas
@@ -189,3 +190,8 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - Decisión: mostrar el parte al final, escribir Markdown con `--parte` e incluir la estructura en el JSON de `--json`. Calcular líneas liberadas por agrupación como llamadas menos incidentes, zonas por primera posición AML en celdas de 0,01° y prioridades al cierre de la reproducción.
 - Motivo: mostrar solo cifras del estado simulado, con métricas de espera separadas del reloj de las acciones.
 - Alternativa descartada: fijar cifras por escenario, reutilizar nombres de lugar de las transcripciones o mezclar líneas liberadas por agrupación con duplicados atendidos sin operador.
+
+## 2026-11-24 · X07 (corrección tras revisión): el aviso municipal no sustituye a la policía local
+- Decisión: el aviso automático al ayuntamiento es informativo y se añade, sin sustituirla ni duplicarla, a la propuesta de movilizar a la Policía Local por riesgo de tráfico o accidente, que sigue requiriendo aprobación del operador.
+- Motivo: la primera versión de X07 retiraba la propuesta de policía cuando había aviso municipal; un aviso sin aprobación no puede reemplazar a una propuesta de recursos (hallazgo crítico de la revisión, corregido en 030154b).
+- Alternativa descartada: dejar solo el aviso municipal para «no duplicar».
