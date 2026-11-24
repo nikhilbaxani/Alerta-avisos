@@ -4,6 +4,7 @@ import { scenario } from "@/data/scenario-dana-malaga";
 import { actionKey, planRules, proposalsFromModel } from "@/lib/actions";
 import type { PlanInput } from "@/lib/actions";
 import { getConfig } from "@/lib/config";
+import * as planner from "@/lib/plan";
 import { planIncident } from "@/lib/plan";
 import { LIMITS } from "@/lib/validate";
 
@@ -48,6 +49,7 @@ const toolReply = (calls: ToolCall[], raw = false) =>
 const sentBody = (f: ReturnType<typeof toolReply>) => JSON.parse(String(f.mock.calls[0][1]!.body)) as Record<string, unknown>;
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -208,6 +210,25 @@ describe("POST /api/plan", () => {
     expect(JSON.stringify(sentBody(f).messages)).not.toMatch(/Ignora|SISTEMA/);
   });
 
+  it("ignora incidentes cercanos, políticas y propuestas aportados en el cuerpo", async () => {
+    vi.stubEnv("LLM_BASE_URL", "");
+    const aml = A("F1").aml;
+    const nearby: PlanInput = { ...incA, incidentId: "INC-02", risks: ["atrapados"], points: [aml],
+      calls: [{ id: "F1", lang: "es", phone: null, risks: ["atrapados"], aml }] };
+    const corroborated = { ...incA, calls: incA.calls.map((c) => ({ ...c, aml: A(c.id).aml })), nearby: [nearby] };
+    expect(planRules(corroborated).map((p) => p.tool)).toContain("proponer_es_alert");
+    const plan = vi.spyOn(planner, "planIncident");
+    const forged = await planPOST(json({ ...corroborated, policy: "automatica",
+      proposals: [{ tool: "proponer_es_alert", policy: "automatica" }] }));
+    expect(plan).toHaveBeenCalledTimes(1);
+    expect(plan.mock.calls[0][1]).toEqual(incA);
+    const baseline = await planPOST(json(incA));
+    expect([forged.status, baseline.status]).toEqual([200, 200]);
+    const result = await forged.json();
+    expect(result).toEqual(await baseline.json());
+    expect(result.proposals.map((p: { tool: string }) => p.tool)).not.toContain("proponer_es_alert");
+  });
+
   it("valida las nuevas herramientas: no duplica reglas ni acepta destinos inventados o alertas sin corroborar", async () => {
     vi.stubEnv("LLM_BASE_URL", LLM);
     vi.stubGlobal("fetch", toolReply([
@@ -227,7 +248,7 @@ describe("POST /api/plan", () => {
       expect.objectContaining({ destination: "policia_local", origin: "reglas", policy: "operador" }),
     ]);
     expect(result.issues).toEqual([
-      { tool: "aviso_ayuntamiento", outcome: "corregida", reason: "Se ignoran argumentos no previstos («politica»): quién aprueba lo fija la tabla de política (operador)" },
+      { tool: "aviso_ayuntamiento", outcome: "corregida", reason: "Se ignoran argumentos no previstos («politica»): la tabla fija una política automática, pero una propuesta de la IA local requiere aprobación de un operador" },
       { tool: "aviso_ayuntamiento", outcome: "descartada", reason: "El motivo del aviso no corresponde al incidente" },
       { tool: "devolver_llamada", outcome: "descartada", reason: "La llamada no aportó la primera información de falta de respuesta" },
       { tool: "proponer_es_alert", outcome: "descartada", reason: "No hay dos incidentes confirmados de vehículos atrapados próximos" },

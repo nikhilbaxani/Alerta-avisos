@@ -100,6 +100,8 @@ export interface ToolArgs {
 // ───────────────────────────── Entrada del planificador ─────────────────────────────
 
 export interface PlanCall {
+  /** Posición de esta llamada, solo desde los datos internos del replay. */
+  aml?: Aml;
   id: string;
   /** Idioma detectado (ISO 639-1). */
   lang: string;
@@ -124,6 +126,7 @@ export interface PlanInput {
 }
 
 export interface CallFacts {
+  aml?: Aml;
   lang: string;
   phone?: string | null;
   risks: RiskTag[];
@@ -141,7 +144,9 @@ export function planInputFrom(inc: Incident, facts: Record<string, CallFacts>): 
     calls: inc.callIds.map((id) => {
       const f = facts[id];
       // Sin datos de la llamada se asume castellano: no recibe SMS (lo atiende el operador de viva voz).
-      return { id, lang: f?.lang ?? "es", phone: f?.phone || null, risks: f ? [...f.risks] : [] };
+      return { id, lang: f?.lang ?? "es", phone: f?.phone || null, risks: f ? [...f.risks] : [],
+        ...(f?.aml ? { aml: { lat: f.aml.lat, lng: f.aml.lng, acc: f.aml.acc } } : {}),
+      };
     }),
     provisional: inc.provisional,
   };
@@ -242,6 +247,12 @@ function evidenceOf(input: PlanInput, triggers: Trigger[]): Evidence {
   return { type: input.type, risks, callIds: withRisk.length ? withRisk : input.calls.map((c) => c.id) };
 }
 
+function requiredPolicy(tool: ActionTool, origin: ActionOrigin): ApprovalPolicy {
+  // Lo que propone el modelo nunca se envía solo.
+  const table = ACTION_POLICY[tool];
+  return origin === "ia_local" && table === "automatica" ? "operador" : table;
+}
+
 function make<K extends ActionTool>(
   input: PlanInput,
   tool: K,
@@ -251,9 +262,7 @@ function make<K extends ActionTool>(
   evidence: Evidence,
   origin: ActionOrigin,
 ): ProposalOf<K> {
-  // Lo que propone el modelo nunca se envía solo: si la tabla dice «automática», pasa a operador.
-  const table = ACTION_POLICY[tool];
-  const policy: ApprovalPolicy = origin === "ia_local" && table === "automatica" ? "operador" : table;
+  const policy = requiredPolicy(tool, origin);
   return { key: actionKey(input.incidentId, tool, destination), incidentId: input.incidentId, tool, destination, args, reason, evidence, policy, origin };
 }
 
@@ -463,9 +472,8 @@ const ALERT_TEXT = "Vehículos atrapados por inundación en la zona. Evite circu
 
 function trappedVehicle(input: PlanInput) {
   if (input.provisional || input.type !== "inundacion_vehiculo" || !input.risks.includes("atrapados")) return null;
-  const index = input.calls.findIndex((c) => c.risks.includes("atrapados"));
-  const point = input.points[index];
-  return point ? { point, call: input.calls[index] } : null;
+  const call = input.calls.find((c) => c.aml && c.risks.includes("atrapados"));
+  return call?.aml ? { point: call.aml, call } : null;
 }
 
 function alertProposals(input: PlanInput, origin: ActionOrigin): ProposalOf<"proponer_es_alert">[] {
@@ -752,10 +760,13 @@ export function proposalsFromModel(calls: ModelToolCall[], input: PlanInput): { 
     }
     const extra = Object.keys(args).filter((k) => !ts.modelArgs.includes(k));
     if (extra.length) {
+      const policyReason = ACTION_POLICY[tool] === "automatica"
+        ? "la tabla fija una política automática, pero una propuesta de la IA local requiere aprobación de un operador"
+        : `quién aprueba lo fija la tabla de política (${p.policy})`;
       issues.push({
         tool,
         outcome: "corregida",
-        reason: `Se ignoran argumentos no previstos (${extra.slice(0, 5).map((k) => shown(k)).join(", ")}): quién aprueba lo fija la tabla de política (${p.policy})`,
+        reason: `Se ignoran argumentos no previstos (${extra.slice(0, 5).map((k) => shown(k)).join(", ")}): ${policyReason}`,
       });
     }
     if (seen.has(p.key)) continue;
@@ -802,9 +813,11 @@ export function addProposals(actions: AgentAction[], proposals: Proposal[], at: 
   for (const p of proposals) {
     if (keys.has(p.key)) continue;
     keys.add(p.key);
-    const auto = p.policy === "automatica";
+    const policy = requiredPolicy(p.tool, p.origin);
+    const auto = policy === "automatica";
     added.push({
       ...p,
+      policy,
       status: auto ? "enviada" : "propuesta",
       proposedAt: at,
       approval: auto ? { by: "automatica", at } : null,
@@ -826,10 +839,11 @@ function update(actions: AgentAction[], key: string, fn: (a: AgentAction) => Age
 /** El rol aprueba una propuesta. Las automáticas no esperan aprobación. */
 export function approve(actions: AgentAction[], key: string, role: Role, at: number): ActionResult {
   return update(actions, key, (a) => {
-    if (a.policy === "automatica") return "Las acciones automáticas no esperan aprobación: se envían en el momento y quedan registradas";
+    const policy = requiredPolicy(a.tool, a.origin);
+    if (policy === "automatica") return "Las acciones automáticas no esperan aprobación: se envían en el momento y quedan registradas";
     if (a.status !== "propuesta") return `La acción ya está ${STATUS_TEXT[a.status]}`;
-    if (!canApprove(a.policy, role)) return `Esta acción la aprueba un ${a.policy}`;
-    return { ...a, status: "aprobada", approval: { by: role, at } };
+    if (!canApprove(policy, role)) return `Esta acción la aprueba un ${policy}`;
+    return { ...a, policy, status: "aprobada", approval: { by: role, at } };
   });
 }
 
@@ -837,7 +851,11 @@ export function approve(actions: AgentAction[], key: string, role: Role, at: num
 export function dispatch(actions: AgentAction[], key: string, at: number): ActionResult {
   return update(actions, key, (a) => {
     if (a.status !== "aprobada") return `Solo se envían acciones aprobadas; esta está ${STATUS_TEXT[a.status]}`;
-    return { ...a, status: "enviada", receipt: send(a, at) };
+    const policy = requiredPolicy(a.tool, a.origin);
+    if (policy === "automatica") return "Las acciones automáticas se envían en el momento y quedan registradas";
+    const by = a.approval?.by;
+    if (!by || by === "automatica" || !canApprove(policy, by)) return `Esta acción la aprueba un ${policy}`;
+    return { ...a, policy, status: "enviada", receipt: send(a, at) };
   });
 }
 

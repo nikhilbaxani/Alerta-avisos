@@ -195,3 +195,7 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - Decisión: el aviso automático al ayuntamiento es informativo y se añade, sin sustituirla ni duplicarla, a la propuesta de movilizar a la Policía Local por riesgo de tráfico o accidente, que sigue requiriendo aprobación del operador.
 - Motivo: la primera versión de X07 retiraba la propuesta de policía cuando había aviso municipal; un aviso sin aprobación no puede reemplazar a una propuesta de recursos (hallazgo crítico de la revisión, corregido en 030154b).
 - Alternativa descartada: dejar solo el aviso municipal para «no duplicar».
+
+## 2026-11-24 · X07: política y posición verificadas antes de actuar
+- Decisión: derivar la política de la herramienta y su origen al registrar, aprobar y enviar; al enviar, comprobar también el rol de la aprobación. Calcular la zona de ES-Alert solo con posiciones AML vinculadas a las llamadas que informan del atrapamiento.
+- Motivo: ni los campos de la propuesta ni la posición de otra llamada son evidencia suficiente. Se descarta confiar en la política copiada o emparejar por índice la lista de llamadas y la de posiciones.

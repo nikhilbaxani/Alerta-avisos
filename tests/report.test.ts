@@ -17,6 +17,7 @@ it("imprime el mismo parte Markdown que guarda y exporta sus datos en el JSON de
     const report = readFileSync(md, "utf8");
     expect(result.stdout.endsWith(report)).toBe(true);
     expect(report).toContain("# Parte de situación · SIMULACIÓN");
+    expect(report).toContain("Operadores: 2 · En espera: 22 con guion. De las llamadas en espera, 13 se escalaron y 7 se agruparon como duplicados sin operador.");
     expect(report).toContain("26 llamadas → 7 incidentes · 19 líneas liberadas por agrupación.");
     expect(report).toContain("Sin coordinador simulado: ES-Alert requiere aprobación de un coordinador humano.");
     const audit = JSON.parse(readFileSync(json, "utf8"));

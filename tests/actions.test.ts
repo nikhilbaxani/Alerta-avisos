@@ -83,8 +83,13 @@ describe("política de aprobación (tabla en código)", () => {
   });
 
   it("approve con rol operador sobre una acción de coordinador falla", () => {
-    const [p] = planRules(carA1);
-    const { actions } = addProposals([], [{ ...p, policy: "coordinador" }], 10);
+    const withAml = (incident: PlanInput, callId: string, lat: number): PlanInput => ({
+      ...incident, calls: [{ ...incident.calls[0], id: callId, aml: { ...incident.points[0], lat } }],
+    });
+    const current = withAml(carA1, "A1", 36.72);
+    const nearby = withAml({ ...carA1, incidentId: "INC-02" }, "F1", 36.724);
+    const p = planRules({ ...current, nearby: [nearby] }).find((p) => p.tool === "proponer_es_alert")!;
+    const { actions } = addProposals([], [p], 10);
     const r = approve(actions, p.key, "operador", 12);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/coordinador/);

@@ -62,7 +62,7 @@ export function reportMarkdown(report: ReturnType<typeof situationReport>): stri
     "",
     "## Agente de espera",
     "",
-    `Operadores: ${espera.operadores} · Atendidas con guion: ${espera.atendidas} · Escaladas: ${espera.escaladas} · Duplicados agrupados sin operador: ${espera.duplicadosSinOperador}.`,
+    `Operadores: ${espera.operadores} · En espera: ${espera.atendidas} con guion. De las llamadas en espera, ${espera.escaladas} se escalaron y ${espera.duplicadosSinOperador} se agruparon como duplicados sin operador.`,
     "",
   ].join("\n");
 }

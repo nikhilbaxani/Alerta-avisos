@@ -66,7 +66,7 @@ export async function runAgent(scenario: Scenario, opts: { planner?: Planner; ap
   for (const c of calls) {
     byId[c.id] = { id: c.id, t: c.t, aml: c.aml, extraction: c.mock };
     gold[c.id] = c.gold;
-    facts[c.id] = { lang: c.mock.language, phone: c.phone, risks: c.mock.risks };
+    facts[c.id] = { aml: c.aml, lang: c.mock.language, phone: c.phone, risks: c.mock.risks };
   }
 
   let state = initialState();
@@ -250,7 +250,7 @@ export function summaryLines(run: AgentRun): string[] {
   return [
     `Resumen · ${run.scenarioName} · SIMULACIÓN`,
     `  ${s.calls} llamadas → ${s.incidents} incidentes · ${s.operatorDecisions} ${s.operatorDecisions === 1 ? "decisión" : "decisiones"} del operador (simulado) en zona gris`,
-    `  Espera (${s.waiting.operators} ${s.waiting.operators === 1 ? "operador" : "operadores"}): ${s.waiting.attended} atendidas por el asistente · ${s.waiting.duplicates} duplicados sin operador · ${s.waiting.escalated} escaladas`,
+    `  Espera (${s.waiting.operators} ${s.waiting.operators === 1 ? "operador" : "operadores"}): ${s.waiting.attended} con guion. De las llamadas en espera, ${s.waiting.escalated} se escalaron y ${s.waiting.duplicates} se agruparon como duplicados sin operador.`,
     `  Acciones preparadas: ${s.prepared} (${tools}) · origen: reglas ${s.byOrigin.reglas}, IA local ${s.byOrigin.ia_local}`,
     `  Automáticas, enviadas al momento con registro: ${s.automatic}`,
     `  Aprobadas por el operador (simulado): ${s.approved} · descartadas: ${s.discarded} · pendientes: ${s.pending}`,
