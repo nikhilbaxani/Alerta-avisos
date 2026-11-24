@@ -42,6 +42,8 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - `lib/rules.ts`: `extractByRules(input: { transcript: string; language: string; translation_en: string | null }): { extraction: Extraction; location: PublicCallEvent["location"] }`.
 - Relay HTTP: `POST /llamar` (multipart: `file`, `consent=1`) → `202 {id}`; `GET /events?token=…` → SSE `event: call` + `data: <PublicCallEvent JSON>`, reenvía los últimos 50 al conectar, latido cada 15 s; `GET /health` → `{ok, queue}`.
 - Consola: `NEXT_PUBLIC_RELAY_URL`; token del operador desde `?op=` o `localStorage`.
+- **S13** (usuario, L19): «que use el whisper de sobremesa y ya que tontería para no tener más latencia, mira si puede subir la velocidad de whisper también». El relay tiene un único STT (el de la sobremesa por el gateway, con la clave del LLM); sin respaldo en el VPS; una sola pasada de Whisper por llamada y traducción al castellano con el LLM.
+- **S14** (usuario, L20): «al escanear el qr y simular la llamada, dependiendo de lo que tarde en transcribir, proyectar el texto para que en esa simulación, la persona vea si es correcto mas o menos, y darle a un boton de enviar». En `/llamar`, tras grabar, la persona ve el progreso de la transcripción, después el texto transcrito y un botón «Enviar»; la llamada solo llega a la bandeja del operador cuando la persona pulsa «Enviar».
 
 ## Tasks
 
@@ -53,7 +55,9 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | a7fa4eb |
 | T6 | S10, S9 | Despliegue todo-en-VPS con Funnel: web estática + Caddy interno + relay + stt |681c66f, a503651, ec272ec, 0ffe47d |
 | T7 | S11, S2, S5 | Extracción con el LLM del sobremesa en el relay, reglas como respaldo |90f5720, d03bbd9 |
-| T8 | S12 | Pestañas Simulación / En directo en la consola | — |
+| T8 | S12 | Pestañas Simulación / En directo en la consola | 131e105, 10618ad |
+| T9 | S13 | Relay con STT único en la sobremesa (clave, una pasada, traducción por LLM) + opciones de velocidad en `scripts/stt_server.py` | — |
+| T10 | S14, S3–S6, S9 | Confirmación del llamante: transcripción visible en `/llamar` y botón «Enviar» antes de publicar | — |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log
@@ -75,3 +79,6 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L15** (usuario): «pero está puesto los modelos whisper? … esto es para el modelo grande que procesa el texto que whisper transcribe»; elige opción A. Comprobado: `strata` responde en ~9 s y traduce bien árabe; `pc-sobremesa.tail0093c8.ts.net` resuelve a una IP pública de Funnel (176.58.90.46), así que el contenedor llega por internet (200, 340 ms) con el aislamiento intacto. La key se pegó en el chat: rotarla tras el hackathon.
 - **L16** (usuario): «De mientras, lo que digo en la web que está la pestaña esta que cambia de malaga dana y apagón, hazlo que sea tipo que sea la pestaña simulado y la pestaña real donde aparece lo que le mandamos por el qr».
 - **L17** (T8): la sesión anterior dejó las pestañas a medias; un worker las completó (la simulación conserva su estado al cambiar de pestaña, aviso visible sin relay, el micrófono local no alimenta la sesión del QR). Verificación independiente: S12 PASS; `tsc`, 331 tests, `eval`, `eval:apagon`, `npm run build` (con y sin relay) y `scripts/e2e.mjs` (con SSE simulado, escritorio y móvil) en verde, sin errores de consola ni scroll horizontal; capturas `docs/capturas/pestanas-*.png` revisadas. Notas: el e2e necesita `npx playwright install chromium` (se ejecutó con el Chromium en caché 1247); sin relay a 1440 px la barra superior salta a dos filas (menor, se corrige aparte); relay real sin probar con las pestañas.
+- **L18** (sobremesa, hecho por el orquestador con permiso del usuario: «te doy acceso a sobremesa, aprobado la misma clave para que sea más rápido» y «te doy el permiso»): Whisper `large-v3-turbo` en CPU (Ryzen 5 5600X, la RTX 3060 está llena con `strata`) en un stack aparte `~/docker/stack/whisper`, registrado en LiteLLM como `whisper`, ruta `/v1/audio/transcriptions` abierta en el nginx público, `whisper` añadido a los modelos de la clave `strata-temp-20261124`. Copias `.bak-2026-11-24-whisper` de `litellm/config.yaml` y `litellm-public/nginx.conf`. Prueba desde el contenedor del relay en el VPS: 200, 11,4 s para 14,5 s de audio en castellano; árabe (18,1 s) en 11,7 s medido en local; devuelve `language` y `duration`.
+- **L19** (usuario): «vale, pero que use el whisper de sobremesa y ya que tontería para no tener más latencia, mira si puede subir la velocidad de whisper también. Y queda algo más por implementar lo de antes?»
+- **L20** (usuario): «como pruebo esto? y haz esto que al escanear el qr y simular la llamada, dependiendo de lo que tarde en transcribir, proyectar el texto para que en esa simulación, la persona vea si es correcto mas o menos, y darle a un boton de enviar»
