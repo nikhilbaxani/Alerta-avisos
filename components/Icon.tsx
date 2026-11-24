@@ -26,6 +26,7 @@ const PATHS = {
   stop: "M7 7h10v10H7z",
   agent: "M12 3v3M8 7h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3zM9.5 12h.01M14.5 12h.01M9.5 15.5h5",
   globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.5 2.6 3.5 5.6 3.5 9s-1 6.4-3.5 9c-2.5-2.6-3.5-5.6-3.5-9s1-6.4 3.5-9z",
+  slides: "M3 4.5h18v12H3zM12 16.5V20M8 20h8M10 8.5v4.5l4-2.25z",
 } as const;
 
 export type IconName = keyof typeof PATHS;

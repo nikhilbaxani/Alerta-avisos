@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { callMeta, useConsole } from "@/lib/useConsole";
 import { actionIncidents, canApprove } from "@/lib/actions";
@@ -12,6 +13,7 @@ import AgentFeed from "./AgentFeed";
 import { useCallAudio } from "./useCallAudio";
 import CallQueue from "./CallQueue";
 import DecisionBanner from "./DecisionBanner";
+import DeckReturn from "./DeckReturn";
 import HelpDialog from "./HelpDialog";
 import Icon from "./Icon";
 import IncidentDetail from "./IncidentDetail";
@@ -101,6 +103,7 @@ export default function Console() {
                 <div className="welcome-actions">
                   <button className="btn btn-dark btn-lg" onClick={play}><Icon name="play" />Iniciar simulación</button>
                   <button className="btn btn-lg" onClick={() => setHelp(true)}><Icon name="help" />Cómo funciona</button>
+                  <Link href="/presentacion" className="btn btn-lg"><Icon name="slides" />Ver la presentación</Link>
                 </div>
               </div>
             )}
@@ -122,6 +125,7 @@ export default function Console() {
         </section>
       </main>
       <HelpDialog open={help} onClose={() => setHelp(false)} />
+      <DeckReturn />
     </div>
   );
 }

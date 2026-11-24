@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { scenarioEnd } from "@/lib/useConsole";
 import type { ConsoleState, EngineStatus, Speed } from "@/lib/useConsole";
 import { SCENARIOS, getScenario } from "@/data/scenarios";
@@ -83,6 +84,7 @@ export default function TopBar({ s, status, pending, actionsSent, actionsToAppro
           >
             <Icon name={sound ? "speaker" : "mute"} /><span className="sr-only">{sound ? "Sonido activado" : "Sonido desactivado"}</span>
           </button>
+          <Link href="/presentacion" className="btn btn-ghost deck-link" aria-label="Presentación" title="Presentación"><Icon name="slides" /></Link>
           <button className="btn btn-ghost" onClick={onHelp} aria-label="Cómo funciona"><Icon name="help" /><span className="btn-text">Cómo funciona</span></button>
           <button className="btn btn-ghost" onClick={onExport} disabled={s.audit.length === 0} aria-label="Exportar registro" title="Descarga en JSON cada decisión de la IA y del operador">
             <Icon name="download" /><span className="btn-text">Exportar registro</span>

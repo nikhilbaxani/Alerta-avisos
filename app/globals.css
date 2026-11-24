@@ -65,6 +65,16 @@ kbd {
   font-weight: 600; white-space: nowrap;
 }
 .btn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--ink-3); }
+a.btn { text-decoration: none; }
+/* Enlace a /presentacion: solo icono; entre 981 y 1499 px no cabe en una fila y está en la bienvenida. */
+.topbar-end .deck-link { width: 38px; padding: 0; }
+@media (min-width: 981px) and (max-width: 1499px) { .topbar-end .deck-link { display: none; } }
+/* Vuelta a la presentación: flota abajo a la derecha, solo si se llegó a la consola desde ella. */
+.deck-return {
+  position: fixed; right: 16px; bottom: 16px; z-index: 30; display: flex; align-items: center; gap: 4px; padding: 5px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(21,34,46,.22);
+}
+.icon.flip-x { transform: scaleX(-1); }
 .btn:disabled { opacity: .45; }
 .btn-dark { background: var(--ink); border-color: var(--ink); color: #fff; }
 .btn-dark:hover:not(:disabled) { background: #24384a; border-color: #24384a; }

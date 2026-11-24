@@ -97,7 +97,7 @@ export interface ConsoleState {
   actions: AgentAction[];
 }
 
-const init = (epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleState => ({
+export const init = (epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleState => ({
   epoch,
   scenarioId,
   clock: 0,
@@ -117,7 +117,7 @@ const init = (epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleState => ({
   actions: [],
 });
 
-type Action =
+export type ConsoleAction =
   | { type: "tick"; dt: number }
   | { type: "play" }
   | { type: "pause" }
@@ -170,7 +170,7 @@ function applyResult(s: ConsoleState, src: CallMeta, result: ProcessResult): Con
   };
 }
 
-function reducer(s: ConsoleState, a: Action): ConsoleState {
+export function reducer(s: ConsoleState, a: ConsoleAction): ConsoleState {
   switch (a.type) {
     case "tick": {
       const end = scenarioEnd(s.scenarioId);
@@ -305,7 +305,22 @@ export interface EngineStatus {
   label: string;
 }
 
-export function useConsole() {
+/** Resultado del plan B (sin servidor): mismo algoritmo en el navegador con la extracción simulada. */
+export function simulatedResult(scenarioId: string, id: string, incidents: ReturnType<typeof snapshot>[]): ProcessResult {
+  const src = sortedCalls(scenarioId).find((c) => c.id === id)!;
+  return {
+    callId: id,
+    transcript: src.transcript,
+    language: src.lang,
+    extraction: src.mock,
+    decision: decide({ aml: src.aml, extraction: src.mock }, incidents),
+    engine: { stt: "Transcripción del guion", llm: "Modo simulado" },
+    timings: { sttMs: 0, llmMs: 0, totalMs: 0 },
+  };
+}
+
+/** `offline`: no consulta /api/process y calcula siempre en el navegador (la presentación lo usa así). */
+export function useConsole({ offline = false }: { offline?: boolean } = {}) {
   const [s, dispatch] = useReducer(reducer, 0, init);
   const ref = useRef(s);
   ref.current = s;
@@ -322,11 +337,12 @@ export function useConsole() {
     const id = s.queue[0];
     const epoch = s.epoch;
     dispatch({ type: "begin", id });
-    const src = sortedCalls(ref.current.scenarioId).find((c) => c.id === id)!;
+    const scenarioId = ref.current.scenarioId;
+    const src = sortedCalls(scenarioId).find((c) => c.id === id)!;
     const incidents = ref.current.engine.incidents.map(snapshot);
     (async () => {
       try {
-        if (STATIC_EXPORT) throw new Error("Versión estática: sin servidor"); // directo al plan B
+        if (STATIC_EXPORT || offline) throw new Error("Sin servidor"); // directo al plan B
         const res = await fetch("/api/process", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -336,20 +352,10 @@ export function useConsole() {
         dispatch({ type: "processed", epoch, id, result: (await res.json()) as ProcessResult });
       } catch {
         // Plan B sin servidor: mismo algoritmo en el navegador con la extracción simulada.
-        const decision = decide({ aml: src.aml, extraction: src.mock }, incidents);
-        const result: ProcessResult = {
-          callId: id,
-          transcript: src.transcript,
-          language: src.lang,
-          extraction: src.mock,
-          decision,
-          engine: { stt: "Transcripción del guion", llm: "Modo simulado" },
-          timings: { sttMs: 0, llmMs: 0, totalMs: 0 },
-        };
-        dispatch({ type: "processed", epoch, id, result });
+        dispatch({ type: "processed", epoch, id, result: simulatedResult(scenarioId, id, incidents) });
       }
     })();
-  }, [s.inflight, s.queue, s.epoch]);
+  }, [s.inflight, s.queue, s.epoch, offline]);
 
   const fxDone = useCallback((key: string) => dispatch({ type: "fxDone", key }), []);
   return { s, dispatch, fxDone };
