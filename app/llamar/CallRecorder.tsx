@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_MAX_CALL_SECONDS } from "@/lib/publicCall";
+import s from "./llamar.module.css";
 
 const RELAY = (process.env.NEXT_PUBLIC_RELAY_URL ?? "").trim().replace(/\/$/, "");
 const parsed = Number(process.env.NEXT_PUBLIC_MAX_CALL_SECONDS);
@@ -20,6 +21,42 @@ const pollDelay = (n: number) => (n < 6 ? 1000 : n < 16 ? 1500 : 2500);
 const GONE = "La llamada ya no está en el servidor (caducó o el servicio se reinició). Vuelve a grabar.";
 
 const clock = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
+const Icon = ({ d, children }: { d?: string; children?: React.ReactNode }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    {d ? <path d={d} /> : children}
+  </svg>
+);
+const Alert = () => <Icon><path d="M12 3 2.5 20h19L12 3Z" /><path d="M12 10v4.5M12 17.6v.1" /></Icon>;
+
+/** Nombre del idioma detectado en castellano («árabe»); si el navegador no lo conoce, el código ISO. */
+function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(["es"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+const NOTICE = "Demo de hackathon. No es un servicio de emergencias. En una emergencia real, llama al 112.";
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className={s.page}>
+      <div className={s.shell}>
+        <div className={s.top}>
+          <p className={s.brand}>Agente <span>112</span></p>
+          <span className={s.chip}>Demo</span>
+        </div>
+        <p className={s.notice} role="note">
+          <Alert />
+          <b>{NOTICE}</b>
+        </p>
+        <h1 className={s.title}>Llamada de prueba al Agente 112</h1>
+        {children}
+      </div>
+    </main>
+  );
+}
 
 export default function CallRecorder() {
   const [consent, setConsent] = useState(false);
@@ -62,15 +99,14 @@ export default function CallRecorder() {
     if (phase === "review") transcriptEl.current?.focus();
   }, [phase]);
 
+  const recording = phase === "recording";
   const busy = phase === "uploading" || phase === "transcribing" || phase === "review" || phase === "submitting";
 
   if (!RELAY) {
     return (
-      <main className="call-page">
-        <h1>Llamada de prueba al Agente 112</h1>
-        <p className="call-notice" role="note"><b>Demo de hackathon. No es un servicio de emergencias. En una emergencia real, llama al 112.</b></p>
-        <p>La grabación no está disponible en esta versión.</p>
-      </main>
+      <Shell>
+        <p className={s.card}>La grabación no está disponible en esta versión.</p>
+      </Shell>
     );
   }
 
@@ -220,85 +256,115 @@ export default function CallRecorder() {
     }
   };
 
+  const status =
+    phase === "recording" ? "Grabando… habla cerca del micrófono."
+    : phase === "uploading" ? "Enviando el audio para transcribirlo…"
+    : phase === "transcribing" ? "Transcribiendo tu llamada…"
+    : phase === "review" ? "Transcripción lista. Revísala y pulsa Enviar si es correcta."
+    : phase === "submitting" ? "Enviando al operador…"
+    : phase === "done" ? "Enviado al operador." : "";
+
   return (
-    <main className="call-page">
-      <h1>Llamada de prueba al Agente 112</h1>
-      <p className="call-notice" role="note"><b>Demo de hackathon. No es un servicio de emergencias. En una emergencia real, llama al 112.</b></p>
+    <Shell>
+      {msg && (
+        <p className={s.error} role="alert">
+          <Alert />
+          <span>{msg.text}</span>
+        </p>
+      )}
 
       {/* Tras grabar, la pantalla se queda con lo importante: progreso, texto y botones (sin tener que bajar). */}
-      {busy ? null : (
-      <section aria-labelledby="how-h" className="call-card">
-        <h2 id="how-h">Qué hacer</h2>
-        <p>Pulsa Grabar y cuenta una emergencia inventada, como si llamaras al 112. Di <b>dónde estás</b>: calle o barrio de Málaga. Puedes hablar en tu idioma. Pulsa Terminar cuando acabes (máximo {clock(MAX)}). Antes de enviarla verás el texto que hemos entendido y podrás volver a grabar.</p>
+      {busy || recording || phase === "done" ? null : (
+      <section aria-labelledby="how-h" className={s.card}>
+        <h2 id="how-h" className={s.h2}>Qué hacer</h2>
+        <ol className={s.steps}>
+          <li><span>Pulsa <b>Grabar</b> y cuenta una emergencia inventada, como si llamaras al 112.</span></li>
+          <li><span>Di <b>dónde estás</b>: calle o barrio de Málaga. Puedes hablar en tu idioma.</span></li>
+          <li><span>Pulsa <b>Terminar</b> cuando acabes (máximo {clock(MAX)}). Antes de enviarla verás el texto que hemos entendido y podrás volver a grabar.</span></li>
+        </ol>
       </section>
       )}
 
-      {!busy && (
-      <label className="call-consent">
-        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} disabled={phase !== "idle" && phase !== "done"} />
+
+      {!busy && !recording && phase !== "done" && (
+      <label className={s.consent}>
+        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
         <span>Acepto que mi audio se envíe por HTTPS a los servidores del equipo (el VPS y el ordenador del equipo) para transcribirlo, y que el texto resultante lo procese la IA del equipo para extraer los datos, aunque no llegue a pulsar «Enviar». Ni el audio ni el texto se guardan en disco, y no se recoge mi teléfono ni mi nombre. La llamada solo llega al operador si pulso «Enviar».</span>
       </label>
       )}
 
-      {(phase === "idle" || phase === "recording" || phase === "done") && (
-        <div className="call-controls">
-          {phase === "recording" ? (
-            <button className="btn btn-rec btn-lg" onClick={() => rec.current?.stop()}>Terminar</button>
-          ) : (
-            <button className="btn btn-dark btn-lg" onClick={start} disabled={!consent}>
-              {phase === "done" ? "Grabar otra" : "Grabar"}
-            </button>
-          )}
-          {phase !== "done" && (
-            <p className="call-timer" aria-live="off">
-              <span className="sr-only">Tiempo grabado </span>{clock(secs)} / {clock(MAX)}
-            </p>
-          )}
+      {phase === "idle" && (
+        <div className={s.rec}>
+          <button className={s.recBtn} onClick={start} disabled={!consent} aria-describedby="rec-hint">
+            <Icon><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>
+            Grabar
+          </button>
+          <p className={s.hint} id="rec-hint">{consent ? "Listo: pulsa para empezar." : "Marca la casilla para poder grabar."}</p>
+        </div>
+      )}
+
+      {recording && (
+        <div className={s.rec}>
+          <div className={s.live}>
+            <span className={s.badge}><span className={s.dot} aria-hidden="true" />GRABANDO</span>
+            <p className={s.timer} aria-live="off"><span className={s.sr}>Tiempo grabado </span>{clock(secs)} <small>/ {clock(MAX)}</small></p>
+          </div>
+          <div className={s.meter} aria-hidden="true"><i style={{ transform: `scaleX(${Math.min(1, secs / MAX)})` }} /></div>
+          <button className={s.recBtn} data-live="true" onClick={() => rec.current?.stop()}>
+            <Icon><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></Icon>
+            Terminar
+          </button>
         </div>
       )}
 
       {/* Región viva: anuncia cada cambio de fase sin repetir el contador de segundos. */}
-      <p className="call-state" role="status" aria-live="polite" aria-atomic="true">
-        {phase === "recording" && "Grabando… habla cerca del micrófono."}
-        {phase === "uploading" && "Enviando el audio para transcribirlo…"}
-        {phase === "transcribing" && "Transcribiendo tu llamada…"}
-        {phase === "review" && "Transcripción lista. Revísala y pulsa Enviar si es correcta."}
-        {phase === "submitting" && "Enviando al operador…"}
-        {phase === "done" && "Enviado al operador."}
+      <p className={s.state} data-phase={phase} role="status" aria-live="polite" aria-atomic="true">
+        {recording && <span className={s.dot} aria-hidden="true" />}
+        {phase === "done" && <Icon><circle cx="12" cy="12" r="10" /><path d="m7.5 12.5 3 3 6-7" /></Icon>}
+        {status}
       </p>
 
       {(phase === "uploading" || phase === "transcribing") && (
-        <section className="call-card" aria-label="Transcripción en curso">
-          <progress className="call-progress" aria-label="Transcribiendo la llamada" />
-          <p>
-            Transcribiendo…{phase === "transcribing" && <> <span className="call-elapsed" aria-hidden="true">{waited} s</span></>}
+        <section className={s.card} aria-label="Transcripción en curso">
+          <div className={s.bar} aria-hidden="true"><i /></div>
+          <progress className={s.sr} aria-label="Transcribiendo la llamada" />
+          <div className={s.wait}>
+            <p className={s.h2}>Transcribiendo…</p>
+            {phase === "transcribing" && <span className={s.elapsed} aria-hidden="true">{waited} s</span>}
+          </div>
+          <p className={s.ahead}>
+            {phase === "transcribing" && ahead > 0 ? (ahead === 1 ? "Hay 1 llamada por delante de la tuya." : `Hay ${ahead} llamadas por delante de la tuya.`) : null}
           </p>
-          {phase === "transcribing" && ahead > 0 && (
-            <p className="call-ahead">{ahead === 1 ? "Hay 1 llamada por delante de la tuya." : `Hay ${ahead} llamadas por delante de la tuya.`}</p>
-          )}
-          <p className="note">Suele tardar unos segundos, según lo larga que sea la llamada. Todavía no se ha enviado nada al operador.</p>
+          <p className={s.note}>Suele tardar unos segundos, según lo larga que sea la llamada. Todavía no se ha enviado nada al operador.</p>
         </section>
       )}
 
       {(phase === "review" || phase === "submitting") && (
-        <section aria-labelledby="rev-h" className="call-card call-review">
-          <h2 id="rev-h">Esto es lo que hemos entendido</h2>
-          <p className="call-transcript" ref={transcriptEl} tabIndex={-1} lang={language || undefined}>{transcript}</p>
-          <p className="note">
-            Es la transcripción automática de lo que dijiste{language && language !== "es" ? ` (idioma detectado: ${language})` : ""}; no se puede editar, para que el operador reciba exactamente tu llamada.
+        <section aria-labelledby="rev-h" className={`${s.card} ${s.review}`}>
+          <h2 id="rev-h" className={s.h2}>Esto es lo que hemos entendido</h2>
+          {language && <span className={s.lang}>Idioma detectado: {language === "es" ? "castellano" : languageName(language)}</span>}
+          <p className={s.transcript} ref={transcriptEl} tabIndex={-1} lang={language && language !== "es" ? language : undefined} dir="auto">{transcript}</p>
+          <p className={s.note}>
+            Es la transcripción automática de lo que dijiste; no se puede editar, para que el operador reciba exactamente tu llamada.
             Si no se parece a lo que dijiste, pulsa «Volver a grabar». Si recargas o cierras esta página, la llamada se pierde y tendrás que grabarla de nuevo.
           </p>
-          <div className="call-controls">
-            <button className="btn btn-dark btn-lg" onClick={submit} disabled={phase === "submitting"}>{phase === "submitting" ? "Enviando…" : "Enviar"}</button>
-            <button className="btn btn-lg" onClick={discard} disabled={phase === "submitting"}>Volver a grabar</button>
+          <div className={s.actions}>
+            <button className={`${s.btn} ${s.primary}`} onClick={submit} disabled={phase === "submitting"}>{phase === "submitting" ? "Enviando…" : "Enviar"}</button>
+            <button className={`${s.btn} ${s.secondary}`} onClick={discard} disabled={phase === "submitting"}>Volver a grabar</button>
           </div>
         </section>
       )}
 
       {phase === "done" && (
-        <p className="call-ok">Enviado al operador. Tu llamada de prueba está en su bandeja; él decide qué hacer con ella. Gracias por probar el Agente 112.</p>
+        <p className={s.ok}>Tu llamada de prueba está en la bandeja del operador; quien la atienda decide qué hacer con ella. Gracias por probar el Agente 112.</p>
       )}
-      {msg && <p className={msg.ok ? "call-ok" : "toast"} role="status">{msg.text}</p>}
-    </main>
+
+
+      {phase === "done" && (
+        <div className={s.actions}>
+          <button className={`${s.btn} ${s.primary}`} onClick={start} disabled={!consent}>Grabar otra</button>
+        </div>
+      )}
+    </Shell>
   );
 }
