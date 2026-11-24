@@ -10,19 +10,32 @@
  * riesgos). Nunca la transcripción, el resumen, las palabras clave ni los lugares: por construcción,
  * ninguna herramienta se dispara por lo que diga el texto de una llamada.
  *
- * Añadir una herramienta (X07) es sumar entradas: su nombre en `ACTION_TOOLS`, sus argumentos en
+ * Añadir una herramienta es sumar entradas: su nombre en `ACTION_TOOLS`, sus argumentos en
  * `ToolArgs`, su política en `ACTION_POLICY` y su especificación en `TOOLS` (el compilador obliga a
  * las tres últimas).
+ *
+ * Acciones de zona (X07): el ES-Alert no es de un incidente sino de una zona con varios. Lo propone
+ * `planZoneAlerts` sobre todos los incidentes; su `incidentId` es el id de la zona (`ZONA-…`) y sus
+ * incidentes van en `args.incidentes` (`actionIncidents`).
  */
+import { haversine } from "@/lib/cluster";
 import type { Incident } from "@/lib/engine";
 import { LANG_NAMES, RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
+import { PLACES } from "@/lib/map";
 import { PHRASES } from "@/lib/phrases";
 import { RISK_TAGS } from "@/lib/types";
 import type { Aml, IncidentType, RiskTag } from "@/lib/types";
 
 // ───────────────────────────── Herramientas y política ─────────────────────────────
 
-export const ACTION_TOOLS = ["proponer_recursos", "sms_al_llamante", "avisar_distribuidora"] as const;
+export const ACTION_TOOLS = [
+  "proponer_recursos",
+  "sms_al_llamante",
+  "avisar_distribuidora",
+  "aviso_ayuntamiento",
+  "devolver_llamada",
+  "proponer_es_alert",
+] as const;
 export type ActionTool = (typeof ACTION_TOOLS)[number];
 
 export type ApprovalPolicy = "automatica" | "operador" | "coordinador";
@@ -35,7 +48,24 @@ export const ACTION_POLICY: Readonly<Record<ActionTool, ApprovalPolicy>> = {
   proponer_recursos: "operador",
   sms_al_llamante: "operador",
   avisar_distribuidora: "automatica",
+  aviso_ayuntamiento: "automatica",
+  devolver_llamada: "operador",
+  // Avisa a toda la población de una zona: siempre una persona con rol de coordinador.
+  proponer_es_alert: "coordinador",
 };
+
+/** Nombre de cada herramienta para el operador y el parte de situación. */
+export const TOOL_LABELS: Readonly<Record<ActionTool, string>> = {
+  proponer_recursos: "Recursos (CAD)",
+  sms_al_llamante: "SMS al llamante",
+  avisar_distribuidora: "Aviso a la distribuidora",
+  aviso_ayuntamiento: "Aviso al ayuntamiento",
+  devolver_llamada: "Devolver la llamada",
+  proponer_es_alert: "ES-Alert",
+};
+
+/** Herramientas de zona: no son de un incidente, las propone `planZoneAlerts` sobre varios. */
+export const ZONE_TOOLS: readonly ActionTool[] = ["proponer_es_alert"];
 
 export type Role = "operador" | "coordinador";
 const ROLE_RANK: Record<Role, number> = { operador: 1, coordinador: 2 };
@@ -65,6 +95,28 @@ export const UTILITY_LABELS: Record<UtilityChannel, string> = {
   reposicion_prioritaria: "reposición prioritaria",
 };
 
+/** Motivos del aviso al ayuntamiento (movilidad y policía local). Uno por incidente y motivo. */
+export const CITY_REASONS = ["semaforos", "arbol_caido", "via_bloqueada"] as const;
+export type CityReason = (typeof CITY_REASONS)[number];
+export const CITY_LABELS: Record<CityReason, string> = {
+  semaforos: "semáforos apagados",
+  arbol_caido: "árbol caído",
+  via_bloqueada: "vía cortada",
+};
+
+/** Zona de un ES-Alert: centro y radio calculados de las posiciones, nombre de un lugar de confianza (`PLACES`). */
+export interface EsAlertZone {
+  /** `ZONA-` y el lugar de referencia: un ES-Alert por zona. */
+  id: string;
+  /** Lugar de referencia más cercano al centro, de los rótulos del mapa (nunca el texto de una llamada). */
+  nombre: string;
+  /** Distancia del centro de la zona a ese lugar, redondeada a 100 m. */
+  referencia_m: number;
+  centro: { lat: number; lng: number };
+  /** Cubre cada punto con su precisión AML más un margen; múltiplo de 100 m. */
+  radio_m: number;
+}
+
 /** Argumentos de cada herramienta: solo valores de vocabularios cerrados, números y frases pretraducidas. */
 export interface ToolArgs {
   proponer_recursos: { servicio: ResourceService; personas: number; gravedad: number };
@@ -79,6 +131,23 @@ export interface ToolArgs {
     texto_es: string;
   };
   avisar_distribuidora: { canal: UtilityChannel; posicion: { lat: number; lng: number } | null; personas: number };
+  aviso_ayuntamiento: { motivo: CityReason; posicion: { lat: number; lng: number } | null; via_cortada: boolean };
+  devolver_llamada: {
+    /** Llamada a cuyo teléfono se devuelve (la primera de ese número). */
+    llamada: string;
+    telefono: string | null;
+    idioma: string;
+    /** Llamada que trajo la información nueva. */
+    noticia: string;
+    motivo: "sin_respuesta";
+  };
+  proponer_es_alert: {
+    zona: EsAlertZone;
+    incidentes: string[];
+    /** Texto fijo de plantilla (`ES_ALERT_TEXT`): nada generado ni de la llamada. */
+    texto_es: string;
+    texto_en: string;
+  };
 }
 
 // ───────────────────────────── Entrada del planificador ─────────────────────────────
@@ -233,10 +302,13 @@ function make<K extends ActionTool>(
   evidence: Evidence,
   origin: ActionOrigin,
 ): ProposalOf<K> {
-  // Lo que propone el modelo nunca se envía solo: si la tabla dice «automática», pasa a operador.
+  return { key: actionKey(input.incidentId, tool, destination), incidentId: input.incidentId, tool, destination, args, reason, evidence, policy: policyFor(tool, origin), origin };
+}
+
+/** La política sale de la tabla. Lo que propone el modelo nunca se envía solo: si la tabla dice «automática», pasa a operador. */
+function policyFor(tool: ActionTool, origin: ActionOrigin): ApprovalPolicy {
   const table = ACTION_POLICY[tool];
-  const policy: ApprovalPolicy = origin === "ia_local" && table === "automatica" ? "operador" : table;
-  return { key: actionKey(input.incidentId, tool, destination), incidentId: input.incidentId, tool, destination, args, reason, evidence, policy, origin };
+  return origin === "ia_local" && table === "automatica" ? "operador" : table;
 }
 
 /** Texto de un valor que propuso el modelo, corto y sin saltos, para los motivos de descarte. */
@@ -430,6 +502,200 @@ function utilityRules(input: PlanInput): ProposalOf<"avisar_distribuidora">[] {
   return out;
 }
 
+// ───────────────────────────── Reglas: aviso_ayuntamiento ─────────────────────────────
+
+const CITY_PURPOSE: Record<CityReason, string> = {
+  semaforos: "aviso a Movilidad del ayuntamiento para regular el tráfico y reponer los semáforos",
+  arbol_caido: "aviso al ayuntamiento para retirar el árbol y ordenar el tráfico de la zona",
+  via_bloqueada: "aviso al ayuntamiento (movilidad y policía local) para cortar y desviar el tráfico",
+};
+
+/**
+ * Motivos del aviso al ayuntamiento: semáforos (tipo), árbol caído (tipo; el aviso incluye la vía
+ * cortada si la hay) y vía cortada en cualquier otro tipo. Un aviso por incidente y motivo.
+ */
+function cityMotives(input: PlanInput): { motivo: CityReason; trigger: Trigger }[] {
+  const via = input.risks.includes("via_bloqueada");
+  const out: { motivo: CityReason; trigger: Trigger }[] = [];
+  if (input.type === "semaforos") out.push({ motivo: "semaforos", trigger: { label: lc(TYPE_LABELS.semaforos), risks: [] } });
+  if (input.type === "arbol_caido") {
+    out.push({ motivo: "arbol_caido", trigger: { label: via ? `árbol caído con ${riskLabel("via_bloqueada")}` : "árbol caído", risks: via ? ["via_bloqueada"] : [] } });
+  } else if (via) out.push({ motivo: "via_bloqueada", trigger: { label: riskLabel("via_bloqueada"), risks: ["via_bloqueada"] } });
+  return out;
+}
+
+function cityProposal(input: PlanInput, motivo: CityReason, trigger: Trigger, origin: ActionOrigin): ProposalOf<"aviso_ayuntamiento"> {
+  const evidence = evidenceOf(input, [trigger]);
+  const reason =
+    origin === "reglas"
+      ? `${cap(trigger.label)} (${evidence.callIds.join(", ")}): ${CITY_PURPOSE[motivo]}.`
+      : `Propuesta de la IA local: aviso al ayuntamiento por ${CITY_LABELS[motivo]}.`;
+  const args = { motivo, posicion: centroid(input.points), via_cortada: input.risks.includes("via_bloqueada") };
+  return make(input, "aviso_ayuntamiento", motivo, args, reason, evidence, origin);
+}
+
+function cityRules(input: PlanInput): ProposalOf<"aviso_ayuntamiento">[] {
+  return cityMotives(input).map((m) => cityProposal(input, m.motivo, m.trigger, "reglas"));
+}
+
+// ───────────────────────────── Reglas: devolver_llamada ─────────────────────────────
+
+/**
+ * La llamada que trae «no responde» como información nueva: la primera, después de la que abrió el
+ * incidente, con `sin_respuesta` en sus riesgos (si la primera ya lo traía, no es nuevo). Solo datos
+ * estructurados: riesgos de cada llamada y su orden de llegada.
+ */
+function noResponseNews(input: PlanInput): PlanCall | undefined {
+  const [first, ...rest] = input.calls;
+  if (!first || first.risks.includes("sin_respuesta") || !input.risks.includes("sin_respuesta")) return undefined;
+  return rest.find((c) => c.risks.includes("sin_respuesta"));
+}
+
+function callbackProposal(input: PlanInput, target: PlanCall, news: PlanCall, origin: ActionOrigin): ProposalOf<"devolver_llamada"> {
+  const phone = target.phone ? ` (${target.phone})` : "";
+  const same = target.id === news.id ? "" : `, el mismo teléfono que ${news.id}`;
+  const reason =
+    origin === "reglas"
+      ? `${news.id} avisa de que la persona en peligro no responde (información nueva en ${input.incidentId}): rellamada prioritaria a ${target.id}${phone}${same} para confirmar la situación y mantener el contacto hasta que lleguen los recursos.`
+      : `Propuesta de la IA local: devolver la llamada a ${target.id}${phone} porque la persona en peligro no responde (${news.id}).`;
+  return make(
+    input,
+    "devolver_llamada",
+    target.id,
+    { llamada: target.id, telefono: target.phone, idioma: target.lang, noticia: news.id, motivo: "sin_respuesta" },
+    reason,
+    { type: input.type, risks: ["sin_respuesta"], callIds: [news.id] },
+    origin,
+  );
+}
+
+/**
+ * Rellamada prioritaria a quien da la noticia de que la persona en peligro no responde (B3, la vecina
+ * que la llama por la ventana), una vez por teléfono. Es quien está viendo lo que pasa ahora.
+ */
+function callbackRules(input: PlanInput): ProposalOf<"devolver_llamada">[] {
+  const news = noResponseNews(input);
+  if (!news) return [];
+  return [callbackProposal(input, canonicalCall(input, news.id) ?? news, news, "reglas")];
+}
+
+// ───────────────────────────── Zona: proponer_es_alert ─────────────────────────────
+
+/** Incidentes a menos de esta distancia entre sí (centro a centro) forman una zona. */
+export const ES_ALERT_LINK_M = 1000;
+/** Incidentes que hacen falta en una zona para proponer un ES-Alert. */
+export const ES_ALERT_MIN_INCIDENTS = 2;
+/** Margen sobre los puntos (con su precisión AML) para el radio de la zona. */
+export const ES_ALERT_MARGIN_M = 500;
+const ES_ALERT_DESTINATION = "poblacion";
+
+/**
+ * Texto fijo de plantilla, en castellano y en inglés. No lleva nada de las llamadas ni lo escribe
+ * ningún modelo; la zona de difusión va aparte (`args.zona`).
+ */
+export const ES_ALERT_TEXT = {
+  es: "ALERTA 112. Inundaciones con vehículos atrapados en esta zona. No circule y no cruce pasos inferiores, vados ni calles inundadas. Aléjese del agua y suba a una planta alta. Llame al 112 solo si es una emergencia.",
+  en: "112 ALERT. Flooding with trapped vehicles in this area. Do not drive and do not cross underpasses, fords or flooded streets. Stay away from the water and go to a higher floor. Call 112 only if it is an emergency.",
+} as const;
+
+/** Lugar de referencia de `PLACES` (rótulos del mapa) más cercano a una posición. */
+export function nearestPlace(pos: { lat: number; lng: number }): { name: string; distance: number } {
+  let best = { name: PLACES[0].name, distance: Infinity };
+  for (const p of PLACES) {
+    const d = haversine(pos, { lat: p.at[1], lng: p.at[0] });
+    if (d < best.distance) best = { name: p.name, distance: d };
+  }
+  return best;
+}
+
+const slug = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+const round5 = (n: number) => Math.round(n * 1e5) / 1e5;
+const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+const meters = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1).replace(".", ",")} km` : `${Math.round(m)} m`);
+
+/** Vehículo atrapado por agua con personas atrapadas, ya decidido por el operador (no provisional). */
+const trappedCar = (i: PlanInput) => !i.provisional && i.type === "inundacion_vehiculo" && i.risks.includes("atrapados") && i.points.length > 0;
+const centerOf = (i: PlanInput) => ({ lat: mean(i.points.map((p) => p.lat)), lng: mean(i.points.map((p) => p.lng)) });
+
+function zoneOf(incs: PlanInput[]): EsAlertZone {
+  const centers = incs.map(centerOf);
+  const centro = { lat: round5(mean(centers.map((c) => c.lat))), lng: round5(mean(centers.map((c) => c.lng))) };
+  const reach = Math.max(...incs.flatMap((i) => i.points.map((p) => haversine(centro, p) + p.acc)));
+  const place = nearestPlace(centro);
+  return {
+    id: `ZONA-${slug(place.name)}`,
+    nombre: place.name,
+    referencia_m: Math.round(place.distance / 100) * 100,
+    centro,
+    radio_m: Math.ceil((reach + ES_ALERT_MARGIN_M) / 100) * 100,
+  };
+}
+
+function zoneProposal(incs: PlanInput[], origin: ActionOrigin): ProposalOf<"proponer_es_alert"> {
+  const zona = zoneOf(incs);
+  const incidentes = incs.map((i) => i.incidentId);
+  const callIds = incs.flatMap((i) => i.calls.filter((c) => c.risks.includes("atrapados")).map((c) => c.id));
+  // Distancia de cada incidente al más cercano de la zona (centro a centro).
+  const centers = incs.map(centerOf);
+  const gap = Math.max(...centers.map((c, k) => Math.min(...centers.filter((_, j) => j !== k).map((o) => haversine(c, o)))));
+  const near = incs.length === 2 ? `a ${Math.round(gap / 10) * 10} m entre sí` : `cada uno a ${Math.round(gap / 10) * 10} m o menos de otro`;
+  const where = `la zona de ${zona.nombre} (radio ${meters(zona.radio_m)})`;
+  const reason =
+    origin === "reglas"
+      ? `${incs.length} vehículos atrapados por agua con personas atrapadas ${near} (${joinEs(incidentes)}; llamadas ${callIds.join(", ")}): ES-Alert a la población de ${where} con el texto fijo de plantilla. La aprueba un coordinador.`
+      : `Propuesta de la IA local: ES-Alert a la población de ${where} por un vehículo atrapado por agua con personas atrapadas (${incidentes.join(", ")}). Texto fijo de plantilla; la aprueba un coordinador.`;
+  const tool = "proponer_es_alert" as const;
+  return {
+    key: actionKey(zona.id, tool, ES_ALERT_DESTINATION),
+    incidentId: zona.id,
+    tool,
+    destination: ES_ALERT_DESTINATION,
+    args: { zona, incidentes, texto_es: ES_ALERT_TEXT.es, texto_en: ES_ALERT_TEXT.en },
+    reason,
+    evidence: { type: "inundacion_vehiculo", risks: ["atrapados"], callIds: callIds.length ? callIds : incs.flatMap((i) => i.calls.map((c) => c.id)) },
+    policy: policyFor(tool, origin),
+    origin,
+  };
+}
+
+/**
+ * Planificador de zona (ES-Alert): agrupa los vehículos atrapados por agua con personas atrapadas, no
+ * provisionales, cuyos centros estén a `ES_ALERT_LINK_M` o menos (enlace simple), y propone un ES-Alert
+ * por cada grupo de al menos `ES_ALERT_MIN_INCIDENTS`. Puro, determinista y solo con datos
+ * estructurados; la clave es la zona (lugar de referencia), así que volver a planificar no duplica.
+ */
+export function planZoneAlerts(inputs: readonly PlanInput[]): Proposal[] {
+  const cars = inputs.filter(trappedCar);
+  const group = cars.map((_, k) => k);
+  const root = (k: number): number => (group[k] === k ? k : (group[k] = root(group[k])));
+  const centers = cars.map(centerOf);
+  for (let a = 0; a < cars.length; a++) {
+    for (let b = a + 1; b < cars.length; b++) if (haversine(centers[a], centers[b]) <= ES_ALERT_LINK_M) group[root(b)] = root(a);
+  }
+  const out: Proposal[] = [];
+  const seen = new Set<string>();
+  for (const r of [...new Set(cars.map((_, k) => root(k)))]) {
+    const members = cars.filter((_, k) => root(k) === r);
+    if (members.length < ES_ALERT_MIN_INCIDENTS) continue;
+    const p = zoneProposal(members, "reglas");
+    if (seen.has(p.key)) continue;
+    seen.add(p.key);
+    out.push(p);
+  }
+  return out;
+}
+
+/** Incidentes de una acción: los de la zona para un ES-Alert; si no, el suyo. */
+export function actionIncidents(p: Proposal): string[] {
+  return p.tool === "proponer_es_alert" ? [...p.args.incidentes] : [p.incidentId];
+}
+
 // ───────────────────────────── Especificación de cada herramienta ─────────────────────────────
 
 type JsonSchema = Record<string, unknown>;
@@ -554,6 +820,76 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
       return `${where} · ${p.args.personas} ${p.args.personas === 1 ? "persona" : "personas"}`;
     },
     send: (p, at) => receipt("DIS", "Distribuidora eléctrica (simulada)", p, at, `Aviso de ${UTILITY_LABELS[p.args.canal]} registrado para ${p.incidentId}`),
+  },
+  aviso_ayuntamiento: {
+    service: "Ayuntamiento: movilidad y policía local (simulado)",
+    description:
+      "Avisa al ayuntamiento (movilidad y policía local): motivo semaforos si el incidente es de semáforos apagados; arbol_caido si es un árbol caído; via_bloqueada si hay una vía cortada en otro tipo de incidente.",
+    parameters: () => ({
+      type: "object",
+      properties: { motivo: { type: "string", enum: [...CITY_REASONS] } },
+      required: ["motivo"],
+    }),
+    modelArgs: ["motivo"],
+    rules: cityRules,
+    fromModel: (a, input) => {
+      if (!CITY_REASONS.includes(a.motivo as CityReason)) return `Motivo fuera del vocabulario: ${shown(a.motivo)}`;
+      const m = cityMotives(input).find((x) => x.motivo === a.motivo);
+      if (!m) return `Aviso al ayuntamiento por ${CITY_LABELS[a.motivo as CityReason]} sin ese tipo o ese riesgo en los datos del incidente`;
+      return cityProposal(input, m.motivo, m.trigger, "ia_local");
+    },
+    target: (p) => `ayuntamiento · ${CITY_LABELS[p.args.motivo]}`,
+    describe: (p) => {
+      const where = p.args.posicion ? `posición ${p.args.posicion.lat.toFixed(4)}, ${p.args.posicion.lng.toFixed(4)}` : "sin posición";
+      return `${where}${p.args.via_cortada ? " · vía cortada" : ""}`;
+    },
+    send: (p, at) => receipt("AYT", "Ayuntamiento (simulado)", p, at, `Aviso de ${CITY_LABELS[p.args.motivo]} registrado para ${p.incidentId}`),
+  },
+  devolver_llamada: {
+    service: "Telefonía de sala (simulada)",
+    description:
+      "Propone al operador devolver la llamada con prioridad a un llamante de este incidente cuando la persona en peligro no responde, para confirmar la situación y mantener el contacto.",
+    parameters: (input) => ({
+      type: "object",
+      properties: { llamada: { type: "string", enum: input.calls.map((c) => c.id), description: "Id de la llamada a cuyo teléfono se devuelve" } },
+      required: ["llamada"],
+    }),
+    modelArgs: ["llamada"],
+    rules: callbackRules,
+    fromModel: (a, input) => {
+      const c = typeof a.llamada === "string" ? canonicalCall(input, a.llamada) : undefined;
+      if (!c) return `La llamada no es de este incidente: ${shown(a.llamada)}`;
+      if (!input.risks.includes("sin_respuesta")) return `Devolver la llamada sin «${riskLabel("sin_respuesta")}» en los datos del incidente`;
+      const news = input.calls.find((x) => x.risks.includes("sin_respuesta")) ?? c;
+      return callbackProposal(input, c, news, "ia_local");
+    },
+    target: (p) => (p.args.telefono ? `${p.args.llamada} (${p.args.telefono})` : p.args.llamada),
+    describe: (p) => `rellamada prioritaria en ${langName(p.args.idioma)} · información nueva de ${p.args.noticia}: ${riskLabel("sin_respuesta")}`,
+    send: (p, at) => receipt("TEL", "Telefonía de sala (simulada)", p, at, `Rellamada prioritaria en cola para ${p.args.telefono ?? p.args.llamada} (${p.args.llamada})`),
+  },
+  proponer_es_alert: {
+    service: "ES-Alert (simulado)",
+    description:
+      "Propone al coordinador un aviso ES-Alert a la población de la zona por vehículos atrapados por agua con personas atrapadas. La zona y el texto (plantilla fija) los pone el sistema; lo aprueba siempre un coordinador.",
+    parameters: () => ({
+      type: "object",
+      properties: { riesgos: { type: "array", items: { type: "string", enum: [...RISK_TAGS] }, description: "Riesgos del incidente que lo justifican" } },
+    }),
+    modelArgs: ["riesgos"],
+    // Es de zona: no sale de un incidente solo, sino de `planZoneAlerts` sobre todos.
+    rules: () => [],
+    fromModel: (a, input) => {
+      if (!trappedCar(input)) return "ES-Alert sin vehículo atrapado por agua con personas atrapadas en los datos del incidente";
+      const risks = modelRisks(a.riesgos, input);
+      if (typeof risks === "string") return risks;
+      return zoneProposal([input], "ia_local");
+    },
+    target: (p) => `población de la zona de ${p.args.zona.nombre} (radio ${meters(p.args.zona.radio_m)})`,
+    describe: (p) => {
+      const z = p.args.zona;
+      return `centro ${z.centro.lat.toFixed(4)}, ${z.centro.lng.toFixed(4)}, radio ${z.radio_m} m (referencia: ${z.nombre}, a ${meters(z.referencia_m)}) · ${p.args.incidentes.join(", ")} · es: «${p.args.texto_es}» · en: «${p.args.texto_en}»`;
+    },
+    send: (p, at) => receipt("ESA", "ES-Alert (simulado)", p, at, `Difusión simulada en la zona de ${p.args.zona.nombre} (radio ${p.args.zona.radio_m} m), en castellano e inglés`),
   },
 };
 
@@ -753,11 +1089,14 @@ export function discard(actions: AgentAction[], key: string, role: Role, at: num
  */
 export function discardOrphans(actions: AgentAction[], liveIncidentIds: Iterable<string>, at: number): AgentAction[] {
   const live = new Set(liveIncidentIds);
-  return actions.map((a): AgentAction =>
-    live.has(a.incidentId) || (a.status !== "propuesta" && a.status !== "aprobada")
-      ? a
-      : { ...a, status: "descartada", discarded: { by: "sistema", at, reason: `El incidente ${a.incidentId} ya no existe` } },
-  );
+  return actions.map((a): AgentAction => {
+    if (a.status !== "propuesta" && a.status !== "aprobada") return a;
+    // Una acción de zona necesita todos sus incidentes.
+    const gone = actionIncidents(a).find((id) => !live.has(id));
+    if (!gone) return a;
+    const reason = gone === a.incidentId ? `El incidente ${gone} ya no existe` : `El incidente ${gone} de la ${a.incidentId} ya no existe`;
+    return { ...a, status: "descartada", discarded: { by: "sistema", at, reason } };
+  });
 }
 
 // ───────────────────────────── Traza ─────────────────────────────
@@ -765,7 +1104,10 @@ export function discardOrphans(actions: AgentAction[], liveIncidentIds: Iterable
 /** Una entrada por acción, exportable a JSON (claves en castellano, como el registro de auditoría). */
 export interface TraceEntry {
   clave: string;
+  /** Id del incidente, o de la zona (`ZONA-…`) en una acción de zona. */
   incidente: string;
+  ambito: "incidente" | "zona";
+  incidentes: string[];
   origen: ActionOrigin;
   propuestaEn: number;
   percepcion: { tipo: IncidentType; llamadas: string[]; riesgos: RiskTag[] };
@@ -780,6 +1122,8 @@ export function traceOf(a: AgentAction): TraceEntry {
   return {
     clave: a.key,
     incidente: a.incidentId,
+    ambito: ZONE_TOOLS.includes(a.tool) ? "zona" : "incidente",
+    incidentes: actionIncidents(a),
     origen: a.origin,
     propuestaEn: a.proposedAt,
     percepcion: { tipo: a.evidence.type, llamadas: [...a.evidence.callIds], riesgos: [...a.evidence.risks] },

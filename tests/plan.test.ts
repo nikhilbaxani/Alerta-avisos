@@ -71,7 +71,7 @@ describe("planIncident con IA local (function calling)", () => {
     const body = sentBody(f);
     expect(body.tool_choice).toBe("auto");
     const names = (body.tools as { function: { name: string } }[]).map((t) => t.function.name);
-    expect(names).toEqual(["proponer_recursos", "sms_al_llamante", "avisar_distribuidora"]);
+    expect(names).toEqual(["proponer_recursos", "sms_al_llamante", "avisar_distribuidora", "aviso_ayuntamiento", "devolver_llamada", "proponer_es_alert"]);
     const text = JSON.stringify(body.messages);
     // Ni transcripción, ni resumen, ni lugares, ni teléfonos.
     for (const leak of [A("A1").transcript.slice(0, 30), A("A1").mock.summary_es.slice(0, 30), A("A1").mock.location_text, "•"]) {

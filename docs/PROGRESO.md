@@ -91,3 +91,11 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Verificación (orquestador): lint OK; 257 tests; `eval` y `eval:apagon` idénticos; `npm run agente` OK; build OK; e2e en modo simulado OK; `PHRASES` sin líneas borradas; interfaz, `data/` y `lib/metrics.ts` sin tocar.
 - Pendiente: revisión del árabe de las frases nuevas por un hablante nativo.
 - Siguiente: X07.
+
+## 2026-11-24 · X07 · hecha y verificada en modo simulado
+- Qué se hizo: herramientas `aviso_ayuntamiento`, `devolver_llamada` y `proponer_es_alert` en `lib/actions.ts`; ES-Alert por zona tras confirmar incidentes distintos, sin duplicados y con aprobación exclusiva de coordinador; `lib/report.ts` genera el parte calculado del estado en Markdown y JSON; la CLI incorpora `--coordinador` y `--parte`.
+- Verificación de la entrega: `npm run lint`, 303 tests, `npm run build`, `npm run eval` (DANA 7 incidentes/0 fusiones incorrectas/2 preguntas) y `npm run eval:apagon` (6/0/1), todos correctos. E2E de consola correcto en modo simulado: decisiones F1/B2, respuesta en árabe, Separar, auditoría, apagón y móvil sin desbordamiento ni errores de consola. Capturas de esta comprobación en `/tmp/alerta-avisos-commit-qa/`, sin reemplazar las capturas versionadas.
+- CLI y exportaciones Markdown/JSON comprobadas: DANA 25 acciones, 24 enviadas y 1 ES-Alert pendiente de coordinador; con `--coordinador`, 25 enviadas; apagón 18 acciones enviadas y sin ES-Alert. Todos los servicios y acuses son simulados. Sin cambios de interfaz ni de `data/`.
+- Límite de la comprobación: el primer E2E con la configuración local de IA devolvió errores 502; al arrancar una instancia con `LLM_BASE_URL` y `STT_BASE_URL` vacíos, el E2E pasó. No se acredita IA real ni se cierra X04b.
+- Entrega adicional: fuentes y exportaciones de marca Avance 112, `docs/texto.md`, `nombres.md` y `pendiente de implementacion-agents.md`, que concreta X08, X04b y las validaciones restantes.
+- Siguiente: X08 (README, PITCH y verificación final para `agente-v1`). X04b sigue pendiente de resolver y medir con IA local.

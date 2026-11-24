@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avance 112 · Identidad en movimiento</title>
+<style>
+  :root{color-scheme:light;--ink:#15222e;--paper:#e9edf0;--line:#ccd3d8;--muted:#596771;--red:#c61f2b}
+  *{box-sizing:border-box}
+  body{margin:0;background:#f5f6f7;color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+  main{max-width:1320px;margin:auto;padding:38px 48px 30px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:28px;border-bottom:1px solid var(--line)}
+  .brand{font-weight:750;letter-spacing:-.5px;font-size:20px}.brand b{color:var(--red)}
+  .edition{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
+  .intro{padding:36px 0 28px;display:flex;justify-content:space-between;gap:24px;align-items:end}
+  h1{font-size:clamp(26px,4vw,42px);line-height:1.15;letter-spacing:-1.5px;margin:0 0 12px;font-weight:650}
+  p{margin:0;color:var(--muted)}
+  .state{font-size:12px;white-space:nowrap;color:var(--muted)}
+  .stage{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--paper);transition:background .3s}
+  .stage.dark{background:#15222e}.stage.dark .avance112{--avance-ink:#e9edf0;--avance-red:#e24b55}
+  .stage.checker{background-color:#fff;background-image:linear-gradient(45deg,#e7ebee 25%,transparent 25%),linear-gradient(-45deg,#e7ebee 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e7ebee 75%),linear-gradient(-45deg,transparent 75%,#e7ebee 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}
+  .stage-label{position:absolute;top:21px;left:24px;letter-spacing:1.5px;text-transform:uppercase;font-size:10px;color:#71808a;pointer-events:none}
+  .stage.dark .stage-label{color:#9cabb5}
+  #artwork{padding:78px 22px 65px}
+  #artwork svg{width:100%;height:auto;display:block;touch-action:manipulation}
+  .controls{display:flex;justify-content:space-between;gap:20px;align-items:center;flex-wrap:wrap;margin-top:18px}
+  .actions,.backgrounds{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  button,a.download{font:inherit;font-size:12px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);padding:10px 15px;cursor:pointer;text-decoration:none;transition:background .2s}
+  button:hover,a.download:hover{background:#dfe5e9}button:focus-visible,a:focus-visible{outline:2px solid #2b6cb0;outline-offset:3px}
+  button.primary{background:var(--ink);border-color:var(--ink);color:white}button[aria-pressed=true]{box-shadow:inset 0 0 0 1px var(--ink);background:#dfe5e9}
+  .backgrounds span{color:var(--muted);font-size:12px;margin-right:4px}
+  .notes{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;padding:32px 0;border-bottom:1px solid var(--line)}
+  .note-index{font-size:11px;color:var(--muted);margin-bottom:8px;display:block}h2{font-size:14px;font-weight:650;margin:0 0 6px}.notes p{font-size:13px;max-width:310px}
+  footer{display:flex;gap:24px;justify-content:space-between;align-items:center;padding-top:22px}footer p{font-size:11px;max-width:250px}.downloads{display:flex;gap:8px;flex-wrap:wrap}
+  @media(max-width:650px){main{padding:22px 18px}header{padding-bottom:20px}.edition{max-width:130px;text-align:right;font-size:9px}.intro{padding:28px 0 22px;display:block}.intro p{font-size:13px}.state{display:block;margin-top:14px}#artwork{padding:76px 0 61px}.stage-label{left:16px;top:16px;font-size:9px}.controls{gap:14px}.notes{grid-template-columns:1fr;gap:22px;padding:26px 0}.notes p{max-width:none}footer{display:block}footer p{margin-top:16px}button,a.download{padding:10px 12px}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<main>
+  <header><div class="brand">Avance <b>112</b></div><span class="edition">Identidad en movimiento · 01</span></header>
+  <div class="intro"><div><h1>Muchas llamadas. Un foco.</h1><p>La identidad de Avance 112, desde la primera señal hasta el incidente.</p></div><span class="state" id="status" role="status">Animación de entrada · 1,9 s</span></div>
+  <section class="stage" id="stage" aria-label="Vista previa del logo"><span class="stage-label">Pasa el cursor o enfoca el logo</span><div id="artwork">{{LOGO}}</div></section>
+  <div class="controls">
+    <div class="actions"><button class="primary" id="replay">↻ Repetir entrada</button><button id="pause" aria-pressed="false">Pausar</button><button id="interact" aria-pressed="false">Activar señales</button></div>
+    <div class="backgrounds" role="group" aria-label="Fondo de la vista previa"><span>Fondo</span><button data-bg="light" aria-pressed="true">Claro</button><button data-bg="dark" aria-pressed="false">Oscuro</button><button data-bg="checker" aria-pressed="false">Transparente</button></div>
+  </div>
+  <div class="notes">
+    <div><span class="note-index">01 / CONVERGENCIA</span><h2>Cada llamada cuenta.</h2><p>Las tres señales entran y sus conexiones se dibujan hacia un mismo incidente.</p></div>
+    <div><span class="note-index">02 / DECISIÓN HUMANA</span><h2>El operador mantiene el control.</h2><p>El arco ámbar conserva su significado: el tramo que requiere una decisión humana.</p></div>
+    <div><span class="note-index">03 / PERSONAS</span><h2>La persona, en el centro.</h2><p>El punto rojo es el foco. Al interactuar, las señales recorren las conexiones.</p></div>
+  </div>
+  <footer><div class="downloads"><a class="download" id="svg-download" href="avance-112-animado.svg" download>↓ SVG animado</a><a class="download" id="static-download" href="avance-112.svg" download>SVG estático</a><a class="download" id="png-download" href="avance-112.png" download>PNG</a><a class="download" href="avance-112.webp" download>WebP animado</a><a class="download" href="avance-112.gif" download>GIF</a><a class="download" href="avance-112.apng" download>APNG</a></div><p>Todos con fondo transparente. El SVG permite interacción; WebP, GIF y APNG repiten la entrada.</p></footer>
+</main>
+<script>
+  const host=document.querySelector('#artwork');
+  const initial=host.innerHTML;
+  const status=document.querySelector('#status');
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+  const logo=()=>host.querySelector('svg');
+  const pause=document.querySelector('#pause');
+  const interact=document.querySelector('#interact');
+  function showStatus(){status.textContent=reduced.matches?'Movimiento reducido · Logo estático':'Animación de entrada · 1,9 s'}
+  showStatus();reduced.addEventListener('change',showStatus);
+  function replay(){
+    host.innerHTML=initial;
+    for(const button of [pause,interact])button.setAttribute('aria-pressed','false');
+    pause.textContent='Pausar';showStatus();
+  }
+  document.querySelector('#replay').addEventListener('click',replay);
+  pause.addEventListener('click',()=>{
+    const active=logo().classList.toggle('paused');pause.setAttribute('aria-pressed',String(active));
+    pause.textContent=active?'Continuar':'Pausar';status.textContent=active?'Animación en pausa':reduced.matches?'Movimiento reducido · Logo estático':'Animación en marcha';
+  });
+  interact.addEventListener('click',()=>{
+    const active=logo().classList.toggle('engaged');interact.setAttribute('aria-pressed',String(active));
+  });
+  document.querySelectorAll('[data-bg]').forEach(button=>button.addEventListener('click',()=>{
+    document.querySelector('#stage').className='stage '+button.dataset.bg;
+    document.querySelectorAll('[data-bg]').forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+    const suffix=button.dataset.bg==='dark'?'-oscuro':'';
+    document.querySelector('#svg-download').href='avance-112-animado'+suffix+'.svg';
+    document.querySelector('#static-download').href='avance-112'+suffix+'.svg';
+    document.querySelector('#png-download').href='avance-112'+suffix+'.png';
+  }));
+</script>
+</html>

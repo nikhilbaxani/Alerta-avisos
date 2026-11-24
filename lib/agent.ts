@@ -5,10 +5,24 @@
  * Todo es simulación: extracciones `mock`, conectores simulados, un operador simulado que acierta en
  * la zona gris (según `gold`, como `npm run eval`) y aprueba las acciones de operador unos segundos
  * de escenario después, y una sala simulada con N operadores (supuestos de `lib/metrics.ts`).
- * Determinista con el planificador de reglas.
+ * Las acciones de coordinador (ES-Alert, X07) se quedan pendientes salvo que se simule un
+ * coordinador (`coordinator: true`, `--coordinador`). Determinista con el planificador de reglas.
  */
-import { ACTION_TOOLS, addProposals, approve, discardOrphans, dispatch, planInputFrom, planRules, toolArgsText, toolService, toolTarget, traceOf } from "@/lib/actions";
-import type { ActionTool, AgentAction, CallFacts, PlanInput, PlanIssue, Proposal } from "@/lib/actions";
+import {
+  ACTION_TOOLS,
+  addProposals,
+  approve,
+  discardOrphans,
+  dispatch,
+  planInputFrom,
+  planRules,
+  planZoneAlerts,
+  toolArgsText,
+  toolService,
+  toolTarget,
+  traceOf,
+} from "@/lib/actions";
+import type { ActionTool, AgentAction, CallFacts, PlanInput, PlanIssue, Proposal, Role } from "@/lib/actions";
 import { confirmDifferent, confirmSame, initialState, processCall } from "@/lib/engine";
 import type { EngineCall, Incident } from "@/lib/engine";
 import { LANG_NAMES, RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
@@ -20,6 +34,8 @@ import type { Attention, RoomIndicators, WaitingCall, WaitingReport } from "@/li
 
 /** Segundos de escenario que tarda el operador simulado en aprobar una acción. */
 export const APPROVAL_DELAY_S = 5;
+/** Segundos de escenario que tarda el coordinador simulado (`--coordinador`) en aprobar una acción de coordinador. */
+export const COORDINATOR_DELAY_S = 20;
 
 export interface PlanOutcome {
   proposals: Proposal[];
@@ -54,6 +70,8 @@ export interface AgentRun {
   scenarioId: string;
   scenarioName: string;
   approvalDelayS: number;
+  /** Segundos que tarda el coordinador simulado; null si no se simula (las de coordinador quedan pendientes). */
+  coordinatorDelayS: number | null;
   steps: AgentStep[];
   actions: AgentAction[];
   incidents: Incident[];
@@ -68,12 +86,16 @@ export interface AgentOptions {
   approvalDelayS?: number;
   /** Operadores de la sala simulada para el agente de espera (por defecto, los de la consola). */
   operators?: number;
+  /** Simula un coordinador que aprueba las acciones de coordinador (ES-Alert). Por defecto, no: quedan pendientes. */
+  coordinator?: boolean;
+  coordinatorDelayS?: number;
 }
 
 export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Promise<AgentRun> {
   const planner = opts.planner ?? rulesPlanner;
   const delay = opts.approvalDelayS ?? APPROVAL_DELAY_S;
   const operators = opts.operators ?? DEFAULT_OPERATORS;
+  const coordinatorDelay = opts.coordinator ? (opts.coordinatorDelayS ?? COORDINATOR_DELAY_S) : null;
   const calls = [...scenario.calls].sort((a, b) => a.t - b.t);
   const byId: Record<string, EngineCall> = {};
   const gold: Record<string, string> = {};
@@ -86,16 +108,17 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
 
   let state = initialState();
   let actions: AgentAction[] = [];
-  const queue: { key: string; due: number }[] = [];
+  /** Aprobaciones simuladas por hacer, en orden de hora (y de propuesta a igual hora). */
+  const queue: { key: string; due: number; role: Role }[] = [];
   const steps: AgentStep[] = [];
   /** Lo que sabe el sistema de cada llamada al entrar, antes de que decida nadie (para el asistente de espera). */
   const heard: Record<string, Omit<WaitingCall, keyof SimCall | "lang">> = {};
 
-  /** El operador simulado aprueba (y el conector envía) lo que toca hasta `until`. */
+  /** El operador (o el coordinador) simulado aprueba, y el conector envía, lo que toca hasta `until`. */
   const approveUntil = (until: number) => {
     while (queue.length && queue[0].due <= until) {
-      const { key, due } = queue.shift()!;
-      const ok = approve(actions, key, "operador", due);
+      const { key, due, role } = queue.shift()!;
+      const ok = approve(actions, key, role, due);
       if (!ok.ok) continue;
       const sent = dispatch(ok.actions, key, due);
       actions = sent.ok ? sent.actions : ok.actions;
@@ -136,8 +159,17 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
     const plan = await planner(planInputFrom(inc, facts));
     const res = addProposals(actions, plan.proposals, c.t);
     actions = res.actions;
-    // Las de coordinador (X07) no las aprueba el operador simulado: se quedan pendientes.
-    for (const a of res.added) if (a.status === "propuesta" && a.policy === "operador") queue.push({ key: a.key, due: c.t + delay });
+    // Zona (ES-Alert): sobre todos los incidentes, con reglas deterministas; la clave es la zona, así que no se repite.
+    const zone = addProposals(actions, planZoneAlerts(state.incidents.map((i) => planInputFrom(i, facts))), c.t);
+    actions = zone.actions;
+    const added = [...res.added, ...zone.added];
+    for (const a of added) {
+      if (a.status !== "propuesta") continue;
+      // El operador simulado no aprueba lo del coordinador: se queda pendiente salvo que se simule un coordinador.
+      if (a.policy === "operador") queue.push({ key: a.key, due: c.t + delay, role: "operador" });
+      else if (a.policy === "coordinador" && coordinatorDelay !== null) queue.push({ key: a.key, due: c.t + coordinatorDelay, role: "coordinador" });
+    }
+    queue.sort((x, y) => x.due - y.due);
 
     steps.push({
       t: c.t,
@@ -150,7 +182,7 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
       incidentId: inc.id,
       incidentType: inc.type,
       newInfo: inc.alerts.find((a) => a.callId === c.id)?.risks ?? [],
-      added: res.added.map((a) => a.key),
+      added: added.map((a) => a.key),
       issues: plan.issues,
       warning: plan.warning ?? null,
     });
@@ -175,6 +207,7 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
     scenarioId: scenario.id,
     scenarioName: scenario.name,
     approvalDelayS: delay,
+    coordinatorDelayS: coordinatorDelay,
     steps,
     actions,
     incidents: state.incidents,
@@ -196,8 +229,11 @@ export interface AgentSummary {
   automatic: number;
   /** Aprobadas por una persona (enviadas o a punto de enviarse). */
   approved: number;
+  approvedBy: Record<Role, number>;
   discarded: number;
   pending: number;
+  /** Pendientes que solo puede aprobar un coordinador. */
+  pendingCoordinator: number;
 }
 
 export function summarize(run: AgentRun): AgentSummary {
@@ -212,8 +248,13 @@ export function summarize(run: AgentRun): AgentSummary {
     byOrigin: { reglas: a.filter((x) => x.origin === "reglas").length, ia_local: a.filter((x) => x.origin === "ia_local").length },
     automatic: a.filter((x) => x.status === "enviada" && x.approval?.by === "automatica").length,
     approved: a.filter((x) => (x.status === "aprobada" || x.status === "enviada") && x.approval !== null && x.approval.by !== "automatica").length,
+    approvedBy: {
+      operador: a.filter((x) => x.status !== "descartada" && x.approval?.by === "operador").length,
+      coordinador: a.filter((x) => x.status !== "descartada" && x.approval?.by === "coordinador").length,
+    },
     discarded: a.filter((x) => x.status === "descartada").length,
     pending: a.filter((x) => x.status === "propuesta").length,
+    pendingCoordinator: a.filter((x) => x.status === "propuesta" && x.policy === "coordinador").length,
   };
 }
 
@@ -239,7 +280,11 @@ function stepLine(s: AgentStep): string {
 }
 
 function approvalText(a: AgentAction): string {
-  if (!a.approval) return a.status === "descartada" ? "no aprobada" : `pendiente (la aprueba un ${a.policy})`;
+  if (!a.approval) {
+    if (a.status === "descartada") return "no aprobada";
+    if (a.policy === "coordinador") return "pendiente de coordinador · el operador no puede aprobarla";
+    return `pendiente (la aprueba un ${a.policy})`;
+  }
   if (a.approval.by === "automatica") return `automática, sin espera y con registro, a ${clock(a.approval.at)}`;
   return `${a.approval.by} (simulado) a ${clock(a.approval.at)}`;
 }
@@ -247,6 +292,7 @@ function approvalText(a: AgentAction): string {
 function resultText(a: AgentAction): string {
   if (a.status === "enviada" && a.receipt) return `enviada · acuse ${a.receipt.reference} a ${clock(a.receipt.at)} · ${a.receipt.detail}`;
   if (a.status === "descartada" && a.discarded) return `descartada por ${a.discarded.by} a ${clock(a.discarded.at)} · ${a.discarded.reason}`;
+  if (a.status === "propuesta") return "propuesta, sin enviar: nada sale hasta que la apruebe una persona";
   return a.status;
 }
 
@@ -319,7 +365,7 @@ export function summaryLines(run: AgentRun): string[] {
     `  ${s.calls} llamadas → ${s.incidents} incidentes · ${s.operatorDecisions} ${s.operatorDecisions === 1 ? "decisión" : "decisiones"} del operador (simulado) en zona gris`,
     `  Acciones preparadas: ${s.prepared} (${tools}) · origen: reglas ${s.byOrigin.reglas}, IA local ${s.byOrigin.ia_local}`,
     `  Automáticas, enviadas al momento con registro: ${s.automatic}`,
-    `  Aprobadas por el operador (simulado): ${s.approved} · descartadas: ${s.discarded} · pendientes: ${s.pending}`,
+    `  Aprobadas por una persona (simulada): ${s.approved} (operador ${s.approvedBy.operador}, coordinador ${s.approvedBy.coordinador}) · descartadas: ${s.discarded} · pendientes: ${s.pending}${s.pendingCoordinator ? ` (${s.pendingCoordinator} de coordinador)` : ""}`,
     "  Conectores simulados: ningún servicio real ha recibido nada.",
   ];
 }
@@ -331,6 +377,9 @@ export function formatRun(run: AgentRun, plannerLabel: string): string {
     `Agente 112 · traza del agente de acciones · ${run.scenarioName}`,
     SIMULATION_NOTICE,
     `Planificador: ${plannerLabel} · el operador simulado acierta en la zona gris y aprueba a los ${run.approvalDelayS} s`,
+    run.coordinatorDelayS === null
+      ? "Coordinador: no simulado · las acciones de coordinador (ES-Alert) quedan pendientes; el operador no puede aprobarlas (--coordinador simula que un coordinador las aprueba)"
+      : `Coordinador simulado: aprueba las acciones de coordinador (ES-Alert) a los ${run.coordinatorDelayS} s`,
     `Sala simulada: ${operatorsText(run.waiting.operators)} · el asistente de espera solo atiende llamadas que llegan con todos ocupados (supuestos: ${NEW_CALL_SECONDS} s por llamada nueva, ${DUPLICATE_SECONDS} s por repetida)`,
     "",
   ];
@@ -402,6 +451,7 @@ export function runToJson(run: AgentRun, plannerLabel: string) {
     escenario: { id: run.scenarioId, nombre: run.scenarioName },
     planificador: plannerLabel,
     aprobacionSimuladaSegundos: run.approvalDelayS,
+    aprobacionCoordinadorSimuladaSegundos: run.coordinatorDelayS,
     pasos: run.steps.map((st) => ({
       t: st.t,
       llamada: st.callId,
@@ -426,8 +476,10 @@ export function runToJson(run: AgentRun, plannerLabel: string) {
       porOrigen: s.byOrigin,
       automaticas: s.automatic,
       aprobadas: s.approved,
+      aprobadasPorRol: s.approvedBy,
       descartadas: s.discarded,
       pendientes: s.pending,
+      pendientesDeCoordinador: s.pendingCoordinator,
     },
     agenteDeEspera: waitingToJson(run.waiting),
   };

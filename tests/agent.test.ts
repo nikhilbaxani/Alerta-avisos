@@ -60,8 +60,13 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("las automáticas no esperan; las de operador se aprueban unos segundos después", () => {
+  it("las automáticas no esperan; las de operador se aprueban unos segundos después; las de coordinador quedan pendientes", () => {
     for (const a of run.actions) {
+      if (a.policy === "coordinador") {
+        expect(a.status).toBe("propuesta");
+        expect(a.approval).toBeNull();
+        continue;
+      }
       expect(a.status).toBe("enviada");
       if (a.policy === "automatica") expect(a.approval).toEqual({ by: "automatica", at: a.proposedAt });
       else expect(a.approval).toEqual({ by: "operador", at: a.proposedAt + APPROVAL_DELAY_S });
@@ -70,7 +75,9 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
     expect(s.prepared).toBe(run.actions.length);
     expect(s.automatic).toBe(run.actions.filter((a) => a.policy === "automatica").length);
     expect(s.approved + s.automatic + s.discarded + s.pending).toBe(s.prepared);
-    expect(s.automatic).toBe(2); // C3 cables y E1 sin luz con persona mayor
+    // C3 cables y E1 sin luz con persona mayor (distribuidora, X05); D semáforos y C árbol caído (ayuntamiento, X07).
+    expect(run.actions.filter((a) => a.policy === "automatica").map((a) => a.tool).sort()).toEqual(["avisar_distribuidora", "avisar_distribuidora", "aviso_ayuntamiento", "aviso_ayuntamiento"]);
+    expect([s.pending, s.pendingCoordinator]).toEqual([1, 1]); // el ES-Alert de A y F
   });
 
   it("es determinista y la traza JSON está rotulada como simulación", async () => {

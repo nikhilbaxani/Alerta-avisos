@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256" class="avance112 still" role="img" aria-labelledby="a112-title a112-desc">
+<title id="a112-title">Avance 112 — llamadas que convergen en un incidente</title><desc id="a112-desc">Tres llamadas convergen en un anillo. El arco ámbar representa la decisión humana y el centro rojo a la persona en peligro. Versión estática con fondo transparente.</desc>
+
+<g><circle cx="6" cy="14" r="3.2" fill="#15222E" opacity="0.45"/></g><g><circle cx="4" cy="32" r="3.2" fill="#15222E" opacity="0.7"/></g><g><circle cx="6" cy="50" r="3.2" fill="#15222E" opacity="0.45"/></g><path d="M10 16 L22 25 M9 32 L20 32 M10 48 L22 39" stroke="#15222E" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/><g transform="rotate(-90 38 32)"><circle cx="38" cy="32" r="16" fill="none" stroke="#15222E" stroke-width="6"/></g><path d="M38 16 A16 16 0 0 1 54 32" fill="none" stroke="#F2A900" stroke-width="6" stroke-linecap="butt"/><g><circle cx="38" cy="32" r="4.5" fill="#C61F2B"/></g>
+</svg>

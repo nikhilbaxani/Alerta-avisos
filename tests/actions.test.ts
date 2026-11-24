@@ -55,11 +55,14 @@ const carA4 = input({
 });
 
 describe("política de aprobación (tabla en código)", () => {
-  it("recursos y SMS los aprueba el operador; el aviso a la distribuidora es automático", () => {
+  it("recursos, SMS y devolver la llamada los aprueba el operador; los avisos a organismos son automáticos; el ES-Alert, el coordinador", () => {
     expect(ACTION_POLICY).toEqual({
       proponer_recursos: "operador",
       sms_al_llamante: "operador",
       avisar_distribuidora: "automatica",
+      aviso_ayuntamiento: "automatica",
+      devolver_llamada: "operador",
+      proponer_es_alert: "coordinador",
     });
   });
 
