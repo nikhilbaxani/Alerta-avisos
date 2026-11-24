@@ -166,10 +166,8 @@ export function confirmSame(
   const incidents = state.incidents
     .filter((i) => i.id !== provisionalId)
     .map((i) => (i.id === target.id ? merged : i.linkedTo === provisionalId ? { ...i, linkedTo: target.id } : i));
-  // Si el provisional era el último creado, se libera su número para no dejar huecos.
-  const lastNum = Number(provisionalId.slice(4));
-  const nextId = lastNum === state.nextId - 1 ? lastNum : state.nextId;
-  return { ...state, incidents, assignment, nextId };
+  // El número del provisional queda consumido: un INC-xx no se reutiliza nunca (trazabilidad, MEMORIA §16.1).
+  return { ...state, incidents, assignment };
 }
 
 /** El operador confirma que es un incidente distinto: deja de ser provisional. */

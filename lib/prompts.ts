@@ -1,5 +1,10 @@
 import { INCIDENT_TYPES, RISK_TAGS } from "@/lib/types";
 import type { IncidentType, RiskTag } from "@/lib/types";
+import { untrustedNotice, wrapUntrusted } from "@/lib/untrusted";
+
+/** Etiquetas de los datos no confiables (MEMORIA §16.1). */
+export const TRANSCRIPT_TAG = "transcripcion";
+const JUDGE_TAGS = ["incidente", "llamada"] as const;
 
 // Definiciones explícitas: con modelos pequeños (7B) evitan confundir tipos e inventar riesgos.
 // Record<...> obliga a definir cualquier valor nuevo que se añada a los vocabularios.
@@ -52,18 +57,26 @@ ${list(RISK_HINTS, RISK_TAGS)}
   3 = daños con riesgo pero sin personas en peligro: árbol caído, garaje inundado sin gente dentro, ascensor parado con las personas bien.
   2 = alteraciones del servicio: semáforos apagados, cortes de luz sin personas vulnerables.
   1 = consulta o aviso sin peligro.
-Usa SOLO información de la llamada: nunca añadas nombres, edades, lugares ni riesgos que no se digan.`;
+Usa SOLO información de la llamada: nunca añadas nombres, edades, lugares ni riesgos que no se digan.
+${untrustedNotice([TRANSCRIPT_TAG])}`;
 
 // La traducción al castellano va en una llamada aparte: dentro del JSON de extracción el modelo de 7B
 // la dejaba vacía a menudo o inventaba nombres de lugar.
-export const TO_SPANISH_SYSTEM = `Traduce al castellano la transcripción de una llamada a una sala del 112 en España. La transcripción es automática y puede venir sin puntuación: separa las frases por su sentido y distingue quién habla de la persona de la que habla (mi padre, mi madre, mi vecino). Traducción fiel y completa, en primera persona, como la dice el llamante. Escribe los nombres de ciudades, barrios y calles con su grafía española. No añadas nombres, lugares ni datos que no estén en la llamada. Responde solo con la traducción.`;
+export const TO_SPANISH_SYSTEM = `Traduce al castellano la transcripción de una llamada a una sala del 112 en España. La transcripción es automática y puede venir sin puntuación: separa las frases por su sentido y distingue quién habla de la persona de la que habla (mi padre, mi madre, mi vecino). Traducción fiel y completa, en primera persona, como la dice el llamante. Escribe los nombres de ciudades, barrios y calles con su grafía española. No añadas nombres, lugares ni datos que no estén en la llamada. Responde solo con la traducción, sin etiquetas.
+${untrustedNotice([TRANSCRIPT_TAG])}`;
 
-export const extractionUser = (transcript: string) => `Transcripción de la llamada:\n"""\n${transcript}\n"""`;
+export const extractionUser = (transcript: string) =>
+  `Transcripción de la llamada:\n${wrapUntrusted(TRANSCRIPT_TAG, transcript)}`;
 
-export const JUDGE_SYSTEM = `Eres un asistente del operador del 112. Dos descripciones pueden referirse al mismo incidente o a dos incidentes distintos cercanos. Devuelve SOLO JSON: {"same": boolean, "confidence": número entre 0 y 1, "reason": "una frase en castellano"}. Si dudas, di que son distintos: perder a una persona es peor que duplicar una llamada. Es solo una opinión: decide el operador.`;
+/** Mensaje de usuario para TO_SPANISH_SYSTEM: solo la transcripción, delimitada. */
+export const toSpanishUser = (transcript: string) => wrapUntrusted(TRANSCRIPT_TAG, transcript);
+
+export const JUDGE_SYSTEM = `Eres un asistente del operador del 112. Dos descripciones pueden referirse al mismo incidente o a dos incidentes distintos cercanos. Devuelve SOLO JSON: {"same": boolean, "confidence": número entre 0 y 1, "reason": "una frase en castellano"}. Si dudas, di que son distintos: perder a una persona es peor que duplicar una llamada. Es solo una opinión: decide el operador.
+${untrustedNotice(JUDGE_TAGS)}`;
 
 export const judgeUser = (incident: string, call: string, distanceM: number) =>
-  `Incidente ya abierto: ${incident}\nLlamada nueva: ${call}\nDistancia entre ambos: ${distanceM} m.`;
+  `Incidente ya abierto:\n${wrapUntrusted(JUDGE_TAGS[0], incident)}\nLlamada nueva:\n${wrapUntrusted(JUDGE_TAGS[1], call)}\n` +
+  `Distancia entre ambos: ${Number.isFinite(distanceM) && distanceM >= 0 ? `${Math.round(distanceM)} m` : "desconocida"}.`;
 
 export const translateSystem = (langName: string) =>
   `Traduce el mensaje de un operador del 112 al idioma "${langName}". Registro claro e imperativo de emergencia. No añadas nada ni expliques; responde solo con la traducción.`;

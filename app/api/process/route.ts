@@ -1,23 +1,19 @@
 import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
+import { fail, readJson, upstreamError } from "@/lib/http";
 import { processCall } from "@/lib/process";
-import type { ProcessInput } from "@/lib/process";
+import { LIMITS, validateProcessInput } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  let body: ProcessInput;
+  const body = await readJson(req, LIMITS.processBodyBytes);
+  if (!body.ok) return body.res;
+  const input = validateProcessInput(body.value);
+  if (!input.ok) return fail(input.status, input.error);
   try {
-    body = (await req.json()) as ProcessInput;
-  } catch {
-    return NextResponse.json({ error: "JSON no válido" }, { status: 400 });
-  }
-  if (!body?.aml || !Array.isArray(body.incidents)) {
-    return NextResponse.json({ error: "Faltan aml e incidents" }, { status: 400 });
-  }
-  try {
-    return NextResponse.json(await processCall(getConfig(), body));
+    return NextResponse.json(await processCall(getConfig(), input.value));
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Error" }, { status: 502 });
+    return fail(502, upstreamError(e, "Error al procesar la llamada"));
   }
 }

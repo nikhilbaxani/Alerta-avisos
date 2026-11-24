@@ -30,16 +30,20 @@ await page.waitForTimeout(1500);
 const counters = await page.locator(".counters").innerText();
 if (!/26 llamadas → 7 incidentes/.test(counters.replace(/\s+/g, " "))) fail(`contadores: ${counters}`);
 
-// E1 en la cola de prioridad: respuesta en árabe.
-await page.getByRole("button", { name: /INC-05/ }).first().click();
+// Los incidentes se buscan por contenido (tipo, motivo y nº de llamadas), no por su número INC-xx:
+// los números no se reutilizan y dependen de las decisiones del operador.
+const prio = (name) => page.locator(".prio").getByRole("button", { name }).first();
+
+// E1 en la cola de prioridad (la única emergencia médica, con dolor torácico): respuesta en árabe.
+await prio(/Emergencia médica[\s\S]*dolor torácico/).click();
 await page.getByRole("button", { name: "¿La persona respira? ¿Está consciente?" }).click();
 const said = await page.locator(".said").innerText();
 if (!/[؀-ۿ]/.test(said)) fail("la respuesta no está en árabe");
 await page.getByRole("button", { name: "Reproducir al llamante" }).click();
 await page.screenshot({ path: "docs/capturas/T19-arabe.png" });
 
-// Separar una llamada.
-await page.getByRole("button", { name: /INC-01 ·/ }).first().click();
+// Separar una llamada del coche de A (6 llamadas; F es el otro vehículo, con 2).
+await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
 await page.getByRole("button", { name: "Separar llamada A6" }).click();
 await page.waitForTimeout(300);
 if (!/8 incidentes/.test((await page.locator(".counters").innerText()).replace(/\s+/g, " "))) fail("Separar no creó un incidente");

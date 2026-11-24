@@ -100,6 +100,35 @@ describe("agrupación del escenario", () => {
     expect(after.assignment.A3).not.toBe(after.assignment.A1);
     expect(after.incidents[0].callIds).toEqual(["A1", "A2"]);
   });
+  it("confirmar «Mismo incidente» no libera el número del provisional", () => {
+    const { state } = run(["B1", "B2"], { B2: "same" });
+    expect(state.incidents.map((i) => i.id)).toEqual(["INC-01"]);
+    const next = processCall(state, byId.D1).state;
+    expect(next.assignment.D1).toBe("INC-03"); // INC-02 fue el provisional de B2: no se reutiliza
+  });
+  it.each([
+    { F1: "different", B2: "same" },
+    { F1: "same", B2: "same" },
+  ] as Record<string, "same" | "different">[])("ningún INC-xx se repite en el escenario completo (%o)", (ops) => {
+    let state: EngineState = initialState();
+    const ever = new Set<string>();
+    for (const c of calls) {
+      const before = new Set(state.incidents.map((i) => i.id));
+      const r = processCall(state, byId[c.id]);
+      state = r.state;
+      for (const inc of state.incidents.filter((i) => !before.has(i.id))) {
+        expect(ever.has(inc.id)).toBe(false);
+        ever.add(inc.id);
+      }
+      if (r.decision.action === "ask") {
+        const prov = state.assignment[c.id];
+        state = ops[c.id] === "same" ? confirmSame(state, prov, byId) : confirmDifferent(state, prov);
+      }
+    }
+    const after = splitCall(state, "A6", byId);
+    const created = after.incidents.find((i) => !state.incidents.some((x) => x.id === i.id))!;
+    expect(ever.has(created.id)).toBe(false);
+  });
   it("el escenario completo da 7 incidentes sin fusiones erróneas", () => {
     const ops: Record<string, "same" | "different"> = { F1: "different", B2: "same" };
     const { state } = run(calls.map((c) => c.id), ops);

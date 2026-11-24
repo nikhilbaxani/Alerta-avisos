@@ -6,8 +6,17 @@ import { chatJSON, chatText, transcribe } from "@/lib/ai";
 import { decide } from "@/lib/cluster";
 import { llmEnabled, sttEnabled } from "@/lib/config";
 import type { AppConfig } from "@/lib/config";
-import { JUDGE_SYSTEM, EXTRACTION_SYSTEM, TO_SPANISH_SYSTEM, extractionUser, judgeUser } from "@/lib/prompts";
+import {
+  JUDGE_SYSTEM,
+  EXTRACTION_SYSTEM,
+  TO_SPANISH_SYSTEM,
+  TRANSCRIPT_TAG,
+  extractionUser,
+  judgeUser,
+  toSpanishUser,
+} from "@/lib/prompts";
 import { sanitizeExtraction } from "@/lib/sanitize";
+import { stripUntrustedTags } from "@/lib/untrusted";
 import type { Aml, Decision, IncidentSnapshot, ProcessResult } from "@/lib/types";
 
 export interface ProcessInput {
@@ -70,13 +79,14 @@ export async function processCall(cfg: AppConfig, input: ProcessInput): Promise<
       { role: "system", content: EXTRACTION_SYSTEM },
       { role: "user", content: extractionUser(transcript) },
     ]);
+    // Vocabularios, rangos y suelo de gravedad por riesgos (MEMORIA §16.1).
     extraction = sanitizeExtraction(raw, known?.lang);
     if (extraction.language !== "es") {
       // Si falla, queda null y la consola enseña el original en las dos columnas.
       extraction.translation_es = await chatText(cfg, [
         { role: "system", content: TO_SPANISH_SYSTEM },
-        { role: "user", content: transcript },
-      ]).then((t) => t || null, () => null);
+        { role: "user", content: toSpanishUser(transcript) },
+      ]).then((t) => stripUntrustedTags(t, [TRANSCRIPT_TAG]) || null, () => null);
     }
   } else if (known) {
     extraction = known.mock;

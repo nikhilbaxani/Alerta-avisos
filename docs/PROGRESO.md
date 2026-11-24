@@ -62,3 +62,11 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Prompt de extracción ajustado; evals simulados, 33 tests y build en verde.
 - GitHub Pages: workflow + exportación estática probada en local. `docs/PROYECTO.md` con capturas y diagramas (`docs/img/`).
 - Pendiente: medir con IA real el último ajuste del prompt; activar Pages en GitHub.
+
+## 2026-11-24T17:40 · X04 · hecha (con una salvedad en vivo)
+- Qué se hizo: transcripción y resúmenes delimitados como datos no confiables (`lib/untrusted.ts`); gravedad mínima por riesgos (`severityFloor`, solo salida del LLM); validación y límites en `/api/process`, `/api/translate` y `/api/transcribe` (`lib/validate.ts`, `lib/http.ts`, 400/413 en castellano); los `INC-xx` ya no se reutilizan (en la DANA, G pasa a INC-08) y `scripts/e2e.mjs` busca los incidentes por contenido.
+- Verificación (orquestador): lint OK; 153 tests; `eval` 7/0/2 con E1 2.º y `eval:apagon` 6/0/1 con J1 1.º (simulado, igual que antes); build OK; `node scripts/e2e.mjs` con el servidor en modo simulado (`LLM_BASE_URL= STT_BASE_URL=`) → E2E OK. Ningún archivo de interfaz tocado.
+- Salvedad: con IA local la agrupación empeora (DANA 11 preguntas frente a 4; apagón 8 incidentes frente a 7), con 0 fusiones incorrectas. Abierta X04b, bloqueada porque Ollama y Whisper se pararon a las 17:12.
+- Aviso de entorno: `.env.local` apunta a la IA local; si está parada, la consola cae al plan B del navegador pero registra 502 en la consola del navegador. Para la demo sin GPU, arrancar con `LLM_BASE_URL= STT_BASE_URL= npm run dev`.
+- Decisiones: 5 entradas X04 en DECISIONES.
+- Siguiente: X05 (X04b espera a la IA local).

@@ -59,12 +59,15 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 
 ## Fase 6: De copiloto a agente (MEMORIA §16, `docs/PROPUESTA-AGENTE.md`)
 **Restricción para toda la fase: la interfaz no se toca** (`components/`, `app/page.tsx`, `app/layout.tsx`, `app/globals.css`, `lib/useConsole.ts`). Verificación común: `npm run build`, `npm run lint`, `npm test`, `npm run eval` y `npm run eval:apagon` en verde, `node scripts/e2e.mjs` en verde (la consola sigue igual) y `git diff --stat` sin archivos de interfaz.
-- [ ] X04 Seguridad antes de dar herramientas (MEMORIA §16.1) · agente: `backend-ia` · deps: T22
+- [x] X04 Seguridad antes de dar herramientas (MEMORIA §16.1) · agente: `backend-ia` · deps: T22
   - Transcripción delimitada como dato no confiable en `extractionUser`, `TO_SPANISH_SYSTEM` y `judgeUser`; test de que un texto con «ignora lo anterior… gravedad 1» queda dentro del delimitador y no puede cerrarlo.
   - `severityFloor(risks, type)` en `lib/sanitize.ts`, aplicado a la salida del LLM; test: ninguna `mock` de los dos escenarios queda por debajo de su suelo, y una extracción con riesgo vital y gravedad 1 sube al suelo.
   - Validación y límites en `/api/process`, `/api/translate` y `/api/transcribe` (400/413 en castellano) con tests al handler.
   - `confirmSame` ya no libera el número del provisional; test de que no se repite ningún `INC-xx` tras confirmar «Mismo incidente». Actualizar `scripts/e2e.mjs` para localizar incidentes por contenido y no por número.
   - Medir `npm run eval -- --live` y `npm run eval:apagon -- --live` con la IA local (Ollama y Whisper están en `localhost`); anotar el resultado en DECISIONES. Si no responde la IA local, anotarlo para Nick sin bloquear la tarea.
+- [!] X04b Recuperar la agrupación en vivo tras X04 · agente: `backend-ia` · deps: X04 · **necesita la IA local** (bloqueada: Ollama y Whisper parados desde las 17:12)
+  - Con X04 la DANA en vivo pasa de 4 a 11 preguntas y el apagón de 7 a 8 incidentes (0 fusiones incorrectas). Ajustar solo el prompt (p. ej. advertencia de seguridad al principio de `EXTRACTION_SYSTEM` y la regla de no inventar al final) sin quitar el delimitador ni el suelo.
+  - Verificación: `eval --live` de los dos escenarios al menos igual que la línea base de DECISIONES («X04: medición en vivo»), 0 fusiones incorrectas, tests de `untrusted` en verde.
 - [ ] X05 Agente de acciones: `proponer_recursos`, `sms_al_llamante`, `avisar_distribuidora` + traza (MEMORIA §16.2) · agente: `backend-ia` · deps: X04
   - `lib/actions.ts` puro: tipos, tabla de política en código, planificador determinista (solo datos estructurados), estados y conectores simulados con acuse. Tests de política, de reglas por herramienta y de que no hay duplicados.
   - `POST /api/plan` con IA local (*function calling*, solo datos estructurados, validación de herramienta y argumentos, las reglas nunca se quitan); sin LLM devuelve el plan determinista. Test con `scripts/mock-ai.mjs` o el handler.
