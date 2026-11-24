@@ -5,6 +5,7 @@ import { snapshot } from "@/lib/engine";
 import type { ConsoleState } from "@/lib/useConsole";
 import type { CallMeta } from "@/lib/useConsole";
 import type { ProcessResult } from "@/lib/types";
+import Icon from "./Icon";
 
 const PLACES = [
   { name: "Centro de Málaga", lat: 36.7213, lng: -4.4214 },
@@ -74,15 +75,16 @@ export default function LivePanel({ s, sttUp, onCall }: { s: ConsoleState; sttUp
 
   return (
     <section className="live" aria-label="Llamada en directo">
+      <p className="live-title"><Icon name="mic" size={16} />Llamada en directo con el micrófono</p>
       <div className="live-row">
         <select value={place} onChange={(e) => setPlace(Number(e.target.value))} aria-label="Ubicación AML de la llamada" disabled={phase !== "idle"}>
           {PLACES.map((p, i) => <option key={p.name} value={i}>{p.name}</option>)}
         </select>
         {phase === "recording" ? (
-          <button className="btn primary" onClick={() => rec.current?.stop()}>Terminar y enviar</button>
+          <button className="btn btn-rec" onClick={() => rec.current?.stop()}>Terminar y enviar</button>
         ) : (
           <button className="btn" onClick={start} disabled={phase === "working"}>
-            {phase === "working" ? "Procesando…" : "Llamada en directo"}
+            {phase === "working" ? "Analizando…" : "Grabar"}
           </button>
         )}
       </div>

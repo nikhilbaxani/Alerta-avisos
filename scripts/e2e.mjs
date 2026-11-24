@@ -27,8 +27,8 @@ for (let i = 0; i < 2; i++) {
 if (!asked[0].includes("F1") || !asked[1].includes("B2")) fail(`preguntas inesperadas: ${asked}`);
 await page.getByText(/26 de 26/).waitFor({ timeout: 45000 });
 await page.waitForTimeout(1500);
-const counters = await page.locator(".counters").innerText();
-if (!/26 llamadas → 7 incidentes/.test(counters.replace(/\s+/g, " "))) fail(`contadores: ${counters}`);
+const kpi = async (pg, k) => Number(await pg.locator(`[data-kpi=${k}]`).getAttribute("data-value"));
+if ((await kpi(page, "calls")) !== 26 || (await kpi(page, "incidents")) !== 7) fail(`contadores: ${await page.locator(".kpis").innerText()}`);
 
 // E1 en la cola de prioridad: respuesta en árabe.
 await page.getByRole("button", { name: /INC-05/ }).first().click();
@@ -42,7 +42,7 @@ await page.screenshot({ path: "docs/capturas/T19-arabe.png" });
 await page.getByRole("button", { name: /INC-01 ·/ }).first().click();
 await page.getByRole("button", { name: "Separar llamada A6" }).click();
 await page.waitForTimeout(300);
-if (!/8 incidentes/.test((await page.locator(".counters").innerText()).replace(/\s+/g, " "))) fail("Separar no creó un incidente");
+if ((await kpi(page, "incidents")) !== 8) fail("Separar no creó un incidente");
 
 // Exportar registro (auditoría).
 const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar registro" }).click()]);
@@ -61,7 +61,7 @@ await p2.getByText(/¿La llamada M1 es el mismo incidente/).waitFor({ timeout: 3
 await p2.keyboard.press("d");
 await p2.getByText(/16 de 16/).waitFor({ timeout: 30000 });
 await p2.waitForTimeout(1500);
-if (!/16 llamadas → 6 incidentes/.test((await p2.locator(".counters").innerText()).replace(/\s+/g, " "))) fail("apagón: contadores");
+if ((await kpi(p2, "calls")) !== 16 || (await kpi(p2, "incidents")) !== 6) fail("apagón: contadores");
 await p2.screenshot({ path: "docs/capturas/X01-apagon.png" });
 
 // Inicio vacío y móvil sin scroll horizontal.

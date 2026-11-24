@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { LANG_NAMES } from "@/lib/labels";
 import { PHRASES, SPEECH_LOCALE } from "@/lib/phrases";
+import Icon from "./Icon";
 import type { Reply } from "@/lib/useConsole";
 
 interface Props {
@@ -36,9 +37,9 @@ export default function ReplyPanel({ incidentId, langs, clock, localAI, replies,
 
   if (!lang) {
     return (
-      <section className="reply" aria-label="Respuesta al llamante">
-        <h3>Responder al llamante</h3>
-        <p className="note">Los llamantes de este incidente hablan castellano: no hace falta traducir.</p>
+      <section className="reply block" aria-labelledby="reply-h">
+        <h3 id="reply-h">Responder al llamante</h3>
+        <p className="note">Todas las llamadas de esta emergencia son en castellano: no hace falta traducir.</p>
       </section>
     );
   }
@@ -72,38 +73,39 @@ export default function ReplyPanel({ incidentId, langs, clock, localAI, replies,
   };
 
   return (
-    <section className="reply" aria-label="Respuesta al llamante">
-      <h3>Responder al llamante en {LANG_NAMES[lang] ?? lang}</h3>
+    <section className="reply block" aria-labelledby="reply-h">
+      <h3 id="reply-h">Responder en {(LANG_NAMES[lang] ?? lang).toLowerCase()}</h3>
+      <p className="note">Elige una frase en castellano: se dice en voz alta en el idioma del llamante.</p>
       {foreign.length > 1 && (
-        <div className="chips" role="group" aria-label="Idioma del llamante">
+        <div className="seg seg-wide" role="group" aria-label="Idioma del llamante">
           {foreign.map((l) => (
-            <button key={l} className="btn" aria-pressed={l === lang} onClick={() => { setPick(l); setFreeOut(null); }}>
+            <button key={l} aria-pressed={l === lang} onClick={() => { setPick(l); setFreeOut(null); }}>
               {LANG_NAMES[l] ?? l}
             </button>
           ))}
         </div>
       )}
       {current && (
-        <>
+        <div className="said-box">
           <div className="said" lang={lang} dir={lang === "ar" ? "rtl" : "ltr"}>{current.tr}</div>
-          <button className="btn primary" onClick={play}>Reproducir al llamante</button>
-        </>
+          <button className="btn btn-dark" onClick={play}><Icon name="speaker" />Reproducir al llamante</button>
+        </div>
       )}
-      <div className="phrases">
+      <div className="phrases" role="group" aria-label="Frases rápidas">
         {PHRASES.map((p) => (
           <button key={p.id} className="phrase" aria-pressed={!freeOut && p.id === phraseId} onClick={() => { setPhraseId(p.id); setFreeOut(null); setMsg(""); }}>
-            <span>{p.es}</span>
+            {p.es}
           </button>
         ))}
       </div>
       <form className="free" onSubmit={(e) => { e.preventDefault(); if (free.trim() && localAI) void translateFree(); }}>
-        <input value={free} onChange={(e) => setFree(e.target.value)} placeholder="Texto libre en castellano" aria-label="Texto libre en castellano" disabled={!localAI} />
+        <input value={free} onChange={(e) => setFree(e.target.value)} placeholder={localAI ? "Escribe tu respuesta en castellano" : "Texto libre: necesita el modelo local"} aria-label="Texto libre en castellano" disabled={!localAI} />
         <button className="btn" type="submit" disabled={!localAI || !free.trim()}>Traducir</button>
       </form>
-      {!localAI && <p className="note">La traducción libre necesita el modelo local.</p>}
+      {!localAI && <p className="note">La traducción libre necesita el modelo local. Las frases rápidas funcionan siempre.</p>}
       {msg && <p className="toast" role="status">{msg}</p>}
       {mine.length > 0 && (
-        <p className="note">Enviado: {mine.map((r) => `«${r.es}»`).join(" · ")}</p>
+        <p className="note sent"><Icon name="check" size={15} />Dicho al llamante: {mine.map((r) => `«${r.es}»`).join(" · ")}</p>
       )}
     </section>
   );
