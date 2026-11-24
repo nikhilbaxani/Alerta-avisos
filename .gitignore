@@ -12,6 +12,7 @@ alerta-avisos-kit.zip
 .venv-stt/
 out/
 __pycache__/
+*.tsbuildinfo
 
 # Vídeo de lanzamiento: material intermedio de render y música de terceros
 brag-output*/work/
