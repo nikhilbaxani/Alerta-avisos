@@ -199,3 +199,9 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - Interfaz: tarjeta por acción en el detalle (una por servicio, una por SMS), avisos sobre el mapa al enviar, cifra «acciones del agente» y «N por aprobar» en la prioridad. Las acciones de política `coordinador` (ES-Alert, de zona, X07) se muestran en el detalle de cada incidente de la zona, con su texto fijo en castellano e inglés y sin botones: «La aprueba un coordinador». «N por aprobar» solo cuenta lo que puede aprobar el operador.
 - Motivo: Nick pidió que el agente se vea actuar en el pitch; MEMORIA §16 se actualiza en consecuencia (la interfaz cambia en X09–X10). Un solo planificador evita que la consola y `npm run agente` propongan cosas distintas.
 - Descartado: mi primer planificador (mismo nombre de archivo, otra API), que chocaba con el de X05: se sustituyó por el suyo y se adaptó la interfaz.
+
+## 2026-11-24 · Audio de las llamadas en la consola (X10)
+- Decisión: MP3 de 16 kHz y 24 kbps en `public/audio/` versionados en git (42 llamadas, 1,3 MB), generados con edge-tts una sola vez; los `.wav` siguen ignorados y los usa Whisper. Al entrar una llamada suena solo si no hay otra sonando, para que cada una se oiga entera; a ×10 no suena sola. La voz se elige por teléfono (A2/A6, H1/H3 y J1/J3 suenan igual) y por el género que fija el guion; lluvia solo en la DANA.
+- Motivo: Nick pidió que se oyeran las llamadas en el pitch. Sin red en tiempo de ejecución, también en GitHub Pages (subruta en `NEXT_PUBLIC_BASE_PATH`).
+- Descartado: cortar la llamada anterior al entrar otra (a ×4 se oían fragmentos de 3 s sin sentido) y audio a ×10.
+- Arreglo de paso: las llamadas en directo se numeraban `L1, L2…` y chocaban con las llamadas L1 y L2 del apagón; ahora son `V1, V2…`.

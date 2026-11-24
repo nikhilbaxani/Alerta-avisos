@@ -8,12 +8,13 @@ import { langName, mmss } from "./format";
 
 interface Props {
   s: ConsoleState;
+  playing?: string | null;
   sttUp: boolean;
   onSelect: (incidentId: string) => void;
   onLive: (c: CallMeta, r: ProcessResult) => void;
 }
 
-export default function CallQueue({ s, sttUp, onSelect, onLive }: Props) {
+export default function CallQueue({ s, playing, sttUp, onSelect, onLive }: Props) {
   const list = [...s.arrived].reverse();
   const total = getScenario(s.scenarioId).calls.length;
   return (
@@ -49,6 +50,7 @@ export default function CallQueue({ s, sttUp, onSelect, onLive }: Props) {
                   <span className="call-top">
                     <span className="call-time">{mmss(call.t)}</span>
                     <span className={`lang ${foreign ? "foreign" : ""}`}>{foreign && <Icon name="globe" size={13} />}{langName(call.lang)}</span>
+                    {playing === id && <span className="on-air" aria-label="Sonando"><i /><i /><i />En línea</span>}
                     <span className="call-id">{id}</span>
                   </span>
                   <span className="call-text">{text}</span>

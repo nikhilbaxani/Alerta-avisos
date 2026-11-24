@@ -71,6 +71,7 @@ kbd {
 .btn-ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
 .btn-ghost:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line); }
 .btn-icon { width: 38px; padding: 0; }
+.btn-ghost[aria-label="Sonido de las llamadas"] { width: 38px; padding: 0; }
 .btn-sm { min-height: 30px; padding: 0 10px; font-size: 13px; gap: 5px; }
 .btn-lg { min-height: 46px; padding: 0 20px; font-size: 16px; }
 .btn-rec { background: var(--red); border-color: var(--red); color: #fff; }
@@ -309,7 +310,13 @@ kbd {
 .callcard { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; background: var(--surface); }
 .callcard header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; color: var(--ink-3); }
 .callcard header b { color: var(--ink); }
-.callcard header .btn { margin-left: auto; }
+.callcard header .phone { margin-right: auto; }
+.btn-listen.is-on { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+.on-air { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; color: var(--red); }
+.on-air i { display: inline-block; width: 3px; height: 10px; background: currentColor; border-radius: 1px; transform-origin: bottom; animation: eq .9s ease-in-out infinite; }
+.on-air i:nth-child(2) { animation-delay: .15s; }
+.on-air i:nth-child(3) { animation-delay: .3s; margin-right: 4px; }
+@keyframes eq { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
 .callcard .phone { font-size: 12px; }
 .callcard p, .cols2 p { font-size: 14px; color: var(--ink); }
 .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

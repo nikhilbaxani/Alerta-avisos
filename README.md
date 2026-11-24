@@ -43,7 +43,7 @@ Sin Docker ni sudo (si Docker no ve la GPU): `bash scripts/ia-local.sh` arranca 
 
 Todo se configura con `.env.local` (plantilla en `.env.example`): `LLM_BASE_URL`, `LLM_MODEL`, `STT_BASE_URL`, `STT_MODEL`. Con IA local, además: texto libre traducido, opinión del modelo en la zona gris (solo opina, nunca decide) y **llamada en directo** con el micrófono.
 
-Audio de las llamadas simuladas (opcional): `pip install edge-tts` y `python3 scripts/generate_audio.py` (o Piper) crea `public/audio/<id>.wav` con filtro de teléfono y lluvia.
+Audio de las llamadas simuladas: los MP3 ya vienen en `public/audio/` (1,3 MB) y la consola los reproduce sin red (botón **Sonido** en la barra superior; a ×10 no suenan solas, pero cada llamada tiene **Escuchar**). Para regenerarlos: `python3 -m venv .venv-audio && .venv-audio/bin/pip install edge-tts && .venv-audio/bin/python scripts/generate_audio.py` (o Piper). Crea `<id>.wav` (para Whisper, ignorado por git) y `<id>.mp3`, con filtro de teléfono y lluvia en la DANA.
 
 ## Arquitectura
 

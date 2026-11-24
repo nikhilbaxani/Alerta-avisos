@@ -9,6 +9,7 @@ import { buildAuditLog } from "@/lib/audit";
 import { STATIC_EXPORT } from "@/lib/config";
 import { getScenario } from "@/data/scenarios";
 import AgentFeed from "./AgentFeed";
+import { useCallAudio } from "./useCallAudio";
 import CallQueue from "./CallQueue";
 import DecisionBanner from "./DecisionBanner";
 import HelpDialog from "./HelpDialog";
@@ -24,6 +25,7 @@ export default function Console() {
   const [status, setStatus] = useState<EngineStatus>({ mode: "simulated", label: "Modo simulado" });
   const [sttUp, setSttUp] = useState(false);
   const [help, setHelp] = useState(false);
+  const audio = useCallAudio(s);
 
   useEffect(() => {
     if (STATIC_EXPORT) return; // GitHub Pages: no hay servidor que consultar
@@ -75,6 +77,8 @@ export default function Console() {
         pending={pending}
         actionsSent={sent}
         actionsToApprove={toApprove.length}
+        sound={audio.enabled}
+        onSound={audio.toggle}
         onPlay={play}
         onPause={() => dispatch({ type: "pause" })}
         onSpeed={(speed: Speed) => dispatch({ type: "speed", speed })}
@@ -84,7 +88,7 @@ export default function Console() {
         onHelp={() => setHelp(true)}
       />
       <main className="main">
-        <CallQueue s={s} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
+        <CallQueue s={s} playing={audio.playing} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
         <section className="center" aria-label="Mapa y decisiones">
           <div aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
           <div className="map-wrap">
@@ -109,6 +113,7 @@ export default function Console() {
             s={s}
             localAI={status.mode === "local"}
             actions={s.actions}
+            audio={audio}
             onApprove={approve}
             onDiscard={discard}
             onSplit={(callId) => dispatch({ type: "split", callId })}

@@ -62,7 +62,7 @@ export default function LivePanel({ s, sttUp, onCall }: { s: ConsoleState; sttUp
       const result = (await r.json()) as ProcessResult & { error?: string };
       if (!r.ok) throw new Error(result.error);
       counter.current += 1;
-      const id = `L${counter.current}`;
+      const id = `V${counter.current}`; // «V» de voz: no choca con los ids de los escenarios (A–M)
       onCall({ id, t: 0, lang: result.language, phone: "En directo", aml, transcript: td.text, live: true }, { ...result, callId: id });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "No se pudo procesar la llamada.");

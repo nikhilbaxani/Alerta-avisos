@@ -7,6 +7,7 @@ import { actionIncidents } from "@/lib/actions";
 import type { AgentAction } from "@/lib/actions";
 import Icon from "./Icon";
 import AgentActions from "./AgentActions";
+import type { CallAudio } from "./useCallAudio";
 import ReplyPanel from "./ReplyPanel";
 import { langName, mmss, placeOf, plural } from "./format";
 
@@ -16,13 +17,14 @@ interface Props {
   onSplit: (callId: string) => void;
   onReply: (r: Reply) => void;
   actions: AgentAction[];
+  audio?: CallAudio;
   onApprove: (key: string) => void;
   onDiscard: (key: string) => void;
 }
 
 const URGENT: RiskTag[] = ["vida", "inconsciente", "sin_respuesta", "dolor_pecho", "atrapados", "menor", "cables_electricos"];
 
-export default function IncidentDetail({ s, localAI, onSplit, onReply, actions, onApprove, onDiscard }: Props) {
+export default function IncidentDetail({ s, localAI, onSplit, onReply, actions, audio, onApprove, onDiscard }: Props) {
   const inc = s.engine.incidents.find((i) => i.id === s.selected);
   if (!inc) {
     return (
@@ -97,6 +99,13 @@ export default function IncidentDetail({ s, localAI, onSplit, onReply, actions, 
                   <span>{mmss(call.t)}</span>
                   <span>{langName(ex.language)}</span>
                   <span className="phone">{call.phone}</span>
+                  {audio?.hasAudio(id) && (
+                    audio.playing === id ? (
+                      <button className="btn btn-sm btn-listen is-on" onClick={audio.stop} aria-label={`Detener la llamada ${id}`}><Icon name="stop" size={14} />Detener</button>
+                    ) : (
+                      <button className="btn btn-sm btn-listen" onClick={() => audio.play(id)} aria-label={`Escuchar la llamada ${id}`}><Icon name="speaker" size={15} />Escuchar</button>
+                    )
+                  )}
                   {inc.callIds.length > 1 && (
                     <button className="btn btn-sm" onClick={() => onSplit(id)} aria-label={`Separar llamada ${id}`} title="Si no pertenece a esta emergencia, sácala a un incidente propio">
                       <Icon name="split" size={15} />Separar

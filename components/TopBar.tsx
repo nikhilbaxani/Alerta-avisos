@@ -12,6 +12,8 @@ interface Props {
   pending: number;
   actionsSent: number;
   actionsToApprove: number;
+  sound: boolean;
+  onSound: () => void;
   onPlay: () => void;
   onPause: () => void;
   onSpeed: (v: Speed) => void;
@@ -21,7 +23,7 @@ interface Props {
   onHelp: () => void;
 }
 
-export default function TopBar({ s, status, pending, actionsSent, actionsToApprove, onPlay, onPause, onSpeed, onReset, onExport, onScenario, onHelp }: Props) {
+export default function TopBar({ s, status, pending, actionsSent, actionsToApprove, sound, onSound, onPlay, onPause, onSpeed, onReset, onExport, onScenario, onHelp }: Props) {
   const done = Object.values(s.recs).filter((r) => r.status === "done").length;
   const total = getScenario(s.scenarioId).calls.length;
   const incidents = s.engine.incidents.length;
@@ -72,6 +74,15 @@ export default function TopBar({ s, status, pending, actionsSent, actionsToAppro
           >
             <i aria-hidden="true" />{status.label}
           </span>
+          <button
+            className="btn btn-ghost"
+            onClick={onSound}
+            aria-pressed={sound}
+            aria-label="Sonido de las llamadas"
+            title={sound ? (s.speed >= 10 ? "A ×10 las llamadas no suenan solas; puedes escucharlas en su tarjeta" : "Las llamadas suenan al entrar") : "Sonido desactivado"}
+          >
+            <Icon name={sound ? "speaker" : "mute"} /><span className="sr-only">{sound ? "Sonido activado" : "Sonido desactivado"}</span>
+          </button>
           <button className="btn btn-ghost" onClick={onHelp} aria-label="Cómo funciona"><Icon name="help" /><span className="btn-text">Cómo funciona</span></button>
           <button className="btn btn-ghost" onClick={onExport} disabled={s.audit.length === 0} aria-label="Exportar registro" title="Descarga en JSON cada decisión de la IA y del operador">
             <Icon name="download" /><span className="btn-text">Exportar registro</span>

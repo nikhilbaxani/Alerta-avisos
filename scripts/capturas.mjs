@@ -8,7 +8,7 @@ const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
 p.on("pageerror", (e) => errs.push(e.message));
 p.on("console", (m) => m.type() === "error" && errs.push(m.text()));
 await p.goto(url);
-await p.waitForTimeout(800);
+await p.waitForTimeout(2500); // el logo de la cabecera está animado
 await p.screenshot({ path: C + "consola-inicio.png" });
 await p.getByRole("button", { name: "Velocidad por 10" }).click();
 await p.getByRole("button", { name: "Iniciar", exact: true }).click();

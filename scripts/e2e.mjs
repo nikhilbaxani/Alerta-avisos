@@ -1,7 +1,7 @@
 // Prueba extremo a extremo de la consola (requiere `npm run start -- -p 3112`).
 import { chromium } from "playwright";
 const url = process.argv[2] ?? "http://localhost:3112";
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
@@ -9,6 +9,15 @@ page.on("pageerror", (e) => errors.push(e.message));
 const fail = (m) => { console.error("FALLA:", m); process.exit(1); };
 const banner = page.getByText(/¿La llamada .* es el mismo incidente/);
 
+// Registra los elementos de audio para comprobar que el sonido avanza de verdad (no solo que el botón cambie).
+await page.addInitScript(() => {
+  const play = HTMLMediaElement.prototype.play;
+  window.__audios = [];
+  HTMLMediaElement.prototype.play = function () {
+    window.__audios.push(this);
+    return play.call(this);
+  };
+});
 await page.goto(url);
 await page.getByRole("button", { name: "Velocidad por 10" }).click();
 await page.getByRole("button", { name: "Iniciar", exact: true }).click();
@@ -47,6 +56,17 @@ const sentBefore = await kpi(page, "actions");
 if (sentBefore < 2) fail(`el agente no ha enviado los avisos automáticos (${sentBefore})`);
 await page.getByRole("button", { name: /Aprobar y enviar: SMS en árabe/ }).click();
 await page.getByText(/Aprobado y enviado · acuse SMS-[0-9A-F]{6}/).first().waitFor({ timeout: 5000 });
+
+// Audio de la llamada (sin red: MP3 dentro de la app).
+for (const id of ["A1", "E1", "H1"]) {
+  const r = await page.request.get(`${url}/audio/${id}.mp3`);
+  if (r.status() !== 200 || !(r.headers()["content-type"] ?? "").includes("audio")) fail(`falta el audio ${id}`);
+}
+await page.getByRole("button", { name: "Escuchar la llamada E1" }).click();
+await page.getByRole("button", { name: "Detener la llamada E1" }).waitFor({ timeout: 3000 });
+await page.waitForFunction(() => window.__audios.some((a) => a.src.endsWith("/audio/E1.mp3") && !a.paused && !a.error && a.currentTime > 0.3), null, { timeout: 5000 })
+  .catch(() => fail("el audio de E1 no suena (no avanza): ¿faltan los MP3 en public/audio?"));
+await page.getByRole("button", { name: "Detener la llamada E1" }).click();
 if ((await kpi(page, "actions")) !== sentBefore + 1) fail("aprobar el SMS no cuenta como acción enviada");
 
 // ES-Alert (X07): lo propone el agente para la zona de los coches atrapados, pero solo lo aprueba un coordinador.
@@ -98,4 +118,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, acciones del agente, Separar, sin errores de consola");
+console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, acciones del agente, audio, Separar, sin errores de consola");

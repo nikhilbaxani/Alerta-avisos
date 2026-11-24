@@ -115,3 +115,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Qué se hizo: la consola usa el agente de acciones de X05–X07 (seis herramientas, incluido el ES-Alert de zona, que solo aprueba un coordinador): `lib/consoleActions.ts` (estado de la consola → `PlanInput`), estado y registro de acciones en `lib/useConsole.ts` y `lib/audit.ts` (traza completa), `components/AgentActions.tsx` y `components/AgentFeed.tsx`, cifra en el resumen y pastilla «por aprobar» en la prioridad. MEMORIA §16 y CLAUDE.md actualizados (la interfaz cambia en X09–X10 por petición de Nick).
 - Verificación: ver el commit; `node scripts/e2e.mjs` aprueba el SMS en árabe y comprueba el registro.
 - Siguiente: X10 (audio de las llamadas).
+
+## 2026-11-24 · X10 · hecha
+- Qué se hizo: audio regenerado para los dos escenarios con MP3 versionado, reproducción en la consola (`components/useCallAudio.ts`), indicador «En línea», «Escuchar/Detener», botón «Sonido»; ids de llamadas en directo `V…`; guion del pitch y README actualizados.
+- Verificación: lint, build, 46 tests, `eval` y `eval:apagon` en verde; `node scripts/e2e.mjs` OK (comprueba los MP3 y «Escuchar»); reproducción automática a ×4 probada con Playwright; `scripts/live-test.mjs` con `mock-ai.mjs` OK; exportación de GitHub Pages servida bajo `/Alerta-avisos/`: suena A1 y no hay peticiones fallidas; capturas revisadas.
+- Pendiente: escucharlo de verdad en el portátil de la demo (volumen del proyector).

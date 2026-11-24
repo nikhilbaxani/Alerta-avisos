@@ -7,12 +7,13 @@
 **1. El problema (0:00–0:20)**
 «El 29 de octubre de 2024, la DANA de Valencia generó 19.821 llamadas al 112 para 4.770 incidentes: unas cuatro llamadas por incidente. En el apagón del 28 de abril de 2025 las llamadas se multiplicaron por cuatro y en Cataluña se perdieron más de 10.000. En una catástrofe el cuello de botella no son los recursos: son las líneas. Si seis personas llaman por el mismo coche atrapado, cada minuto con la sexta es un minuto que no se dedica a la única llamada en árabe sobre un infarto.»
 
-**2. Demo (0:20–1:50)**: pulsar Iniciar a ×4.
+**2. Demo (0:20–1:50)**: pulsar Iniciar a ×4 con el **sonido activado**: se oye la primera llamada (A1, con lluvia y filtro de teléfono). Callar 5 segundos y dejar que suene.
 - El contador pasa de llamadas a incidentes y suben las «líneas liberadas».
 - A4 («hay un bebé»): aviso de **información nueva**, sube la prioridad.
 - B2, la hija que llama desde otro barrio: se agrupa por **la dirección que menciona**, no por su posición.
 - F1: se pone en **ámbar** («a 460 m, puede ser otro coche»). El operador pulsa `D`: «aquí había una segunda persona». Es la decisión que no se deja a la IA.
-- E1, en árabe: sube a la cabeza de la cola. Responder «¿La persona respira?» en árabe y pulsar **Reproducir al llamante**.
+- C3 (cables en el suelo): sin que nadie toque nada, aparece sobre el mapa «El agente ha enviado: aviso a la distribuidora · acuse». Los avisos informativos van solos; lo que pone en juego a una persona, no.
+- Subir a ×10. E1, en árabe: sube a la cabeza de la cola. Pulsar **Escuchar** en su llamada (se oye el árabe), después **Aprobar y enviar** el SMS en árabe que ha preparado el agente y **Reproducir al llamante** «¿La persona respira?».
 
 **3. Por qué nosotros (1:50–2:30)**: 100 % local (datos de salud y localización), castellano y AML, Ley de IA (humano en el bucle y cada decisión explicada), y vía de venta: el pliego andaluz puntúa las aplicaciones software que ofrezca el licitador, así que vendemos al contratista que concursa.
 
@@ -22,7 +23,7 @@
 
 1. **El 112 se satura por duplicados.** 19.821 llamadas, 4.770 incidentes (DANA 2024). Apagón 2025: llamadas ×4.
 2. **Agente 112.** Agrupa, detecta lo nuevo y traduce. La IA propone, el operador decide.
-3. **Demo en vivo.** (Consola: 26 llamadas → 7 incidentes, zona gris, árabe con voz.)
+3. **Demo en vivo.** (Consola: 26 llamadas → 7 incidentes, zona gris, el agente actúa y se oyen las llamadas, árabe con voz.)
 4. **Cuatro cosas que nadie más hace a la vez.** Información nueva en duplicados · agrupar por la dirección mencionada · zona gris visible · respuesta traducida · todo en local.
 5. **Mercado.** 43.845 llamadas en idioma extranjero en Andalucía (2024); 362.822 residentes extranjeros en la provincia de Málaga; Andalucía gestionó 894.930 emergencias en 2025. Venta al contratista del pliego.
 6. **Siguiente paso.** Piloto con un contratista; evaluación con llamadas reales anonimizadas; cumplimiento de la Ley de IA (alto riesgo, obligaciones desde dic-2027).
