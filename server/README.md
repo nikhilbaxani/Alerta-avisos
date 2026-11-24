@@ -105,8 +105,20 @@ Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/rel
 | `MAX_CALL_SECONDS` | 120 | Máximo de duración; `stt` responde 413 (sin transcribir) si supera máximo + 5 s. También se usa al construir la web. |
 | `RATE_LIMIT` / `RATE_WINDOW_MIN` | 3 / 10 | Llamadas por IP y ventana. |
 | `STT_MODEL` | `Systran/faster-whisper-small` | Modelo de Whisper. |
+| `LLM_BASE_URL` | — | URL base (compatible OpenAI) del LLM opcional del equipo. Vacío → solo reglas. |
+| `LLM_MODEL` | `qwen2.5:14b-instruct` | Nombre del modelo en `LLM_BASE_URL`. |
+| `LLM_API_KEY` | — | Clave del LLM (solo en `server/relay.env`, nunca en el repositorio). |
+| `LLM_TIMEOUT_MS` | `20000` | Tiempo máximo de espera del LLM antes de pasar a reglas (ms). |
 
 El relay (`server/relay.ts`) lee además `PORT` (8080), `HOST` (dirección de escucha; por defecto `0.0.0.0` para Docker, usa `127.0.0.1` en local), `STT_BASE_URL` y `TRUST_PROXY=1` (compose ya lo activa): la IP del cliente se toma de `X-Forwarded-For` **recorriéndolo desde la derecha** y saltando direcciones locales y privadas (loopback, RFC1918, 100.64.0.0/10 de Tailscale, `fc00::/7`, `fe80::/10`); lo que queda a la izquierda de la primera dirección pública lo controla el cliente y se ignora. Si todas son locales se usa la dirección del socket. Las direcciones IPv6 se limitan por prefijo /64.
+
+## LLM del equipo (opcional)
+
+Si defines `LLM_BASE_URL`, `LLM_MODEL` y `LLM_API_KEY` en `server/relay.env`, tras la transcripción de Whisper el relay extrae los datos y traduce al castellano con el LLM del equipo (usando `EXTRACTION_SYSTEM` y `sanitizeExtraction` para mantener los vocabularios cerrados y el suelo de gravedad), geolocaliza con el nomenclátor (`lib/gazetteer.ts`) y se salta la segunda pasada `translate` de Whisper (ahorra CPU). La consola muestra «LLM del equipo» en el motor del evento.
+
+- **Respaldo automático:** si `LLM_BASE_URL` está vacío, o si el LLM falla, devuelve una respuesta inválida o tarda más de `LLM_TIMEOUT_MS` (20 s por defecto), el relay registra el aviso y pasa al extractor de reglas (`lib/rules.ts`, con la pasada `translate` de Whisper si el idioma no es castellano).
+- **Aislamiento intacto:** el relay llega al LLM por su URL pública HTTPS (p. ej. Tailscale Funnel del sobremesa), sin acceso a la tailnet; la regla `server/tailnet-guard.nft` no cambia.
+- **Clave:** guárdala solo en `server/relay.env` (fuera de git) y **rótala tras el evento**.
 
 ## Límites del endpoint público
 

@@ -10,8 +10,20 @@ import http from "node:http";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { isIPv6 } from "node:net";
 import { pathToFileURL } from "node:url";
-import { DEFAULT_MAX_CALL_SECONDS, MAX_TRANSCRIPT_CHARS, isPublicCallEvent } from "../lib/publicCall";
+import {
+  DEFAULT_MAX_CALL_SECONDS,
+  KNOWN_LOCATION_ACC,
+  MAX_TRANSCRIPT_CHARS,
+  UNKNOWN_LOCATION_AML,
+  isPublicCallEvent,
+} from "../lib/publicCall";
 import type { PublicCallEvent, PublicLocation } from "../lib/publicCall";
+import { chatJSON } from "../lib/ai";
+import { getConfig, llmEnabled } from "../lib/config";
+import type { AppConfig } from "../lib/config";
+import { locate } from "../lib/gazetteer";
+import { EXTRACTION_SYSTEM, extractionUser } from "../lib/prompts";
+import { sanitizeExtraction } from "../lib/sanitize";
 import type { Extraction } from "../lib/types";
 
 export type Extractor = (input: {
@@ -19,6 +31,42 @@ export type Extractor = (input: {
   language: string;
   translation_en: string | null;
 }) => { extraction: Extraction; location: PublicLocation } | Promise<{ extraction: Extraction; location: PublicLocation }>;
+
+export type LlmExtractor = (transcript: string, language: string) => Promise<Extraction>;
+
+const DEFAULT_LLM_TIMEOUT_MS = 20_000;
+const RELAY_EXTRACTION_SYSTEM = `${EXTRACTION_SYSTEM}\nIncluye también la clave "translation_es": traducción fiel al castellano si la llamada no está en castellano, o null si ya está en castellano.`;
+
+export function createLlmExtractor(cfg: AppConfig, timeoutMs = DEFAULT_LLM_TIMEOUT_MS): LlmExtractor {
+  return async (transcript: string, language: string) => {
+    const raw = await chatJSON(
+      cfg,
+      [
+        { role: "system", content: RELAY_EXTRACTION_SYSTEM },
+        { role: "user", content: extractionUser(transcript) },
+      ],
+      timeoutMs,
+    );
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
+    return sanitizeExtraction({ ...(raw as Record<string, unknown>), language }, language);
+  };
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`tiempo agotado (${ms} ms)`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
 
 /** Tres caracteres aleatorios en base 36 (mayúsculas): dos arranques seguidos no comparten etiqueta salvo 1 de cada 46 656. */
 export function defaultBootTag(): string {
@@ -76,6 +124,9 @@ export interface RelayOptions {
   /** Etiqueta de arranque en los ids (P<tag><n>): evita repetir ids tras reiniciar el relay. */
   bootTag?: string;
   extract?: Extractor;
+  /** Extractor opcional por LLM (S11). Si falla o agota `llmTimeoutMs`, se usa `extract` (reglas). */
+  llmExtract?: LlmExtractor;
+  llmTimeoutMs?: number;
   fetch?: typeof fetch;
   log?: (msg: string) => void;
 }
@@ -121,6 +172,7 @@ export function createRelay(opts: RelayOptions) {
   const origins = new Set(opts.allowedOrigins ?? []);
   const replayN = opts.replay ?? 50;
   const heartbeatMs = opts.heartbeatMs ?? 15_000;
+  const llmTimeoutMs = opts.llmTimeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
   const doFetch = opts.fetch ?? fetch;
   const log = opts.log ?? ((m: string) => console.log(m));
   const sttUrl = `${opts.sttBaseUrl.replace(/\/$/, "")}/audio/transcriptions`;
@@ -223,17 +275,48 @@ export function createRelay(opts: RelayOptions) {
         log(`[relay] ${id} descartada: idioma no reconocido`);
         return;
       }
+      const transcript = first.text.slice(0, MAX_TRANSCRIPT_CHARS);
+      let extraction: Extraction | null = null;
+      let location: PublicLocation | null = null;
       let translation: string | null = null;
-      if (first.language !== "es") {
-        // Si la traducción falla o tarda demasiado, la llamada sigue: las reglas usan la transcripción.
+      let extractor: "llm" | "rules" = "rules";
+
+      if (opts.llmExtract) {
         try {
-          translation = (await stt(file, "translate")).text.slice(0, MAX_TRANSCRIPT_CHARS) || null;
+          const raw = await withTimeout(opts.llmExtract(transcript, first.language), llmTimeoutMs);
+          if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
+          const sanitized = sanitizeExtraction({ ...raw, language: first.language }, first.language);
+          if (sanitized.translation_es) sanitized.translation_es = sanitized.translation_es.slice(0, MAX_TRANSCRIPT_CHARS);
+          const hit = (sanitized.location_text ? locate(sanitized.location_text) : null) ?? locate(transcript);
+          if (hit) {
+            location = { place: hit.place, known: true, aml: { ...hit.aml, acc: KNOWN_LOCATION_ACC } };
+            if (!sanitized.location_text) sanitized.location_text = hit.location_text;
+          } else {
+            location = { place: null, known: false, aml: { ...UNKNOWN_LOCATION_AML } };
+          }
+          extraction = sanitized;
+          extractor = "llm";
         } catch (e) {
-          log(`[relay] ${id} sin traducción: ${e instanceof Error ? e.message : "desconocido"}`);
+          const reason = (e instanceof Error ? e.message : "desconocido").slice(0, 120);
+          log(`[relay] ${id} LLM no disponible (${reason}): reglas`);
         }
       }
-      const transcript = first.text.slice(0, MAX_TRANSCRIPT_CHARS);
-      const { extraction, location } = await extract({ transcript, language: first.language, translation_en: translation });
+
+      if (!extraction || !location) {
+        if (first.language !== "es") {
+          // Si la traducción falla o tarda demasiado, la llamada sigue: las reglas usan la transcripción.
+          try {
+            translation = (await stt(file, "translate")).text.slice(0, MAX_TRANSCRIPT_CHARS) || null;
+          } catch (e) {
+            log(`[relay] ${id} sin traducción: ${e instanceof Error ? e.message : "desconocido"}`);
+          }
+        }
+        const res = await extract({ transcript, language: first.language, translation_en: translation });
+        extraction = res.extraction;
+        location = res.location;
+        extractor = "rules";
+      }
+
       const ev: PublicCallEvent = {
         id,
         receivedAt: new Date(receivedAt).toISOString(),
@@ -243,6 +326,7 @@ export function createRelay(opts: RelayOptions) {
         translation_en: translation,
         extraction,
         location,
+        extractor,
         timings: { sttMs, totalMs: Date.now() - t0 },
       };
       if (!isPublicCallEvent(ev)) {
@@ -250,7 +334,7 @@ export function createRelay(opts: RelayOptions) {
         return;
       }
       publish(ev);
-      log(`[relay] ${id} publicada (${first.language}, ${Math.round(first.duration)} s, stt ${sttMs} ms)`);
+      log(`[relay] ${id} publicada (${first.language}, ${Math.round(first.duration)} s, stt ${sttMs} ms, ${extractor})`);
     } catch (e) {
       if (e instanceof SttError && e.status === 413) log(`[relay] ${id} descartada: audio demasiado largo (STT 413)`);
       else log(`[relay] ${id} error: ${e instanceof Error ? e.message : "desconocido"}`);
@@ -375,6 +459,8 @@ function envInt(name: string, def: number): number {
 }
 
 export function start() {
+  const cfg = getConfig(process.env);
+  const llmTimeoutMs = envInt("LLM_TIMEOUT_MS", DEFAULT_LLM_TIMEOUT_MS);
   const relay = createRelay({
     sttBaseUrl: process.env.STT_BASE_URL ?? "http://stt:8000/v1",
     sttModel: process.env.STT_MODEL ?? "Systran/faster-whisper-small",
@@ -383,6 +469,8 @@ export function start() {
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     rateLimit: { max: envInt("RATE_LIMIT", 3), windowMs: envInt("RATE_WINDOW_MIN", 10) * 60_000 },
     trustProxy: process.env.TRUST_PROXY === "1",
+    llmExtract: llmEnabled(cfg) ? createLlmExtractor(cfg, llmTimeoutMs) : undefined,
+    llmTimeoutMs,
   });
   const port = envInt("PORT", 8080);
   // 0.0.0.0 por defecto (Docker: Caddy llega por la red de compose). En local, HOST=127.0.0.1.
@@ -390,7 +478,9 @@ export function start() {
   const server = http.createServer(relay.handler);
   server.requestTimeout = 60_000;
   server.listen(port, host, () => {
-    console.log(`[relay] escuchando en ${host}:${port} (token ${process.env.RELAY_TOKEN ? "configurado" : "NO configurado: /events devuelve 503"})`);
+    console.log(
+      `[relay] escuchando en ${host}:${port} (token ${process.env.RELAY_TOKEN ? "configurado" : "NO configurado: /events devuelve 503"}, extractor ${llmEnabled(cfg) ? `LLM ${cfg.llmModel}` : "reglas"})`,
+    );
   });
   return server;
 }

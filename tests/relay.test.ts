@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { createRelay, defaultBootTag, type RelayOptions } from "@/server/relay";
-import { isPublicCallEvent, PUBLIC_CALL_ID, type PublicCallEvent } from "@/lib/publicCall";
+import { isPublicCallEvent, PUBLIC_CALL_ID, UNKNOWN_LOCATION_AML, type PublicCallEvent } from "@/lib/publicCall";
 import type { Extraction } from "@/lib/types";
 
 const TOKEN = "secreto-de-prueba";
@@ -520,6 +520,124 @@ describe("relay /llamar + /events", () => {
       await relay.idle();
       const [ev] = await readEvents(base, 1);
       expect(ev.transcript).toBe(html);
+    });
+  });
+
+  describe("extracción con LLM y respaldo por reglas (S11)", () => {
+    it("llamada en árabe con LLM ok: extractor 'llm', translation_es del LLM, sin pasada translate y ubicación conocida", async () => {
+      const stt = fakeStt({ language: "ar", text: "حريق في شارع لاريوس، شخص محاصر" });
+      const llmExtract = async (transcript: string, language: string): Promise<Extraction> => {
+        expect(transcript).toBe("حريق في شارع لاريوس، شخص محاصر");
+        expect(language).toBe("ar");
+        return {
+          language: "es", // aunque el LLM ponga otro idioma, manda Whisper
+          translation_es: "Hay un incendio en la calle Larios, una persona atrapada",
+          summary_es: "Incendio en calle Larios con una persona atrapada",
+          incident_type: "incendio",
+          location_text: "calle Larios",
+          keywords: ["incendio", "calle Larios", "atrapado"],
+          risks: ["atrapados"],
+          people_at_risk: 1,
+          severity: 5,
+        };
+      };
+      const { relay, base } = await boot(stt, { llmExtract });
+      expect((await call(base)).status).toBe(202);
+      await relay.idle();
+      expect(stt.calls.map((c) => c.task)).toEqual(["transcribe"]);
+      const [ev] = await readEvents(base, 1);
+      expect(isPublicCallEvent(ev)).toBe(true);
+      expect(ev.extractor).toBe("llm");
+      expect(ev.language).toBe("ar");
+      expect(ev.extraction.language).toBe("ar");
+      expect(ev.translation_en).toBeNull();
+      expect(ev.extraction.translation_es).toBe("Hay un incendio en la calle Larios, una persona atrapada");
+      expect(ev.location.known).toBe(true);
+      expect(ev.location.place).toBe("Calle Larios");
+      expect(ev.extraction.location_text).toBe("calle Larios");
+    });
+
+    it("LLM sin location_text usa el nomenclátor sobre la transcripción; si no reconoce nada → ubicación desconocida", async () => {
+      const sttKnown = fakeStt({ language: "es", text: "Árbol caído en Teatinos" });
+      const llmEmptyLoc = async (): Promise<Extraction> => ({
+        ...EXTRACTION,
+        location_text: "",
+      });
+      const a = await boot(sttKnown, { llmExtract: llmEmptyLoc });
+      await call(a.base);
+      await a.relay.idle();
+      const [evA] = await readEvents(a.base, 1);
+      expect(evA.extractor).toBe("llm");
+      expect(evA.location.known).toBe(true);
+      expect(evA.location.place).toBe("Teatinos");
+      expect(evA.extraction.location_text).toBe("Teatinos");
+
+      const sttUnknown = fakeStt({ language: "es", text: "Hay un problema cerca del puente" });
+      const b = await boot(sttUnknown, { llmExtract: llmEmptyLoc });
+      await call(b.base);
+      await b.relay.idle();
+      const [evB] = await readEvents(b.base, 1);
+      expect(evB.extractor).toBe("llm");
+      expect(evB.location.known).toBe(false);
+      expect(evB.location.place).toBeNull();
+      expect(evB.location.aml).toEqual(UNKNOWN_LOCATION_AML);
+    });
+
+    it("si el LLM falla → respaldo a reglas, pasada translate para idioma no es, log y evento publicado", async () => {
+      const lines: string[] = [];
+      const stt = fakeStt({ language: "ar", text: "حريق", translation: "There is a fire in Larios street" });
+      const llmExtract = async () => {
+        throw new Error("LLM 503");
+      };
+      const { relay, base } = await boot(stt, { llmExtract, log: (m) => lines.push(m) });
+      expect((await call(base)).status).toBe(202);
+      await relay.idle();
+      expect(stt.calls.map((c) => c.task)).toEqual(["transcribe", "translate"]);
+      const [ev] = await readEvents(base, 1);
+      expect(isPublicCallEvent(ev)).toBe(true);
+      expect(ev.extractor).toBe("rules");
+      expect(ev.translation_en).toBe("There is a fire in Larios street");
+      expect(lines.some((l) => l.includes("[relay] P1 LLM no disponible (LLM 503): reglas"))).toBe(true);
+    });
+
+    it("si el LLM tarda más que llmTimeoutMs → cae a reglas", async () => {
+      const lines: string[] = [];
+      const stt = fakeStt({ language: "en", text: "Fire in Larios street", translation: "Fire in Larios street" });
+      const llmExtract = () => new Promise<Extraction>((resolve) => setTimeout(() => resolve(EXTRACTION), 250));
+      const { relay, base } = await boot(stt, { llmExtract, llmTimeoutMs: 30, log: (m) => lines.push(m) });
+      expect((await call(base)).status).toBe(202);
+      await relay.idle();
+      expect(stt.calls.map((c) => c.task)).toEqual(["transcribe", "translate"]);
+      const [ev] = await readEvents(base, 1);
+      expect(isPublicCallEvent(ev)).toBe(true);
+      expect(ev.extractor).toBe("rules");
+      expect(lines.some((l) => /\[relay\] P1 LLM no disponible \(.*\): reglas/.test(l))).toBe(true);
+    });
+
+    it("sanea vocabulario inválido, aplica el suelo de gravedad y recorta translation_es a 4000", async () => {
+      const stt = fakeStt({ language: "ar", text: "مساعدة" });
+      const llmExtract = async () =>
+        ({
+          language: "ar",
+          translation_es: "z".repeat(5000),
+          summary_es: "Personas atrapadas con agua subiendo",
+          incident_type: "meteorito_inventado",
+          location_text: "Calle Larios",
+          keywords: ["agua", "atrapados"],
+          risks: ["atrapados", "agua_subiendo", "riesgo_inventado"],
+          people_at_risk: 2,
+          severity: 1, // orden inyectada: el suelo debe subirlo a 5
+        }) as unknown as Extraction;
+      const { relay, base } = await boot(stt, { llmExtract });
+      await call(base);
+      await relay.idle();
+      const [ev] = await readEvents(base, 1);
+      expect(isPublicCallEvent(ev)).toBe(true);
+      expect(ev.extractor).toBe("llm");
+      expect(ev.extraction.incident_type).toBe("otro");
+      expect(ev.extraction.risks).toEqual(["atrapados", "agua_subiendo"]);
+      expect(ev.extraction.severity).toBe(5);
+      expect(ev.extraction.translation_es).toHaveLength(4000);
     });
   });
 });

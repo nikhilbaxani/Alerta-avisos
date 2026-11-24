@@ -48,6 +48,21 @@ describe("publicEventToCall", () => {
     expect(result.decision.incidentId).toBeDefined();
     expect(result.decision.reason).toContain("Ubicación no reconocida en el audio: decide el operador.");
   });
+
+  it("muestra 'LLM del equipo' cuando extractor es 'llm' y 'Reglas (sin LLM)' en otro caso", () => {
+    expect(publicEventToCall(event({ extractor: "llm" }), [], 0).result.engine).toEqual({
+      stt: "Whisper (VPS)",
+      llm: "LLM del equipo",
+    });
+    expect(publicEventToCall(event({ extractor: "rules" }), [], 0).result.engine).toEqual({
+      stt: "Whisper (VPS)",
+      llm: "Reglas (sin LLM)",
+    });
+    expect(publicEventToCall(event(), [], 0).result.engine).toEqual({
+      stt: "Whisper (VPS)",
+      llm: "Reglas (sin LLM)",
+    });
+  });
 });
 
 describe("bandeja", () => {
@@ -99,5 +114,20 @@ describe("límite de texto del evento", () => {
 
   it("la bandeja ignora un evento con transcripción desmesurada", () => {
     expect(addEvent(emptyInbox, event({ transcript: "a".repeat(4001) }))).toBe(emptyInbox);
+  });
+
+  it("acepta extractor ausente, 'llm' o 'rules' y rechaza otros valores", () => {
+    expect(isPublicCallEvent(event())).toBe(true);
+    expect(isPublicCallEvent(event({ extractor: "llm" }))).toBe(true);
+    expect(isPublicCallEvent(event({ extractor: "rules" }))).toBe(true);
+    expect(isPublicCallEvent({ ...event(), extractor: "gpt" })).toBe(false);
+    expect(isPublicCallEvent({ ...event(), extractor: "" })).toBe(false);
+    expect(isPublicCallEvent({ ...event(), extractor: null })).toBe(false);
+    expect(isPublicCallEvent({ ...event(), extractor: 123 })).toBe(false);
+  });
+
+  it("rechaza translation_es mayor que MAX_TRANSCRIPT_CHARS", () => {
+    expect(isPublicCallEvent(event({ extraction: { ...first.mock, translation_es: "a".repeat(4000) } }))).toBe(true);
+    expect(isPublicCallEvent(event({ extraction: { ...first.mock, translation_es: "a".repeat(4001) } }))).toBe(false);
   });
 });

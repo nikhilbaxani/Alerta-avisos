@@ -14,10 +14,12 @@ export interface PublicCallEvent {
   transcript: string;
   /** Traducción al inglés de Whisper (solo si la llamada no está en castellano). */
   translation_en: string | null;
-  /** Extracción del extractor de reglas (lib/rules.ts). */
+  /** Extracción del LLM o del extractor de reglas (lib/rules.ts). */
   extraction: Extraction;
   /** Ubicación dicha en el audio; `known = false` si el nomenclátor no reconoce ningún lugar. */
   location: PublicLocation;
+  /** Motor que produjo la extracción ("llm" o "rules"). Ausente en eventos antiguos (equivale a "rules"). */
+  extractor?: "llm" | "rules";
   timings: { sttMs: number; totalMs: number };
 }
 
@@ -48,7 +50,7 @@ function isExtraction(x: unknown): x is Extraction {
   if (!isObj(x)) return false;
   return (
     isStr(x.language) &&
-    (x.translation_es === null || isStr(x.translation_es)) &&
+    (x.translation_es === null || (isStr(x.translation_es) && x.translation_es.length <= MAX_TRANSCRIPT_CHARS)) &&
     isStr(x.summary_es) &&
     (INCIDENT_TYPES as readonly string[]).includes(x.incident_type as string) &&
     isStr(x.location_text) &&
@@ -73,6 +75,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent {
     (x.translation_en === null || (isStr(x.translation_en) && x.translation_en.length <= MAX_TRANSCRIPT_CHARS)) &&
     isExtraction(x.extraction) &&
     isObj(loc) && (loc.place === null || isStr(loc.place)) && typeof loc.known === "boolean" && isAml(loc.aml) &&
+    (x.extractor === undefined || x.extractor === "llm" || x.extractor === "rules") &&
     isObj(tim) && isNum(tim.sttMs) && isNum(tim.totalMs)
   );
 }

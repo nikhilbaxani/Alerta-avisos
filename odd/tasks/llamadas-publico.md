@@ -17,6 +17,10 @@ Rama: `feature/llamadas-publico`. Leer hasta `## Log`.
 
 - **S10 · Todo en el VPS con Funnel.** «lo que tenemos pensado es la web también sea por el vps no usamos vercel ni nada de eso»; modo elegido: «Sí, con Tailscale Funnel (Recomendado)». La consola y `/llamar` se sirven como web estática (exportación estática, modo simulado) desde el VPS junto al relay, con un solo origen: Tailscale Funnel → Caddy en `127.0.0.1:8080` → `/relay/*` al relay y el resto a la web (`NEXT_PUBLIC_RELAY_URL=/relay`). firewalld, SSH por Tailscale, el exit node y los demás dispositivos no se tocan. La IP del cliente para la cuota se toma del `X-Forwarded-For` saltando direcciones locales y privadas desde la derecha; si Funnel no la pasa, se documenta la prueba y subir `RATE_LIMIT`.
 
+- **S11 · LLM del sobremesa en el relay.** Usuario: «esto es para el modelo grande que procesa el texto que whisper transcribe» (`LLM_BASE_URL=https://pc-sobremesa.tail0093c8.ts.net:8443/v1`, `LLM_MODEL=strata`; la key va solo en `server/relay.env` del VPS, nunca en el repo) y elige «Sí, opción A (Recomendado)». Si `LLM_BASE_URL` está definido, el relay extrae con el LLM (prompt `EXTRACTION_SYSTEM` + `sanitizeExtraction`, con `translation_es`) y geolocaliza con el nomenclátor; si el LLM falla o tarda más de `LLM_TIMEOUT_MS` (20 s), usa las reglas (con la pasada `translate` de Whisper). El evento indica `extractor: "llm" | "rules"` y la consola lo muestra. El VPS llega al LLM por la ruta pública de Funnel del sobremesa: el aislamiento de la tailnet no cambia.
+
+- **S12 · Pestañas Simulación / En directo.** Usuario: «lo que digo en la web que está la pestaña esta que cambia de malaga dana y apagón, hazlo que sea tipo que sea la pestaña simulado y la pestaña real donde aparece lo que le mandamos por el qr». Dos pestañas en la barra superior: «Simulación» (selector DANA/Apagón y controles de reproducción como hoy) y «En directo (QR)» (mapa, colas e incidentes vacíos donde solo entran las llamadas del público aceptadas en la bandeja; bandeja y QR visibles; sin reloj ni controles de reproducción). Cada pestaña conserva su estado al cambiar. Sin `NEXT_PUBLIC_RELAY_URL`, «En directo» aparece desactivada con un aviso.
+
 ## Contrato compartido (`lib/publicCall.ts`)
 
 ```ts
@@ -48,6 +52,8 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T3 | S3, S4, S6, S8 | Página `/llamar` + QR + bandeja de entrada en la consola | 1f2534c |
 | T4 | todas | Integración, e2e, README/DECISIONES/PROGRESO | a7fa4eb |
 | T6 | S10, S9 | Despliegue todo-en-VPS con Funnel: web estática + Caddy interno + relay + stt | — |
+| T7 | S11, S2, S5 | Extracción con el LLM del sobremesa en el relay, reglas como respaldo | — |
+| T8 | S12 | Pestañas Simulación / En directo en la consola | — |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log
@@ -66,3 +72,5 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L12** (usuario): «lo que tenemos pensado es la web también sea por el vps no usamos vercel ni nada de eso»; elige «Sí, con Tailscale Funnel (Recomendado)».
 - **L13** (T6): web estática + Caddy interno (`127.0.0.1:8080`) + relay + stt; Funnel delante. IP del cliente: XFF desde la derecha saltando locales/privadas; Caddy con `trusted_proxies static private_ranges` para no sustituir la cabecera de Funnel (si no, todo el público compartiría cuota). 293 tests, tsc, evals y build en verde; exportación estática con `/relay` comprobada en copia temporal y capturas sin errores de CSP en Chrome. Sin probar: build Docker, Caddy real, si Funnel envía `X-Forwarded-For` (prueba documentada en `server/README.md`, paso g).
 - **L14** (despliegue en oracle-exit, 1 vCPU ARM, Ubuntu 24.04): `~/alerta-avisos`, `WEB_PORT=8095` (8080 lo usa SearXNG), Whisper `base`, Funnel en https://oracle-exit.tail0093c8.ts.net. Prueba por internet: llamada en castellano de 7 s → STT 5–6 s → inundacion_vehiculo, Campanillas conocida, gravedad 5; el relay ve la IP pública real y la suplantación con `X-Forwarded-For` se ignora; aceptar en la consola crea INC-01 sin errores.
+- **L15** (usuario): «pero está puesto los modelos whisper? … esto es para el modelo grande que procesa el texto que whisper transcribe»; elige opción A. Comprobado: `strata` responde en ~9 s y traduce bien árabe; `pc-sobremesa.tail0093c8.ts.net` resuelve a una IP pública de Funnel (176.58.90.46), así que el contenedor llega por internet (200, 340 ms) con el aislamiento intacto. La key se pegó en el chat: rotarla tras el hackathon.
+- **L16** (usuario): «De mientras, lo que digo en la web que está la pestaña esta que cambia de malaga dana y apagón, hazlo que sea tipo que sea la pestaña simulado y la pestaña real donde aparece lo que le mandamos por el qr».

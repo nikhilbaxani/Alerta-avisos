@@ -35,7 +35,10 @@ export function publicEventToCall(
     language: ev.language,
     extraction: ev.extraction,
     decision,
-    engine: { stt: "Whisper (VPS)", llm: "Reglas (sin LLM)" },
+    engine: {
+      stt: "Whisper (VPS)",
+      llm: ev.extractor === "llm" ? "LLM del equipo" : "Reglas (sin LLM)",
+    },
     timings: { sttMs: ev.timings.sttMs, llmMs: 0, totalMs: ev.timings.totalMs },
   };
   return { meta, result };
