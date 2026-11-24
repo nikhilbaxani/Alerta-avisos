@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { getScenario } from "@/data/scenarios";
 import { APPROVAL_DELAY_S, formatRun, runAgent, runToJson, summarize } from "@/lib/agent";
@@ -12,6 +13,17 @@ const actionsOf = (run: AgentRun, callId: string) => run.actions.filter((a) => a
 
 describe("npm run agente: escenario DANA (operador simulado)", async () => {
   const run = await runAgent(dana);
+
+  it("E1 escala en árabe con la sala por defecto y la traza distingue aviso y atención", () => {
+    const e1 = run.waiting.calls.find((c) => c.callId === "E1")!;
+    expect(run.waiting.operators).toBe(2);
+    expect(e1.waiting).toMatchObject({ outcome: "escalated", reasons: ["vida", "dolor_pecho", "severity_5"], script: [
+      "أنا المساعد الآلي لخدمة الطوارئ 112.", "ماذا حدث؟", "هل يمكنك أن تخبرني بالعنوان الدقيق؟",
+    ] });
+    expect(e1.humanAt).toBeGreaterThan(e1.arrival);
+    expect(formatRun(run, "reglas")).toContain("Espera E1 · escalada inmediata a T+01:42");
+    expect(runToJson(run, "reglas").espera.llamadas.find((c) => c.llamada === "E1")).toMatchObject({ resultado: "escalada", operadorEn: e1.humanAt });
+  });
 
   it("la agrupación es la del motor real y la zona gris la decide el operador simulado", () => {
     expect(run.incidents).toHaveLength(7);
@@ -88,6 +100,23 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
     for (const w of ["percepción", "razonamiento", "herramienta", "aprobación", "resultado"]) expect(text).toContain(w);
     expect(text).toMatch(/T\+02:43 +A4/);
     expect(text).toMatch(/Acciones preparadas: \d+/);
+  });
+});
+
+describe("CLI de espera", () => {
+  const cli = (...args: string[]) => spawnSync(process.execPath, ["--import", "tsx", "scripts/agente.ts", ...args], { encoding: "utf8" });
+
+  it.each([{ args: [] }, { args: ["--escenario", "apagon"] }])("mantiene el escenario y acepta más operadores ($args)", ({ args }) => {
+    const result = cli(...args, "--operadores=30");
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(args.length ? "16 llamadas → 6 incidentes" : "26 llamadas → 7 incidentes");
+    expect(result.stdout).toContain("  Espera (30 operadores): 0 atendidas por el asistente · 0 duplicados sin operador · 0 escaladas");
+  });
+
+  it.each([["--operadores"], ["--operadores=0"], ["--operadores=1.5"], ["--operadores=-2"], ["--operadores=NaN"], ["--operadores=9007199254740992"]])("rechaza un número inválido (%s)", (arg) => {
+    const result = cli(arg);
+    expect([result.status, result.stdout, result.stderr]).toEqual([1, "", "--operadores requiere un número entero positivo (p. ej. --operadores 2).\n"]);
   });
 });
 

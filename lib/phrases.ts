@@ -5,6 +5,36 @@ export interface Phrase {
   tr: Record<string, string>;
 }
 
+export function phraseText(phrase: Phrase, lang: string): string | undefined {
+  return lang === "es" ? phrase.es : Object.hasOwn(phrase.tr, lang) ? phrase.tr[lang] : undefined;
+}
+
+/** Solo para el guion de espera: presentación y pregunta, no son instrucciones SMS. */
+export const WAITING_PROMPTS: Phrase[] = [
+  {
+    id: "asistente_automatico",
+    es: "Soy el asistente automático del 112.",
+    tr: {
+      en: "I am the 112 automated assistant.",
+      de: "Ich bin der automatische Assistent des Notrufs 112.",
+      fr: "Je suis l’assistant automatique du 112.",
+      ar: "أنا المساعد الآلي لخدمة الطوارئ 112.",
+      it: "Sono l’assistente automatico del 112.",
+    },
+  },
+  {
+    id: "que_pasa",
+    es: "¿Qué ha pasado?",
+    tr: {
+      en: "What happened?",
+      de: "Was ist passiert?",
+      fr: "Que s’est-il passé ?",
+      ar: "ماذا حدث؟",
+      it: "Che cosa è successo?",
+    },
+  },
+];
+
 export const PHRASES: Phrase[] = [
   {
     id: "calma",

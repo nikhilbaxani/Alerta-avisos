@@ -11,6 +11,8 @@ import { confirmDifferent, confirmSame, initialState, processCall } from "@/lib/
 import type { EngineCall, Incident } from "@/lib/engine";
 import { LANG_NAMES, RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import type { DecisionAction, IncidentType, RiskTag, Scenario } from "@/lib/types";
+import { simulateWaiting } from "@/lib/waiting";
+import type { WaitingResult, WaitingRun } from "@/lib/waiting";
 
 /** Segundos de escenario que tarda el operador simulado en aprobar una acción. */
 export const APPROVAL_DELAY_S = 5;
@@ -51,9 +53,10 @@ export interface AgentRun {
   steps: AgentStep[];
   actions: AgentAction[];
   incidents: Incident[];
+  waiting: WaitingRun;
 }
 
-export async function runAgent(scenario: Scenario, opts: { planner?: Planner; approvalDelayS?: number } = {}): Promise<AgentRun> {
+export async function runAgent(scenario: Scenario, opts: { planner?: Planner; approvalDelayS?: number; operators?: number } = {}): Promise<AgentRun> {
   const planner = opts.planner ?? rulesPlanner;
   const delay = opts.approvalDelayS ?? APPROVAL_DELAY_S;
   const calls = [...scenario.calls].sort((a, b) => a.t - b.t);
@@ -126,7 +129,12 @@ export async function runAgent(scenario: Scenario, opts: { planner?: Planner; ap
   }
   approveUntil(Infinity);
 
-  return { scenarioId: scenario.id, scenarioName: scenario.name, approvalDelayS: delay, steps, actions, incidents: state.incidents };
+  // La capacidad de sala no cambia el reloj de la reproducción de acciones X05.
+  const waiting = simulateWaiting(calls.map((c, i) => ({
+    id: c.id, t: c.t, lang: c.mock.language, type: c.mock.incident_type,
+    severity: c.mock.severity, risks: c.mock.risks, decision: steps[i].decision,
+  })), opts.operators);
+  return { scenarioId: scenario.id, scenarioName: scenario.name, approvalDelayS: delay, steps, actions, incidents: state.incidents, waiting };
 }
 
 // ───────────────────────────── Resumen ─────────────────────────────
@@ -135,6 +143,7 @@ export interface AgentSummary {
   calls: number;
   incidents: number;
   operatorDecisions: number;
+  waiting: { operators: number; attended: number; duplicates: number; escalated: number };
   prepared: number;
   byTool: Record<ActionTool, number>;
   byOrigin: { reglas: number; ia_local: number };
@@ -153,6 +162,12 @@ export function summarize(run: AgentRun): AgentSummary {
     calls: run.steps.length,
     incidents: run.incidents.length,
     operatorDecisions: run.steps.filter((s) => s.operator !== null).length,
+    waiting: {
+      operators: run.waiting.operators,
+      attended: run.waiting.calls.filter((c) => c.waiting?.script != null).length,
+      duplicates: run.waiting.calls.filter((c) => c.waiting?.outcome === "duplicate").length,
+      escalated: run.waiting.calls.filter((c) => c.waiting?.outcome === "escalated").length,
+    },
     prepared: a.length,
     byTool,
     byOrigin: { reglas: a.filter((x) => x.origin === "reglas").length, ia_local: a.filter((x) => x.origin === "ia_local").length },
@@ -209,12 +224,27 @@ function actionBlock(a: AgentAction, n: number): string[] {
   ];
 }
 
+const waitingOutcomes = { queued: "en cola humana", duplicate: "duplicado agrupado sin operador", escalated: "escalada" } as const;
+
+function waitingLine(c: WaitingResult): string[] {
+  const w = c.waiting;
+  if (!w) return [];
+  const outcome = w.outcome === "escalated"
+    ? `escalada inmediata a ${clock(c.arrival)} (${w.reasons.map((r) => r === "severity_5" ? "gravedad 5" : lc(RISK_LABELS[r])).join(", ")})`
+    : waitingOutcomes[w.outcome];
+  return [
+    `  Espera ${c.callId} · ${outcome}${c.humanAt === null ? "" : ` · atención de sala a ${clock(c.humanAt)}`}`,
+    w.script ? `    Guion: «${w.script.join(" ")}»` : "    Sin guion pretraducido en ese idioma; requiere atención humana.",
+  ];
+}
+
 export function summaryLines(run: AgentRun): string[] {
   const s = summarize(run);
   const tools = ACTION_TOOLS.map((t) => `${t} ${s.byTool[t]}`).join(", ");
   return [
     `Resumen · ${run.scenarioName} · SIMULACIÓN`,
     `  ${s.calls} llamadas → ${s.incidents} incidentes · ${s.operatorDecisions} ${s.operatorDecisions === 1 ? "decisión" : "decisiones"} del operador (simulado) en zona gris`,
+    `  Espera (${s.waiting.operators} ${s.waiting.operators === 1 ? "operador" : "operadores"}): ${s.waiting.attended} atendidas por el asistente · ${s.waiting.duplicates} duplicados sin operador · ${s.waiting.escalated} escaladas`,
     `  Acciones preparadas: ${s.prepared} (${tools}) · origen: reglas ${s.byOrigin.reglas}, IA local ${s.byOrigin.ia_local}`,
     `  Automáticas, enviadas al momento con registro: ${s.automatic}`,
     `  Aprobadas por el operador (simulado): ${s.approved} · descartadas: ${s.discarded} · pendientes: ${s.pending}`,
@@ -225,15 +255,17 @@ export function summaryLines(run: AgentRun): string[] {
 /** Traza legible: una línea por llamada y, debajo, cada acción nueva con su cadena completa. */
 export function formatRun(run: AgentRun, plannerLabel: string): string {
   const byKey = new Map(run.actions.map((a) => [a.key, a]));
+  const waitingById = new Map(run.waiting.calls.map((c) => [c.callId, c]));
   const out: string[] = [
     `Agente 112 · traza del agente de acciones · ${run.scenarioName}`,
     SIMULATION_NOTICE,
     `Planificador: ${plannerLabel} · el operador simulado acierta en la zona gris y aprueba a los ${run.approvalDelayS} s`,
+    "Espera: la atención de sala se simula aparte del reloj de las acciones.",
     "",
   ];
   let n = 0;
   for (const s of run.steps) {
-    out.push(stepLine(s));
+    out.push(stepLine(s), ...waitingLine(waitingById.get(s.callId)!));
     if (s.warning) out.push(`  aviso: ${s.warning}`);
     for (const i of s.issues) out.push(`  IA local, ${i.outcome}: ${i.tool} · ${i.reason}`);
     for (const k of s.added) out.push(...actionBlock(byKey.get(k)!, ++n));
@@ -266,6 +298,21 @@ export function runToJson(run: AgentRun, plannerLabel: string) {
       iaLocal: st.issues,
       aviso: st.warning,
     })),
+    espera: {
+      operadores: s.waiting.operators,
+      atendidas: s.waiting.attended,
+      duplicadosSinOperador: s.waiting.duplicates,
+      escaladas: s.waiting.escalated,
+      llamadas: run.waiting.calls.map((c) => ({
+        llamada: c.callId,
+        llegada: c.arrival,
+        operadorEn: c.humanAt,
+        resultado: c.waiting ? waitingOutcomes[c.waiting.outcome] : "operador libre",
+        escaladaEn: c.waiting?.outcome === "escalated" ? c.arrival : null,
+        motivos: c.waiting?.reasons.map((r) => r === "severity_5" ? "gravedad_5" : r) ?? [],
+        guion: c.waiting?.script ?? null,
+      })),
+    },
     acciones: run.actions.map(traceOf),
     resumen: {
       llamadas: s.calls,

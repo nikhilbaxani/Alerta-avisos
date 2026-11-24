@@ -90,3 +90,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Sin probar: build de las imágenes Docker, Whisper real en CPU, grabación real en móvil (iOS Safari incluido). Necesita a Nick/equipo: desplegar en el VPS (`server/README.md`) y poner `NEXT_PUBLIC_RELAY_URL` en Vercel.
 - Endurecimiento (T5): Whisper rechaza audio > máximo antes de transcribir, relay a 3 MB, IP real por el último salto de Caddy e IPv6 /64, cuota solo para llamadas válidas, 403 a otros orígenes, transcripción ≤ 4000 caracteres, ids aleatorios por arranque, secretos fuera de la imagen, STT sin root, alias genéricos fuera del nomenclátor, reconexión de la bandeja, token por `#op=` y recibo honesto. 289 tests.
 - Desplegado en oracle-exit detrás de Tailscale Funnel (https://oracle-exit.tail0093c8.ts.net): web, relay y Whisper `base` en CPU; prueba por internet OK (IP real, sin suplantación, llamada aceptada → INC-01).
+
+## 2026-11-24T22:40 · X06 · hecha
+- Qué se hizo: `lib/waiting.ts` (sala simulada con N operadores, cola humana, escalado inmediato por riesgo vital, guion del asistente solo con frases pretraducidas), frases `asistente_automatico` y `que_pasa` en seis idiomas (`lib/phrases.ts`, sin tocar las existentes), integración en `lib/agent.ts` y `npm run agente -- --operadores N` (por defecto 2).
+- Verificación (worker): 331 tests, `tsc` OK, `eval` 7/0/2 con E1 2.º y `eval:apagon` 6/0/1 con J1 1.º, `npm run agente` determinista (DANA, 2 operadores: 22 atendidas por el asistente, 7 duplicados sin operador, 13 escaladas; apagón: 14, 5 y 8). La zona gris nunca se resuelve sin operador. Ninguna interfaz tocada.
+- Sin ejecutar en esta tarea: `npm run build` y e2e (otro agente tenía `.next`); `--live`.
+- Decisiones: tres entradas X06 en `docs/BUZON.md`, pendientes de pasar a DECISIONES en X07. Los tiempos de sala son ilustrativos.
+- Siguiente: X07.
