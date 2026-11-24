@@ -24,6 +24,40 @@ En la pestaña **Simulación**, el selector cambia entre dos escenarios: **DANA 
 5. **Simulación de sala**: espera hasta atender la llamada crítica con y sin copiloto (con 1–4 operadores). Son supuestos ilustrativos (60 s por llamada nueva, 15 s por duplicado), no datos reales.
 6. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
 
+## El agente
+
+El agente usa el tipo, los riesgos y la ubicación de los incidentes para preparar acciones. Se muestra en terminal, no como controles nuevos en la consola. La [política de aprobación](lib/actions.ts) está en código y se comprueba con tests; no la decide el modelo ni el texto de la llamada.
+
+| Herramienta | Qué prepara | Quién aprueba |
+|---|---|---|
+| `proponer_recursos` | Propuesta de movilización de bomberos, SAMU o policía local en el CAD | Operador |
+| `sms_al_llamante` | SMS con instrucciones pretraducidas | Operador |
+| `avisar_distribuidora` | Aviso informativo por cables en el suelo o falta de suministro con personas vulnerables | Automático con registro, solo por reglas |
+| `aviso_ayuntamiento` | Aviso informativo a Movilidad por semáforos apagados, árbol caído o vía bloqueada | Automático con registro, solo por reglas |
+| `devolver_llamada` | Rellamada a quien informó de que una persona no responde | Operador |
+| `proponer_es_alert` | Borrador de alerta con zona calculada y texto fijo | Siempre un coordinador humano; no hay coordinador simulado |
+
+Solo se automatizan los avisos informativos a organismos; no movilizan recursos. Toda propuesta del modelo necesita revisión del operador como mínimo: si propone un aviso, este deja de ser automático; si propone un ES-Alert, sigue siendo necesaria la aprobación del coordinador. La reproducción simula al operador, pero deja ES-Alert pendiente. **Todos los conectores y acuses son simulados: ningún servicio real recibe nada.**
+
+**Seguridad.** En los prompts que usan texto de la llamada, este se delimita como dato no confiable, no como instrucción. El planificador solo recibe datos estructurados, como tipo, riesgos y coordenadas, sin transcripciones ni resúmenes libres. El código impone una gravedad mínima según el tipo y los riesgos detectados, valida las entradas y limita el tamaño de las peticiones a la API. Las propuestas del modelo se comprueban contra la lista de herramientas y sus argumentos admitidos. ES-Alert no toma texto ni zona del llamante ni del modelo.
+
+**Llamadas en espera.** El asistente solo interviene si la llamada tendría que esperar. Se presenta como asistente automático, pregunta qué pasa y dónde, y usa solo frases pretraducidas en el idioma del llamante. Si detecta riesgo vital, da prioridad inmediata a la llamada en la cola humana, sin interrumpir las llamadas activas. Puede evitar que un operador atienda un duplicado de alta confianza si no hay criterio de escalado y existe un guion para el idioma. Nunca resuelve la zona gris. El guion se muestra en la traza; no se reproduce en una llamada real.
+
+### Ejecutar el agente
+
+```bash
+npm run agente                                      # DANA en Málaga, por defecto
+npm run agente -- --escenario apagon                # apagón en Málaga
+npm run agente -- --operadores N                    # sustituye N por un entero positivo (por defecto: 2)
+npm run agente -- --parte archivo.md                # guarda el parte en Markdown
+npm run agente -- --json archivo                    # guarda la traza y el parte en JSON
+npm run agente -- --help                            # lista todas las opciones, incluida --live
+```
+
+Por defecto usa las extracciones del guion y reglas deterministas, sin servidor, GPU, red ni claves. Con `--live` y un modelo local configurado, el modelo puede añadir propuestas al plan; la cola y los conectores siguen siendo simulados.
+
+La traza muestra la evidencia, el motivo, la herramienta, la aprobación y el resultado. Al final siempre se imprime un **parte de situación simulado**: llamadas e incidentes, líneas liberadas por agrupación (llamadas menos incidentes), prioridades y motivos, zonas con más incidentes, estado de las acciones y resumen de la espera. Los tiempos de sala son ilustrativos: 60 s por llamada nueva o en ámbar y 15 s por repetida atendida por un operador. No son tiempos de un servicio real ni se usan como reloj de las acciones.
+
 ## Activar la IA local (GPU NVIDIA)
 
 ```bash
