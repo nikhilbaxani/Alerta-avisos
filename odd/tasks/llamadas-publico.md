@@ -45,6 +45,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **S13** (usuario, L19): «que use el whisper de sobremesa y ya que tontería para no tener más latencia, mira si puede subir la velocidad de whisper también». El relay tiene un único STT (el de la sobremesa por el gateway, con la clave del LLM); sin respaldo en el VPS; una sola pasada de Whisper por llamada y traducción al castellano con el LLM.
 - **S14** (usuario, L20): «al escanear el qr y simular la llamada, dependiendo de lo que tarde en transcribir, proyectar el texto para que en esa simulación, la persona vea si es correcto mas o menos, y darle a un boton de enviar». En `/llamar`, tras grabar, la persona ve el progreso de la transcripción, después el texto transcrito y un botón «Enviar»; la llamada solo llega a la bandeja del operador cuando la persona pulsa «Enviar».
 - **S15** (usuario, L29–L30): «es agente 112 par que lo sepa que hay lio con el titulo» y «cambia el logo también». El nombre del producto a la vista es «Agente 112» en toda la interfaz (consola, `/llamar`, ayuda, título de la pestaña) y en el logo de la barra superior; no deben quedar «Copiloto 112» ni «Avance 112» visibles.
+- **S16** (usuario, L33): «si mejora un poco el diseño de esto» (la página `/llamar`, sobre sus capturas del estado de revisión y del recibo), con una captura de la consola rediseñada por un compañero: «este es mas o meno el estilo mejorado que no está subido todavía». `/llamar` debe mejorar su diseño y acercarse a ese estilo (oscuro, paneles redondeados, acento rojo), sin depender del código de ese rediseño, que aún no está en el repositorio.
 
 ## Tasks
 
@@ -61,6 +62,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T10 | S14, S3–S6, S9 | Confirmación del llamante: transcripción visible en `/llamar` y botón «Enviar» antes de publicar | eef24d8 |
 | T11 | S9, S14, S7 | Correcciones tras la verificación final: TTL en compose, cola y cuota con llamadas sin enviar, bandeja tras recargar, documentación de privacidad, cola configurable y posición en la cola | b82f992 |
 | T12 | S15 | Unificar el nombre visible y el logo en «Agente 112» | 087cd8a |
+| T13 | S16, S14 | Rediseño de `/llamar` en el estilo de la consola nueva y retoques de texto del recibo | — |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log
@@ -97,3 +99,4 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 - **L30** (usuario): «cambia el logo también».
 - **L31** (prueba de carga, VPS con b82f992 y límites 60/60/60): 50 subidas simultáneas por la URL pública (castellano y árabe alternados, desde una sola IP, descartando al terminar): 50 de 50 aceptadas (subida más lenta 3,9 s), 50 de 50 transcritas, 0 errores; primera transcripción a los 14 s, mediana 289 s, p90 514 s, última 562 s (≈11 s por llamada); relay 108 MB. El límite es el Whisper en CPU, en serie.
 - **L32** (T12): nombre visible «Agente 112» en título de pestaña, `/llamar`, ayuda, textos de la consola y franja de simulación; logo `docs/marca/logo-agente-112.svg` (estático; el de «Avance 112» ya no se importa, su carpeta se conserva). 486 tests, `tsc`, build y e2e en verde; capturas `docs/capturas/agente112-*.png` revisadas. Quedan «Copiloto» en comentarios de `server/tailnet-guard.*` y en claves `copiloto112.*` de `localStorage`.
+- **L33** (usuario, tras probar desde un Mac: transcripción correcta y llamada `PHXI51` publicada): «si mejora un poco el diseño de esto» + captura de la consola rediseñada: «este es mas o meno el estilo mejorado que no está subido todavía». En esa captura el logo sigue diciendo «Avance 112»: habrá que unificarlo al fusionar. Retoques de texto detectados en el recibo: «Enviado al operador.» repetido y «él decide» (género).
