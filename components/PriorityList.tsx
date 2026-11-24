@@ -3,7 +3,7 @@ import { SEVERITY_LABELS, TYPE_LABELS } from "@/lib/labels";
 import type { ConsoleState } from "@/lib/useConsole";
 import { placeOf, toneOf } from "./format";
 
-export default function PriorityList({ s, onSelect }: { s: ConsoleState; onSelect: (id: string) => void }) {
+export default function PriorityList({ s, onSelect, pendingActions = {} }: { s: ConsoleState; onSelect: (id: string) => void; pendingActions?: Record<string, number> }) {
   const ranked = rankIncidents(s.engine.incidents, s.clock);
   return (
     <section aria-labelledby="prio-h">
@@ -34,6 +34,7 @@ export default function PriorityList({ s, onSelect }: { s: ConsoleState; onSelec
                   </span>
                   <span className="prio-side">
                     {i.provisional ? <span className="badge badge-ask">Decidir</span> : <span className={`badge sev-${i.severity}`}>{SEVERITY_LABELS[i.severity]}</span>}
+                    {pendingActions[i.id] ? <span className="badge badge-todo">{pendingActions[i.id]} por aprobar</span> : null}
                     <span className="prio-id">{i.id}</span>
                   </span>
                 </button>

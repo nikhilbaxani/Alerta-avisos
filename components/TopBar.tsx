@@ -10,6 +10,8 @@ interface Props {
   s: ConsoleState;
   status: EngineStatus;
   pending: number;
+  actionsSent: number;
+  actionsToApprove: number;
   onPlay: () => void;
   onPause: () => void;
   onSpeed: (v: Speed) => void;
@@ -19,7 +21,7 @@ interface Props {
   onHelp: () => void;
 }
 
-export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, onReset, onExport, onScenario, onHelp }: Props) {
+export default function TopBar({ s, status, pending, actionsSent, actionsToApprove, onPlay, onPause, onSpeed, onReset, onExport, onScenario, onHelp }: Props) {
   const done = Object.values(s.recs).filter((r) => r.status === "done").length;
   const total = getScenario(s.scenarioId).calls.length;
   const incidents = s.engine.incidents.length;
@@ -93,6 +95,13 @@ export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, o
         <div className={`kpi ${pending > 0 ? "warn" : ""}`} data-kpi="pending" data-value={pending}>
           <span className="kpi-val">{pending}</span>
           <span className="kpi-label">{pending === 1 ? "decisión pendiente" : "decisiones pendientes"}</span>
+        </div>
+        <div className="kpi" data-kpi="actions" data-value={actionsSent}>
+          <span className="kpi-val">{actionsSent}</span>
+          <span className="kpi-label">
+            {actionsSent === 1 ? "acción del agente" : "acciones del agente"}
+            <span className={`kpi-hint ${actionsToApprove > 0 ? "todo" : ""}`}>{actionsToApprove > 0 ? `${actionsToApprove} por aprobar` : "enviadas a servicios"}</span>
+          </span>
         </div>
       </section>
     </>

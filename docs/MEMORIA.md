@@ -211,7 +211,7 @@ En modo simulado el texto libre se desactiva con el aviso "La traducción libre 
 
 > Aprobada el 2026-11-24 a partir de `docs/PROPUESTA-AGENTE.md`. Amplía, no sustituye, las secciones anteriores. Todo lo de §6 (modo simulado sin red, zona gris decidida por el operador, `gold` intacto) sigue siendo obligatorio.
 
-**Restricción de Nick (2026-11-24): la interfaz de la consola no se toca.** Prohibido modificar `components/`, `app/page.tsx`, `app/layout.tsx`, `app/globals.css` y `lib/useConsole.ts`. Las capacidades de agente viven en `lib/`, `app/api/` y `scripts/`, y se demuestran con tests, la API y `npm run agente` (reproduce el escenario en terminal e imprime la traza). La consola y GitHub Pages deben seguir funcionando exactamente igual (`node scripts/e2e.mjs` en verde).
+**Interfaz (actualizado 2026-11-24 por Nick):** la restricción inicial («la interfaz no se toca») se levanta solo para hacer visibles las acciones del agente en la consola (X09) y el audio de las llamadas (X10), que Nick pidió expresamente para el pitch. X04–X08 siguen sin cambiar la interfaz: sus capacidades viven en `lib/`, `app/api/` y `scripts/`, se demuestran con tests, la API y `npm run agente`, y reutilizan `lib/actions.ts`. La consola y GitHub Pages deben seguir funcionando (`node scripts/e2e.mjs` en verde). La sala en directo con QR (público llamando desde el móvil) la lleva otro miembro del equipo.
 
 **Idea**: el sistema percibe (audio, AML), razona (extracción, agrupación, prioridad) y ahora también **actúa**: prepara acciones sobre servicios externos (simulados), atiende a quien está en espera y deja una traza auditable de cada paso.
 

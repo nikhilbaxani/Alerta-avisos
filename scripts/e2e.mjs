@@ -42,6 +42,20 @@ if (!/[؀-ۿ]/.test(said)) fail("la respuesta no está en árabe");
 await page.getByRole("button", { name: "Reproducir al llamante" }).click();
 await page.screenshot({ path: "docs/capturas/T19-arabe.png" });
 
+// Agente de acciones (X05 en la consola): los avisos informativos ya se enviaron solos; el SMS en árabe espera al operador.
+const sentBefore = await kpi(page, "actions");
+if (sentBefore < 2) fail(`el agente no ha enviado los avisos automáticos (${sentBefore})`);
+await page.getByRole("button", { name: /Aprobar y enviar: SMS en árabe/ }).click();
+await page.getByText(/Aprobado y enviado · acuse SMS-[0-9A-F]{6}/).first().waitFor({ timeout: 5000 });
+if ((await kpi(page, "actions")) !== sentBefore + 1) fail("aprobar el SMS no cuenta como acción enviada");
+
+// ES-Alert (X07): lo propone el agente para la zona de los coches atrapados, pero solo lo aprueba un coordinador.
+await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
+const es = page.locator(".act", { hasText: "ES-Alert a la población" });
+if ((await es.count()) !== 1) fail("falta la tarjeta del ES-Alert en el coche de A");
+if (await es.getByRole("button", { name: /Aprobar y enviar/ }).count()) fail("el operador no debe poder aprobar un ES-Alert");
+if (!(await es.innerText()).includes("La aprueba un coordinador")) fail("el ES-Alert no avisa de que lo aprueba un coordinador");
+
 // Separar una llamada del coche de A (6 llamadas; F es el otro vehículo, con 2).
 await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
 await page.getByRole("button", { name: "Separar llamada A6" }).click();
@@ -53,6 +67,7 @@ const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("b
 const log = JSON.parse(await (await import("node:fs/promises")).readFile(await dl.path(), "utf8"));
 const kinds = new Set(log.eventos.map((e) => e.kind));
 if (log.llamadas.length !== 26 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
+if (!kinds.has("accion_auto") || !kinds.has("accion_aprobada") || !log.accionesAgente?.length) fail("el registro no incluye las acciones del agente");
 
 // Escenario 2: apagón (una sola pregunta, M1).
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -83,4 +98,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, Separar, sin errores de consola");
+console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, acciones del agente, Separar, sin errores de consola");

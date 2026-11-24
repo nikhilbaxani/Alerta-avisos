@@ -110,3 +110,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Petición de Nick: reservar el bucle para la futura landing y evitar la repetición en la interfaz.
 - Cambio: `TopBar` utiliza el SVG animado existente, que termina en reposo tras una entrada. El GIF original mantiene su bucle; el PNG sigue siendo la alternativa para movimiento reducido.
 - Verificación: TypeScript correcto y prueba con Chromium en la aplicación local; se observa la entrada, se comparan capturas tras finalizar y después del antiguo periodo de 4,8 s, al pasar el cursor y al usar Iniciar/Pausar. El logo permanece fijo; móvil sin desbordamiento y movimiento reducido con PNG. Captura en `/tmp/alerta-avisos-logo-qa/logo-una-vez.png`.
+
+## 2026-11-24 · X09 · hecha
+- Qué se hizo: la consola usa el agente de acciones de X05–X07 (seis herramientas, incluido el ES-Alert de zona, que solo aprueba un coordinador): `lib/consoleActions.ts` (estado de la consola → `PlanInput`), estado y registro de acciones en `lib/useConsole.ts` y `lib/audit.ts` (traza completa), `components/AgentActions.tsx` y `components/AgentFeed.tsx`, cifra en el resumen y pastilla «por aprobar» en la prioridad. MEMORIA §16 y CLAUDE.md actualizados (la interfaz cambia en X09–X10 por petición de Nick).
+- Verificación: ver el commit; `node scripts/e2e.mjs` aprueba el SMS en árabe y comprueba el registro.
+- Siguiente: X10 (audio de las llamadas).

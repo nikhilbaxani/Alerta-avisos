@@ -3,7 +3,10 @@ import { rankIncidents } from "@/lib/priority";
 import { callMeta } from "@/lib/useConsole";
 import type { ConsoleState, Reply } from "@/lib/useConsole";
 import type { RiskTag } from "@/lib/types";
+import { actionIncidents } from "@/lib/actions";
+import type { AgentAction } from "@/lib/actions";
 import Icon from "./Icon";
+import AgentActions from "./AgentActions";
 import ReplyPanel from "./ReplyPanel";
 import { langName, mmss, placeOf, plural } from "./format";
 
@@ -12,11 +15,14 @@ interface Props {
   localAI: boolean;
   onSplit: (callId: string) => void;
   onReply: (r: Reply) => void;
+  actions: AgentAction[];
+  onApprove: (key: string) => void;
+  onDiscard: (key: string) => void;
 }
 
 const URGENT: RiskTag[] = ["vida", "inconsciente", "sin_respuesta", "dolor_pecho", "atrapados", "menor", "cables_electricos"];
 
-export default function IncidentDetail({ s, localAI, onSplit, onReply }: Props) {
+export default function IncidentDetail({ s, localAI, onSplit, onReply, actions, onApprove, onDiscard }: Props) {
   const inc = s.engine.incidents.find((i) => i.id === s.selected);
   if (!inc) {
     return (
@@ -56,6 +62,13 @@ export default function IncidentDetail({ s, localAI, onSplit, onReply }: Props) 
           </div>
         </div>
       )}
+
+      <AgentActions
+        actions={actions.filter((a) => actionIncidents(a).includes(inc.id))}
+        provisional={inc.provisional}
+        onApprove={onApprove}
+        onDiscard={onDiscard}
+      />
 
       {inc.risks.length > 0 && (
         <div className="block">
