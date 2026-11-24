@@ -57,3 +57,9 @@ volumes:
   caddy_data:
   caddy_config:
   whisper_models:
+
+networks:
+  default:
+    driver_opts:
+      # Nombre fijo del puente: server/tailnet-guard.nft bloquea por él el acceso de estos contenedores a la tailnet.
+      com.docker.network.bridge.name: br-alerta

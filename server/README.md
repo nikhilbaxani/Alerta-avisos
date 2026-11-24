@@ -130,3 +130,23 @@ Estimación, **no medida**: `small` con `int8` en 2–4 vCPU tarda del orden de 
 npx tsx server/relay.ts   # necesita un STT en STT_BASE_URL (p. ej. scripts/stt_server.py)
 npx vitest run tests/relay.test.ts
 ```
+
+## Aislar el VPS de la tailnet (obligatorio)
+
+El VPS recibe datos de cualquiera en internet: si alguien lo comprometiera, no debe poder saltar a tus otros equipos de la tailnet. Hay dos capas:
+
+**1. En el VPS (nftables).** `server/tailnet-guard.nft` corta las conexiones *nuevas* que salen del VPS hacia la tailnet (100.64.0.0/10 y `fd7a:115c:a1e0::/48`, salvo MagicDNS 100.100.100.100) y todo lo que salga de los contenedores del Copiloto (puente `br-alerta`) hacia la tailnet o hacia los servicios del VPS publicados en su IP de Tailscale. Lo entrante (tu SSH al VPS, exit node, DNS) y sus respuestas no se tocan.
+
+```bash
+# Prueba segura: marcha atrás automática a los 5 minutos por si te quedas sin acceso
+sudo systemd-run --on-active=300 --unit=tailnet-guard-rollback /usr/sbin/nft delete table inet tailnet_guard
+sudo nft -f server/tailnet-guard.nft
+# Abre una sesión SSH NUEVA para comprobar el acceso; si va bien, hazlo permanente:
+sudo systemctl stop tailnet-guard-rollback.timer
+sudo install -m 0644 server/tailnet-guard.nft /etc/tailnet-guard.nft
+sudo install -m 0644 server/tailnet-guard.service /etc/systemd/system/tailnet-guard.service
+sudo systemctl daemon-reload && sudo systemctl enable --now tailnet-guard
+# Quitarlo: sudo systemctl disable --now tailnet-guard
+```
+
+**2. En la política de Tailscale (la que manda).** La capa 1 se puede saltar con root en el VPS; la política se aplica en tus propios dispositivos. Etiqueta el VPS (`tag:publico`) y permite conexiones solo desde tus dispositivos de usuario (`autogroup:member`), nunca desde `*`. Un nodo etiquetado no pertenece a `autogroup:member`, así que no puede iniciar conexiones hacia nadie, mientras tú sigues entrando en él y usándolo como exit node.

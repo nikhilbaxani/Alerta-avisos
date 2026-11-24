@@ -1,0 +1,35 @@
+#!/usr/sbin/nft -f
+# Aísla el VPS público de la tailnet (Copiloto 112). Solo corta conexiones NUEVAS que salen hacia la tailnet;
+# las entrantes (SSH al VPS, exit node, DNS de AdGuard) y sus respuestas siguen funcionando.
+# Cargar: sudo nft -f server/tailnet-guard.nft · Quitar: sudo nft delete table inet tailnet_guard
+table inet tailnet_guard
+delete table inet tailnet_guard
+table inet tailnet_guard {
+	set tailnet4 { type ipv4_addr; flags interval; elements = { 100.64.0.0/10 } }
+	set tailnet6 { type ipv6_addr; flags interval; elements = { fd7a:115c:a1e0::/48 } }
+
+	# El propio VPS no inicia conexiones hacia otros nodos (MagicDNS 100.100.100.100 sí).
+	chain output {
+		type filter hook output priority filter; policy accept;
+		ip daddr 100.100.100.100 accept
+		ct state established,related accept
+		ip daddr @tailnet4 counter drop
+		ip6 daddr @tailnet6 counter drop
+	}
+
+	# Los contenedores del Copiloto no salen hacia la tailnet (ni a otros nodos ni por tailscale0).
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+		iifname "br-alerta" oifname "tailscale0" counter drop
+		iifname "br-alerta" ct original ip daddr @tailnet4 counter drop
+		iifname "br-alerta" ct original ip6 daddr @tailnet6 counter drop
+	}
+
+	# Ni a los servicios del propio VPS publicados en su IP de Tailscale (AdGuard, Uptime Kuma…).
+	# `ct original` mira el destino antes del DNAT de Docker (los puertos publicados se reescriben a la IP del contenedor).
+	chain input {
+		type filter hook input priority filter; policy accept;
+		iifname "br-alerta" ct original ip daddr @tailnet4 counter drop
+		iifname "br-alerta" ct original ip6 daddr @tailnet6 counter drop
+	}
+}

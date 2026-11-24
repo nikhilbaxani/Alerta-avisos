@@ -1,0 +1,13 @@
+[Unit]
+Description=Aislar el VPS publico de la tailnet (Copiloto 112)
+After=network-online.target tailscaled.service docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/tailnet-guard.nft
+ExecStop=/usr/sbin/nft delete table inet tailnet_guard
+
+[Install]
+WantedBy=multi-user.target
