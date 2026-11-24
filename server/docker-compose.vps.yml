@@ -13,7 +13,7 @@ services:
         MAX_CALL_SECONDS: ${MAX_CALL_SECONDS:-120}
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${WEB_PORT:-8080}:8080" # WEB_PORT: puerto local del host que publica Funnel
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:8080}
     volumes:

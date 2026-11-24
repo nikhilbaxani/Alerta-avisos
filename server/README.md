@@ -54,7 +54,7 @@ curl http://127.0.0.1:8080/relay/health
 **e) Publica con Funnel:**
 
 ```bash
-sudo tailscale funnel --bg 8080
+sudo tailscale funnel --bg <WEB_PORT>   # 8080 por defecto
 tailscale funnel status
 ```
 
