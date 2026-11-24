@@ -23,6 +23,8 @@ async function chatRaw(cfg: AppConfig, messages: Msg[], json: boolean, timeoutMs
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.llmApiKey}` },
       body: JSON.stringify({
+        // Primero los extras: nunca pueden pisar modelo, mensajes, temperatura ni formato.
+        ...cfg.llmExtraBody,
         model: cfg.llmModel,
         messages,
         temperature: 0,

@@ -109,6 +109,7 @@ Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/rel
 | `LLM_MODEL` | `qwen2.5:14b-instruct` | Nombre del modelo en `LLM_BASE_URL`. |
 | `LLM_API_KEY` | — | Clave del LLM (solo en `server/relay.env`, nunca en el repositorio). |
 | `LLM_TIMEOUT_MS` | `20000` | Tiempo máximo de espera del LLM antes de pasar a reglas (ms). |
+| `LLM_EXTRA_BODY` | — | Objeto JSON que se añade a la petición (no puede cambiar modelo, mensajes ni temperatura). Con modelos que razonan: `{"chat_template_kwargs":{"enable_thinking":false}}` (con `strata`, de ~65 s a ~5 s por llamada). |
 
 El relay (`server/relay.ts`) lee además `PORT` (8080), `HOST` (dirección de escucha; por defecto `0.0.0.0` para Docker, usa `127.0.0.1` en local), `STT_BASE_URL` y `TRUST_PROXY=1` (compose ya lo activa): la IP del cliente se toma de `X-Forwarded-For` **recorriéndolo desde la derecha** y saltando direcciones locales y privadas (loopback, RFC1918, 100.64.0.0/10 de Tailscale, `fc00::/7`, `fe80::/10`); lo que queda a la izquierda de la primera dirección pública lo controla el cliente y se ignora. Si todas son locales se usa la dirección del socket. Las direcciones IPv6 se limitan por prefijo /64.
 
