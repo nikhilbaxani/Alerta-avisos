@@ -35,6 +35,8 @@ const PATHS = {
   merge: "M6 4v4a4 4 0 0 0 4 4h8M14 8l4 4-4 4",
   clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
+  solved: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.5l2.8 2.8L16.5 9.5",
 } as const;
 
 export type IconName = keyof typeof PATHS;

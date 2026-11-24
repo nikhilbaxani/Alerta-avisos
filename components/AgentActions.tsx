@@ -32,7 +32,10 @@ export function actionTitle(a: AgentAction): string {
 }
 
 const whoText = (a: AgentAction) => {
-  if (a.status === "descartada") return a.discarded?.by === "sistema" ? "Descartada por el sistema" : "Descartada por el operador";
+  if (a.status === "descartada") {
+    if (a.discarded?.reason.endsWith("solucionado por el operador")) return "Sin enviar: la incidencia se solucionó";
+    return a.discarded?.by === "sistema" ? "Descartada por el sistema" : "Descartada por el operador";
+  }
   return a.approval?.by === "automatica" ? "Enviado automáticamente" : "Aprobado y enviado";
 };
 

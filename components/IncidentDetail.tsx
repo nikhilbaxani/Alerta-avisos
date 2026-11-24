@@ -1,10 +1,12 @@
 import { RISK_LABELS, SEVERITY_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { rankIncidents } from "@/lib/priority";
 import { callMeta } from "@/lib/useConsole";
+import { resolveBlocker } from "@/lib/engine";
 import type { ConsoleState } from "@/lib/useConsole";
 import type { RiskTag } from "@/lib/types";
 import Icon from "./Icon";
 import IncToken from "./IncToken";
+import ResolveButton from "./ResolveButton";
 import type { CallAudio } from "./useCallAudio";
 import { langName, mmss, placeOf, plural } from "./format";
 
@@ -12,11 +14,12 @@ interface Props {
   s: ConsoleState;
   onSplit: (callId: string) => void;
   audio?: CallAudio;
+  onResolve: (id: string) => void;
 }
 
 const URGENT: RiskTag[] = ["vida", "inconsciente", "sin_respuesta", "dolor_pecho", "atrapados", "menor", "cables_electricos"];
 
-export default function IncidentDetail({ s, onSplit, audio }: Props) {
+export default function IncidentDetail({ s, onSplit, audio, onResolve }: Props) {
   const inc = s.engine.incidents.find((i) => i.id === s.selected);
   if (!inc) {
     return (
@@ -31,7 +34,10 @@ export default function IncidentDetail({ s, onSplit, audio }: Props) {
   return (
     <section className="detail" aria-labelledby="detail-h">
       <header className="detail-head">
-        <p className="detail-kicker"><IncToken inc={inc} rank={rank} /> prioridad {rank}{inc.provisional ? ` · pendiente de decidir si es ${inc.linkedTo}` : ""}</p>
+        <div className="detail-top">
+          <p className="detail-kicker"><IncToken inc={inc} rank={rank} /> prioridad {rank}{inc.provisional ? ` · pendiente de decidir si es ${inc.linkedTo}` : ""}</p>
+          <ResolveButton incidentId={inc.id} blocker={resolveBlocker(s.engine, inc.id)} onResolve={onResolve} small />
+        </div>
         <h2 id="detail-h">{TYPE_LABELS[inc.type]}</h2>
         {placeOf(inc) && <p className="detail-place">{placeOf(inc)}</p>}
         <p className="detail-summary">{inc.summary}</p>

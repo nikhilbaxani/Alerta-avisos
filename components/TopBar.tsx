@@ -25,6 +25,8 @@ interface Props {
   onExport: () => void;
   onScenario: (id: string) => void;
   onHelp: () => void;
+  archived: number;
+  onArchive: () => void;
 }
 
 /** Cabecera única: marca, simulación, cifras de la sala y ajustes. */
@@ -94,7 +96,7 @@ export default function TopBar(p: Props) {
         </div>
         <div className="kpi" data-kpi="actions" data-value={actionsSent} title={`Acciones del agente enviadas a servicios${actionsToApprove ? ` · ${actionsToApprove} por aprobar` : ""}`}>
           <span className="kpi-val">{actionsSent}</span>
-          <span className="kpi-label">{actionsSent === 1 ? "acción enviada" : "acciones enviadas"}</span>
+          <span className="kpi-label">{actionsSent === 1 ? "enviada" : "enviadas"}</span>
         </div>
       </section>
 
@@ -106,6 +108,9 @@ export default function TopBar(p: Props) {
           title={theme === "dark" ? "Modo claro" : "Modo oscuro"}
         >
           <Icon name={theme === "dark" ? "sun" : "moon"} />
+        </button>
+        <button className="btn btn-ghost btn-icon btn-badge" onClick={p.onArchive} aria-label={`Incidencias archivadas (${p.archived})`} title="Incidencias archivadas">
+          <Icon name="archive" />{p.archived > 0 && <span className="dot-count">{p.archived}</span>}
         </button>
         <button className="btn btn-ghost btn-icon" onClick={p.onHelp} aria-label="Cómo funciona" title="Cómo funciona"><Icon name="help" /></button>
         <button className="btn btn-ghost btn-icon" onClick={p.onExport} disabled={s.audit.length === 0} aria-label="Exportar registro" title="Descarga en JSON cada decisión de la IA y del operador">

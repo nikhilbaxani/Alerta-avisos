@@ -20,20 +20,24 @@ interface Props {
   sttUp: boolean;
   localAI: boolean;
   onSelect: (incidentId: string) => void;
+  /** Abre el archivo en una incidencia ya solucionada. */
+  onArchived: (incidentId: string) => void;
   onLive: (c: CallMeta, r: ProcessResult) => void;
 }
 
 type Mode = "recent" | "group" | "ask";
 
-export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect, onLive }: Props) {
+export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect, onArchived, onLive }: Props) {
   const [mode, setMode] = useState<Mode>("recent");
   const total = getScenario(s.scenarioId).calls.length;
   const byInc = new Map(s.engine.incidents.map((i) => [i.id, i]));
+  const archivedIds = new Set(s.archived.map((x) => x.incident.id));
   const rows = [...s.arrived].reverse().map((id) => {
     const call = callMeta(s, id)!;
     const rec = s.recs[id];
     const incId = s.engine.assignment[id];
     const inc = incId ? byInc.get(incId) : undefined;
+    const solved = !inc && !!incId && archivedIds.has(incId) ? incId : null;
     const gray = !!inc?.provisional && inc.callIds[0] === id;
     const first = !!inc && inc.callIds[0] === id;
     const text = rec.result?.extraction.summary_es ?? call.transcript;
@@ -42,21 +46,22 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
     if (rec.status === "queued") status = { cls: "wait", text: "En espera", icon: "clock" };
     else if (rec.status === "processing") status = { cls: "wait", text: "Analizando…", icon: "clock" };
     else if (rec.status === "error") status = { cls: "err", text: "No se pudo analizar", icon: "alert" };
+    else if (solved) status = { cls: "done", text: `Solucionada · ${solved}`, icon: "solved" };
     else if (gray) status = { cls: "ask", text: `¿Misma emergencia que ${inc!.linkedTo}?`, icon: "alert" };
     else if (first) status = { cls: inc && toneOf(inc) === "critical" ? "critical" : "new", text: "Emergencia nueva", icon: "phone" };
     else status = { cls: "dup", text: "Repetida", icon: "merge" };
-    return { id, call, inc, gray, text, foreign, status };
+    return { id, call, inc, solved, gray, text, foreign, status };
   });
   const asks = rows.filter((r) => r.gray).length;
 
-  const row = ({ id, call, inc, gray, text, foreign, status }: (typeof rows)[number], inGroup = false) => {
+  const row = ({ id, call, inc, solved, gray, text, foreign, status }: (typeof rows)[number], inGroup = false) => {
     const onAir = playing === id;
     const rank = inc ? ranks.get(inc.id) ?? 0 : 0;
     return (
-      <li key={id} className={`call ${gray ? "is-ask" : ""} ${inc && inc.id === s.selected ? "is-sel" : ""}`}>
+      <li key={id} className={`call ${gray ? "is-ask" : ""} ${solved ? "is-done" : ""} ${inc && inc.id === s.selected ? "is-sel" : ""}`}>
         <button
-          disabled={!inc}
-          onClick={() => inc && onSelect(inc.id)}
+          disabled={!inc && !solved}
+          onClick={() => (inc ? onSelect(inc.id) : solved && onArchived(solved))}
           aria-label={`Llamada ${id} de las ${mmss(call.t)} en ${langName(call.lang)}: ${text.replace(/\.$/, "")}. ${status.text}${inc ? ` · ${inc.id}` : ""}`}
         >
           <span className={`call-ico ${onAir ? "live" : status.cls}`} aria-hidden="true"><Icon name={status.icon} size={19} /></span>
@@ -84,7 +89,8 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
   } else if (mode === "group") {
     // Cada emergencia con sus llamadas debajo, en orden de prioridad
     const groups = [...s.engine.incidents].sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0));
-    const loose = rows.filter((r) => !r.inc);
+    const loose = rows.filter((r) => !r.inc && !r.solved);
+    const done = rows.filter((r) => r.solved);
     body = (
       <div className="calls">
         {groups.map((inc) => (
@@ -97,6 +103,16 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
             <ul>{rows.filter((r) => r.inc?.id === inc.id).reverse().map((r) => row(r, true))}</ul>
           </section>
         ))}
+        {done.length > 0 && (
+          <section className="call-group is-done">
+            <button className="call-group-head" onClick={() => onArchived(done[0].solved!)}>
+              <Icon name="archive" size={16} />
+              <span className="call-group-title">Solucionadas<small>En el archivo</small></span>
+              <span className="call-group-n"><Icon name="phone" size={13} />{done.length}</span>
+            </button>
+            <ul>{done.map((r) => row(r, true))}</ul>
+          </section>
+        )}
         {loose.length > 0 && (
           <section className="call-group">
             <div className="call-group-head"><span className="call-group-title">Analizando</span></div>

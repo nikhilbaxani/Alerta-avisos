@@ -28,6 +28,7 @@ export function buildAuditLog(s: ConsoleState, engineLabel: string) {
       pendienteDeDecision: i.provisional,
       avisosInformacionNueva: i.alerts,
     })),
+    archivados: s.archived.map((x) => ({ id: x.incident.id, tipo: x.incident.type, solucionadoEn: Math.round(x.at), llamadas: x.incident.callIds })),
     respuestas: s.replies,
     accionesAgente: s.actions.map(traceOf),
     eventos: s.audit,

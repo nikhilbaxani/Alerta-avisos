@@ -9,6 +9,8 @@ import { TYPE_LABELS } from "@/lib/labels";
 import type { Incident } from "@/lib/engine";
 import type { ConsoleState } from "@/lib/useConsole";
 import Icon from "./Icon";
+import ResolveButton from "./ResolveButton";
+import { resolveBlocker } from "@/lib/engine";
 import { langName, mmss, placeOf, plural, toneOf } from "./format";
 
 const centroid = (i: Incident) => {
@@ -46,6 +48,7 @@ interface Props {
   onFxDone: (key: string) => void;
   onFocus: (box: FocusBox) => void;
   pendingActions: Record<string, number>;
+  onResolve: (id: string) => void;
   /** Capas encima del mapa (bienvenida). */
   children?: React.ReactNode;
 }
@@ -147,7 +150,7 @@ const BaseMap = memo(function BaseMap({ view, size, streets, sat, hiReady }: { v
         </>
       )}
       {labels.map((l) => (
-        <text key={l.name + l.x} className={`map-place ${l.minor ? "minor" : ""}`} x={l.x} y={l.y} fontSize={l.size * u} strokeWidth={3 * u}>
+        <text key={l.name + l.x} className={`map-place ${l.minor ? "minor" : ""}`} x={l.x} y={l.y} fontSize={l.size * u} strokeWidth={3.5 * u}>
           {l.name}
         </text>
       ))}
@@ -155,7 +158,7 @@ const BaseMap = memo(function BaseMap({ view, size, streets, sat, hiReady }: { v
   );
 });
 
-export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions, children }: Props) {
+export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions, onResolve, children }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -369,6 +372,7 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
             {langs.length > 0 && <button className="btn btn-out btn-sm" onClick={() => onFocus("translate")}>Responder</button>}
             {todo > 0 && <button className="btn btn-amber btn-sm" onClick={() => onFocus("actions")}>Aprobar ({todo})</button>}
           </div>
+          <div className="popup-resolve"><ResolveButton incidentId={selected.id} blocker={resolveBlocker(s.engine, selected.id)} onResolve={onResolve} small /></div>
         </div>
       );
     }

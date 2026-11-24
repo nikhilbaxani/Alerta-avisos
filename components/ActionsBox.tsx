@@ -4,11 +4,15 @@ import { useState } from "react";
 import { actionIncidents, canApprove } from "@/lib/actions";
 import type { AgentAction } from "@/lib/actions";
 import type { Incident } from "@/lib/engine";
+import type { ArchivedIncident } from "@/lib/useConsole";
+import Icon from "./Icon";
 import { ActionCard } from "./AgentActions";
 import IncToken from "./IncToken";
 
 interface Props {
   actions: AgentAction[];
+  archived: ArchivedIncident[];
+  onArchived: (id: string) => void;
   /** Emergencia abierta: sus acciones salen primero. */
   selected: string | null;
   incidents: Incident[];
@@ -23,7 +27,7 @@ interface Props {
 }
 
 /** Caja de acciones del agente: lo que espera tu confirmación y lo ya enviado, filtrable por emergencia. */
-export default function ActionsBox({ actions, selected, incidents, ranks, filter, onFilter, provisional, onApprove, onDiscard, onIncident }: Props) {
+export default function ActionsBox({ actions, archived, onArchived, selected, incidents, ranks, filter, onFilter, provisional, onApprove, onDiscard, onIncident }: Props) {
   const [show, setShow] = useState<"todo" | "done">("todo");
   const byId = new Map(incidents.map((i) => [i.id, i]));
   const inFilter = (a: AgentAction) => !filter || actionIncidents(a).includes(filter);
@@ -43,9 +47,19 @@ export default function ActionsBox({ actions, selected, incidents, ranks, filter
     if (a.status === "propuesta" && canApprove(a.policy, "operador")) todo[id] = (todo[id] ?? 0) + 1;
   }
   const chips = [...any].map((id) => byId.get(id)).filter((i): i is Incident => !!i).sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0));
-  const tokens = (a: AgentAction) => actionIncidents(a).map((id) => byId.get(id)).filter((i): i is Incident => !!i).map((inc) => (
-    <IncToken key={inc.id} inc={inc} rank={ranks.get(inc.id) ?? 0} onClick={() => onIncident(inc.id)} />
-  ));
+  const solved = new Set(archived.map((x) => x.incident.id));
+  const tokens = (a: AgentAction) => actionIncidents(a).map((id) => {
+    const inc = byId.get(id);
+    if (inc) return <IncToken key={id} inc={inc} rank={ranks.get(id) ?? 0} onClick={() => onIncident(id)} />;
+    if (solved.has(id)) {
+      return (
+        <button key={id} className="inc-token tone-done" onClick={() => onArchived(id)} aria-label={`Ver ${id} en el archivo`}>
+          <i className="inc-n" aria-hidden="true"><Icon name="check" size={11} /></i><span>{id}</span>
+        </button>
+      );
+    }
+    return null;
+  });
   const card = (a: AgentAction) => <ActionCard key={a.key} a={a} tokens={tokens(a)} onApprove={onApprove} onDiscard={onDiscard} />;
 
   return (

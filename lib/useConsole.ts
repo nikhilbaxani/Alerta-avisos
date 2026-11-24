@@ -9,12 +9,14 @@ import {
   confirmDifferent,
   confirmSame,
   initialState,
+  reopenIncident,
+  resolveIncident,
   snapshot,
   splitCall,
 } from "@/lib/engine";
-import type { EngineCall, EngineState } from "@/lib/engine";
+import type { EngineCall, EngineState, Incident } from "@/lib/engine";
 import type { Aml, Decision, ProcessResult } from "@/lib/types";
-import { addProposals, approve, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
+import { actionIncidents, addProposals, approve, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
 import type { AgentAction, Proposal } from "@/lib/actions";
 
 export type Speed = 1 | 4 | 10;
@@ -69,7 +71,9 @@ export interface AuditEntry {
     | "respuesta"
     | "accion_auto"
     | "accion_aprobada"
-    | "accion_descartada";
+    | "accion_descartada"
+    | "solucionada"
+    | "reabierta";
   callId?: string;
   incidentId?: string;
   detail: string;
@@ -95,7 +99,17 @@ export interface ConsoleState {
   live: Record<string, CallMeta>;
   /** Registro del agente de acciones (X05): propuestas, aprobadas, enviadas y descartadas. */
   actions: AgentAction[];
+  /** Incidentes que el operador ha dado por solucionados, con cuándo. */
+  archived: ArchivedIncident[];
 }
+
+export interface ArchivedIncident {
+  incident: Incident;
+  at: number;
+}
+
+/** Motivo con el que se cierran las acciones pendientes de un incidente solucionado (y se recuperan al reabrirlo). */
+export const resolvedReason = (id: string) => `${id} solucionado por el operador`;
 
 const init = (epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleState => ({
   epoch,
@@ -115,6 +129,7 @@ const init = (epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleState => ({
   audit: [],
   live: {},
   actions: [],
+  archived: [],
 });
 
 type Action =
@@ -127,6 +142,8 @@ type Action =
   | { type: "begin"; id: string }
   | { type: "processed"; epoch: number; id: string; result: ProcessResult }
   | { type: "live"; call: CallMeta; result: ProcessResult }
+  | { type: "resolve"; incidentId: string }
+  | { type: "reopen"; incidentId: string }
   | { type: "failed"; epoch: number; id: string; error: string }
   | { type: "decide"; incidentId: string; same: boolean }
   | { type: "split"; callId: string }
@@ -259,6 +276,42 @@ function reducer(s: ConsoleState, a: Action): ConsoleState {
     }
     case "select":
       return { ...s, selected: a.incidentId };
+    case "resolve": {
+      const inc = s.engine.incidents.find((i) => i.id === a.incidentId);
+      const engine = resolveIncident(s.engine, a.incidentId);
+      if (!inc || engine === s.engine) return s;
+      // Lo que quedaba sin enviar ya no hace falta: se cierra con el motivo (lo enviado no se deshace).
+      const reason = resolvedReason(inc.id);
+      const actions = s.actions.map((x): AgentAction =>
+        (x.status === "propuesta" || x.status === "aprobada") && actionIncidents(x).includes(inc.id)
+          ? { ...x, status: "descartada", discarded: { by: "sistema", at: s.clock, reason } }
+          : x,
+      );
+      return {
+        ...s,
+        engine,
+        actions,
+        archived: [...s.archived, { incident: inc, at: s.clock }],
+        selected: s.selected === inc.id ? engine.incidents[0]?.id ?? null : s.selected,
+        audit: [...s.audit, { t: s.clock, kind: "solucionada", incidentId: inc.id, detail: `El operador da por solucionado ${inc.id} y pasa al archivo.` }],
+      };
+    }
+    case "reopen": {
+      const arch = s.archived.find((x) => x.incident.id === a.incidentId);
+      if (!arch) return s;
+      const reason = resolvedReason(a.incidentId);
+      const actions = s.actions.map((x): AgentAction =>
+        x.status === "descartada" && x.discarded?.reason === reason ? { ...x, status: "propuesta", discarded: null } : x,
+      );
+      return {
+        ...s,
+        engine: reopenIncident(s.engine, arch.incident),
+        actions,
+        archived: s.archived.filter((x) => x !== arch),
+        selected: arch.incident.id,
+        audit: [...s.audit, { t: s.clock, kind: "reabierta", incidentId: arch.incident.id, detail: `El operador vuelve a abrir ${arch.incident.id}.` }],
+      };
+    }
     case "fxDone":
       return { ...s, fx: s.fx.filter((f) => f.key !== a.key) };
     case "plan": {

@@ -9,6 +9,7 @@ import { buildAuditLog } from "@/lib/audit";
 import { STATIC_EXPORT } from "@/lib/config";
 import { getScenario } from "@/data/scenarios";
 import ActionsBox from "./ActionsBox";
+import ArchiveDialog from "./ArchiveDialog";
 import AgentFeed from "./AgentFeed";
 import { useCallAudio } from "./useCallAudio";
 import CallQueue from "./CallQueue";
@@ -42,6 +43,8 @@ export default function Console() {
   const [help, setHelp] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
   const [actionsFilter, setActionsFilter] = useState<string | null>(null);
+  const [archive, setArchive] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
+  const openArchive = useCallback((focus: string | null = null) => setArchive({ open: true, focus }), []);
   const audio = useCallAudio(s);
 
   useEffect(() => {
@@ -72,6 +75,11 @@ export default function Console() {
     if (!id.startsWith("INC")) return; // los ES-Alert son de zona, no de un incidente
     dispatch({ type: "select", incidentId: id });
     focusBox("detail");
+  }, [dispatch]);
+  const resolve = useCallback((id: string) => dispatch({ type: "resolve", incidentId: id }), [dispatch]);
+  const reopen = useCallback((id: string) => {
+    dispatch({ type: "reopen", incidentId: id });
+    setArchive({ open: false, focus: null });
   }, [dispatch]);
   const decide = useCallback((incidentId: string, same: boolean) => dispatch({ type: "decide", incidentId, same }), [dispatch]);
   const play = useCallback(() => dispatch({ type: "play" }), [dispatch]);
@@ -130,15 +138,17 @@ export default function Console() {
         onExport={exportLog}
         onScenario={(id) => dispatch({ type: "scenario", id })}
         onHelp={() => setHelp(true)}
+        archived={s.archived.length}
+        onArchive={() => openArchive()}
       />
       {/* Una sola pantalla: cada apartado en su caja, todos a la vista a la vez. */}
       <main className="board">
-        <CallQueue s={s} ranks={ranks} playing={audio.playing} sttUp={sttUp} localAI={status.mode === "local"} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
+        <CallQueue s={s} ranks={ranks} onArchived={openArchive} playing={audio.playing} sttUp={sttUp} localAI={status.mode === "local"} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
 
         <div className="col col-center">
           {/* La decisión ámbar va encima del mapa y nunca se resuelve sola. */}
           <div className="decision-slot" aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
-          <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident}>
+          <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident} onResolve={resolve}>
             {notStarted && (
               <div className="welcome">
                 <h2>{scn.name}</h2>
@@ -151,7 +161,7 @@ export default function Console() {
             )}
           </MapView>
           <div className="pair">
-            <ActionsBox actions={s.actions} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onIncident={selectIncident} />
+            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onIncident={selectIncident} />
             <TranslateBox s={s} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
           </div>
         </div>
@@ -160,13 +170,14 @@ export default function Console() {
           <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
           <section className="box" id="box-detail" tabIndex={-1} aria-label="Ficha de la emergencia">
             <div className="box-body">
-              <IncidentDetail s={s} audio={audio} onSplit={(callId) => dispatch({ type: "split", callId })} />
+              <IncidentDetail s={s} audio={audio} onResolve={resolve} onSplit={(callId) => dispatch({ type: "split", callId })} />
             </div>
           </section>
         </div>
       </main>
       <AgentFeed actions={s.actions} epoch={s.epoch} />
       <HelpDialog open={help} onClose={() => setHelp(false)} />
+      <ArchiveDialog open={archive.open} focus={archive.focus} s={s} onClose={() => setArchive({ open: false, focus: null })} onReopen={reopen} />
     </div>
   );
 }

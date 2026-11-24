@@ -94,6 +94,24 @@ const kinds = new Set(log.eventos.map((e) => e.kind));
 if (log.llamadas.length !== 26 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
 if (!kinds.has("accion_auto") || !kinds.has("accion_aprobada") || !log.accionesAgente?.length) fail("el registro no incluye las acciones del agente");
 
+// Incidencia solucionada → archivo → reabrir. Con confirmación en dos pasos.
+const before = await kpi(page, "incidents");
+await prio(/Árbol caído/).click();
+const resolveBtn = page.locator("#box-detail").getByRole("button", { name: /Marcar INC-\d+ como solucionada/ });
+const solvedId = (await resolveBtn.getAttribute("aria-label")).match(/INC-\d+/)[0];
+await resolveBtn.click();
+await page.locator("#box-detail").getByRole("button", { name: `Confirmar: ${solvedId} solucionada` }).click();
+await page.waitForTimeout(300);
+if ((await kpi(page, "incidents")) !== before - 1) fail("solucionar no quita el incidente de los abiertos");
+if (await page.getByRole("button", { name: new RegExp(`^${solvedId},`) }).count()) fail("el incidente solucionado sigue en el mapa");
+await page.getByRole("button", { name: /Incidencias archivadas \(1\)/ }).click();
+const drawer = page.locator("dialog.drawer");
+await drawer.getByText(solvedId).first().waitFor({ timeout: 3000 });
+if (!(await drawer.innerText()).includes("Acciones del agente")) fail("el archivo no muestra las acciones");
+await drawer.getByRole("button", { name: "Reabrir" }).click();
+await page.waitForTimeout(300);
+if ((await kpi(page, "incidents")) !== before) fail("reabrir no devuelve el incidente");
+
 // Escenario 2: apagón (una sola pregunta, M1).
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 p2.on("pageerror", (e) => errors.push(e.message));
