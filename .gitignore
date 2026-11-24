@@ -9,3 +9,10 @@ STOP
 .claude/settings.local.json
 alerta-avisos-kit.zip
 .venv-audio/
+.venv-stt/
+out/
+__pycache__/
+
+# Vídeo de lanzamiento: material intermedio de render y música de terceros
+brag-output*/work/
+brag-output/composition/assets/music/
