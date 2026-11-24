@@ -1,0 +1,1 @@
+En una DANA, seis personas llaman por el mismo coche atrapado. Copiloto 112 agrupa esas llamadas en un solo incidente (26 llamadas → 7 incidentes), avisa cuando un duplicado trae información nueva y responde al llamante en su idioma. Cuando duda, no fusiona: pregunta. La IA propone, el operador decide, y todo corre en local.
