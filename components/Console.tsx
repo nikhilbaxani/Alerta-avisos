@@ -133,7 +133,7 @@ export default function Console() {
       />
       {/* Una sola pantalla: cada apartado en su caja, todos a la vista a la vez. */}
       <main className="board">
-        <CallQueue s={s} ranks={ranks} playing={audio.playing} sttUp={sttUp} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
+        <CallQueue s={s} ranks={ranks} playing={audio.playing} sttUp={sttUp} localAI={status.mode === "local"} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
 
         <div className="col col-center">
           {/* La decisión ámbar va encima del mapa y nunca se resuelve sola. */}

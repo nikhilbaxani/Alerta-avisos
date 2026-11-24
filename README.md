@@ -22,6 +22,7 @@ El selector de la barra superior cambia entre dos escenarios: **DANA en Málaga*
 3. **La ubicación del llamante no es la del incidente**: quien llama desde otro barrio se agrupa por la dirección que menciona.
 4. **Zona gris visible**: un segundo coche atrapado a ~460 m del primero no se fusiona solo; decide el operador.
 5. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
+6. **Tu propia llamada**: en «Escribir una llamada» escribes un incidente (un incendio, un robo…) y el agente propone los recursos que tocan por tipo y riesgos: Bomberos, SAMU 061, Policía local o Policía Nacional. En modo simulado se clasifica por palabras clave (`lib/keywordExtract.ts`); con IA local, con el modelo.
 
 ## Activar la IA local (GPU NVIDIA)
 

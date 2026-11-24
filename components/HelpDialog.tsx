@@ -33,6 +33,8 @@ export default function HelpDialog({ open, onClose }: { open: boolean; onClose: 
         </ol>
         <h3>Para probarlo</h3>
         <p>Usa el botón <b>Iniciar</b> de arriba y sube la velocidad a ×10 si quieres ver el escenario completo en menos de un minuto. Puedes arrastrar el mapa, acercarlo con la rueda o con los botones + y −, y cambiar entre mapa de calles y satélite. El audio de una llamada solo suena al pulsar «Escuchar». El botón del sol o la luna cambia entre modo claro y oscuro.</p>
+        <h3>Probar con tu propia llamada</h3>
+        <p>En «Escribir una llamada» (caja de llamadas) escribe lo que diría el llamante, por ejemplo «hay un incendio en la calle Larios» o «me han robado con una navaja», y elige dónde está. Entra como cualquier otra llamada: se agrupa con las demás y el agente propone los recursos según el tipo y los riesgos (incendio → Bomberos, robo o agresión → Policía Nacional, heridos o inconsciente → SAMU 061, accidente o tráfico → Policía local). Sin IA local se clasifica por palabras clave; con IA local, con el modelo.</p>
         <h3>Modo simulado</h3>
         <p>Funciona sin internet ni GPU: las llamadas y sus extracciones vienen grabadas en el escenario, pero la agrupación y la prioridad se calculan en directo con el mismo algoritmo que con IA real. Las llamadas son ficticias.</p>
         <p className="note">Mapa de calles © colaboradores de OpenStreetMap (ODbL) y ortofoto PNOA © Instituto Geográfico Nacional (CC BY 4.0), incluidos en la aplicación para que funcione sin conexión.</p>

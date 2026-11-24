@@ -47,13 +47,14 @@ export const SEVERITY_FLOOR_RULES: readonly SeverityFloorRule[] = [
   { floor: 4, why: "persona mayor o que no puede andar con agua entrando", when: (has, t) => (has("mayor") || has("movilidad_reducida")) && water(has, t) },
   { floor: 4, why: "cables eléctricos en el suelo", when: (has) => has("cables_electricos") },
   { floor: 4, why: "incendio", when: (_has, t) => t === "incendio" },
+  { floor: 4, why: "agresión o amenaza con arma", when: (has) => has("violencia") },
   { floor: 3, why: "personas atrapadas (p. ej. ascensor parado con las personas bien)", when: (has) => has("atrapados") },
   { floor: 3, why: "heridos", when: (has) => has("herido") },
   { floor: 3, why: "agua que entra o sube", when: (has) => has("agua_subiendo") },
   {
     floor: 3,
-    why: "daños con riesgo: árbol caído, garaje o vivienda inundados, vehículo en el agua, ascensor parado, emergencia médica",
-    when: (_has, t) => [...FLOOD_TYPES, "arbol_caido", "ascensor", "medica"].includes(t),
+    why: "daños con riesgo: árbol caído, garaje o vivienda inundados, vehículo en el agua, ascensor parado, emergencia médica, robo sin violencia",
+    when: (_has, t) => [...FLOOD_TYPES, "arbol_caido", "ascensor", "medica", "delito"].includes(t),
   },
   { floor: 2, why: "alteraciones del servicio: semáforos apagados, cortes de luz, vía cortada", when: (has, t) => t === "semaforos" || has("sin_luz") || has("trafico") || has("via_bloqueada") },
 ];

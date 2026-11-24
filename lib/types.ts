@@ -16,6 +16,7 @@ export const RISK_TAGS = [
   "via_bloqueada",
   "vehiculo_danado",
   "cables_electricos",
+  "violencia",
 ] as const;
 export type RiskTag = (typeof RISK_TAGS)[number];
 
@@ -29,6 +30,7 @@ export const INCIDENT_TYPES = [
   "incendio",
   "accidente",
   "ascensor",
+  "delito",
   "otro",
 ] as const;
 export type IncidentType = (typeof INCIDENT_TYPES)[number];

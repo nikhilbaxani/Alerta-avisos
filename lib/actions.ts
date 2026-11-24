@@ -76,12 +76,13 @@ export function canApprove(policy: ApprovalPolicy, role: Role): boolean {
   return policy !== "automatica" && ROLE_RANK[role] >= REQUIRED_RANK[policy];
 }
 
-export const RESOURCE_SERVICES = ["bomberos", "samu_061", "policia_local"] as const;
+export const RESOURCE_SERVICES = ["bomberos", "samu_061", "policia_local", "policia_nacional"] as const;
 export type ResourceService = (typeof RESOURCE_SERVICES)[number];
 export const RESOURCE_LABELS: Record<ResourceService, string> = {
   bomberos: "Bomberos",
   samu_061: "SAMU 061",
   policia_local: "Policía local",
+  policia_nacional: "Policía Nacional",
 };
 
 /** Frases de `lib/phrases.ts` que son instrucciones (las preguntas no tienen sentido en un SMS). */
@@ -366,6 +367,15 @@ const RESOURCE_RULES: Record<ResourceService, { purpose: string; triggers: (i: P
       const t: Trigger[] = [];
       if (i.type === "accidente") t.push({ label: "accidente de tráfico", risks: [] });
       if (has("trafico")) t.push({ label: riskLabel("trafico"), risks: ["trafico"] });
+      return t;
+    },
+  },
+  policia_nacional: {
+    purpose: "seguridad ciudadana y protección de las personas",
+    triggers: (i, has) => {
+      const t: Trigger[] = [];
+      if (i.type === "delito") t.push({ label: "robo o agresión", risks: [] });
+      if (has("violencia")) t.push({ label: riskLabel("violencia"), risks: ["violencia"] });
       return t;
     },
   },
@@ -736,7 +746,7 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
     parameters: () => ({
       type: "object",
       properties: {
-        servicio: { type: "string", enum: [...RESOURCE_SERVICES], description: "bomberos, samu_061 (sanitario) o policia_local" },
+        servicio: { type: "string", enum: [...RESOURCE_SERVICES], description: "bomberos, samu_061 (sanitario), policia_local (tráfico) o policia_nacional (delitos y violencia)" },
         riesgos: { type: "array", items: { type: "string", enum: [...RISK_TAGS] }, description: "Riesgos del incidente que lo justifican" },
       },
       required: ["servicio"],

@@ -10,6 +10,7 @@ import Icon from "./Icon";
 import type { IconName } from "./Icon";
 import IncToken from "./IncToken";
 import LivePanel from "./LivePanel";
+import ManualCall from "./ManualCall";
 import { langName, mmss, placeOf, plural, toneOf } from "./format";
 
 interface Props {
@@ -17,13 +18,14 @@ interface Props {
   ranks: Map<string, number>;
   playing?: string | null;
   sttUp: boolean;
+  localAI: boolean;
   onSelect: (incidentId: string) => void;
   onLive: (c: CallMeta, r: ProcessResult) => void;
 }
 
 type Mode = "recent" | "group" | "ask";
 
-export default function CallQueue({ s, ranks, playing, sttUp, onSelect, onLive }: Props) {
+export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect, onLive }: Props) {
   const [mode, setMode] = useState<Mode>("recent");
   const total = getScenario(s.scenarioId).calls.length;
   const byInc = new Map(s.engine.incidents.map((i) => [i.id, i]));
@@ -59,7 +61,7 @@ export default function CallQueue({ s, ranks, playing, sttUp, onSelect, onLive }
         >
           <span className={`call-ico ${onAir ? "live" : status.cls}`} aria-hidden="true"><Icon name={status.icon} size={19} /></span>
           <span className="call-main">
-            <span className="call-phone">{call.phone}</span>
+            <span className="call-phone">{call.phone || (id.startsWith("T") ? "Escrita a mano" : "En directo")}</span>
             <span className="call-text">{text}</span>
             <span className="call-meta">
               {inc && !inGroup && <IncToken inc={inc} rank={rank} />}
@@ -123,6 +125,7 @@ export default function CallQueue({ s, ranks, playing, sttUp, onSelect, onLive }
           <button aria-pressed={mode === "ask"} onClick={() => setMode("ask")}>Por decidir{asks ? ` · ${asks}` : ""}</button>
         </div>
       </div>
+      <ManualCall s={s} localAI={localAI} onCall={onLive} />
       <LivePanel s={s} sttUp={sttUp} onCall={onLive} />
       {body}
     </section>

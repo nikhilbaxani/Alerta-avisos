@@ -128,3 +128,7 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 ## 2026-11-24 · Pantalla única por cajas, mapa fluido, audio a mano e incidentes enlazados · hecho
 - Qué se hizo: ver DECISIONES (misma fecha). `components/Console.tsx` (rejilla de cajas), `ActionsBox`, `TranslateBox`, `IncToken`, `CallQueue` (Recientes / Por emergencia / Por decidir), `MapView` (capa base memorizada + transformación durante gestos, pastilla de acciones por aprobar), `useCallAudio` sin reproducción automática. Fuera `SimStrip`, `ActionsView`, `TranslateView` y las pestañas.
 - Verificación: lint, build, 312 tests, `eval` en verde; `node scripts/e2e.mjs` OK (ahora también comprueba que no suena audio solo); `node scripts/capturas.mjs` sin errores ni scroll horizontal en móvil; capturas de escritorio (oscuro/claro) y móvil revisadas.
+
+## 2026-11-24 · Recursos por tipo de incidente (robo → Policía Nacional) y llamada escrita a mano · hecho
+- Qué se hizo: ver DECISIONES (misma fecha). `lib/types.ts`, `lib/labels.ts`, `lib/prompts.ts`, `lib/sanitize.ts`, `lib/actions.ts` (servicio y regla), `lib/keywordExtract.ts`, `components/ManualCall.tsx`; tests nuevos en `tests/actions.test.ts` y `tests/keywordExtract.test.ts`.
+- Verificación: lint, build, 328 tests, `eval` y `eval:apagon` en verde; `node scripts/e2e.mjs` OK; prueba en el navegador: incendio → Bomberos, robo con navaja → Policía Nacional, inconsciente → SAMU 061, sin errores de consola.
