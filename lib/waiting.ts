@@ -9,12 +9,9 @@
  *   operador libre.
  * - Se presenta como asistente automático (transparencia de la Ley de IA), en el idioma del llamante y
  *   solo con frases fijas pretraducidas (`lib/phrases.ts`); nada de texto generado por un modelo.
- * - La llamada pasa por el flujo normal (motor real). Escala de inmediato (pasa la primera a la cola
- *   humana) el riesgo vital que la sala aún no conoce: el de una emergencia nueva, una zona gris, una
- *   fusión con un provisional o un duplicado que trae información nueva o un riesgo vital que el
- *   incidente no tenía. Un duplicado con riesgo vital ya conocido sigue en la cola en su orden, sin
- *   pasar por delante y sin cerrarse. Un duplicado sin riesgo vital ni información nueva se cierra sin
- *   ocupar a un operador. El resto sigue en la cola humana como siempre.
+ * - La llamada pasa por el flujo normal (motor real). Escala de inmediato a la cola humana toda
+ *   llamada con riesgo vital o gravedad 5, incluso si es un duplicado. Un duplicado sin riesgo vital
+ *   ni información nueva se cierra sin ocupar a un operador. El resto sigue en la cola humana.
  * - No cambia ninguna decisión del motor: una zona gris (`ask`) la decide siempre el operador.
  */
 import { joinEs, safetyPhrases } from "@/lib/actions";
@@ -59,7 +56,7 @@ const riskText = (r: RiskTag) => lc(RISK_LABELS[r]);
 
 export interface Triage {
   outcome: WaitingOutcome;
-  /** Riesgos vitales de la llamada (escale o no: un duplicado con riesgo vital ya conocido no escala). */
+  /** Riesgos vitales de la llamada. */
   vital: RiskTag[];
   severity5: boolean;
   /** Motivo para el operador, en castellano. */
@@ -69,8 +66,8 @@ export interface Triage {
 const vitalText = (risks: readonly RiskTag[], severity5: boolean) => joinEs([...risks.map(riskText), ...(severity5 ? ["gravedad 5"] : [])]);
 
 /**
- * Qué hace el asistente con una llamada que tendría que esperar. La escalada inmediata es para el riesgo
- * vital que la sala aún no conoce; nunca convierte `ask` en fusión ni cierra una llamada con riesgo vital.
+ * Qué hace el asistente con una llamada que tendría que esperar. Escala todo riesgo vital o gravedad 5;
+ * nunca convierte `ask` en fusión ni cierra una llamada con riesgo vital.
  */
 export function triage(c: WaitingCall): Triage {
   const vital = VITAL_RISKS.filter((r) => c.extraction.risks.includes(r));
@@ -80,18 +77,10 @@ export function triage(c: WaitingCall): Triage {
     // Lo vital que el incidente no tenía antes de esta llamada (`vida` no cuenta como información nueva en el motor).
     const unknownRisks = c.known ? vital.filter((r) => !c.known!.risks.includes(r)) : vital;
     const unknownSev5 = severity5 && (!c.known || c.known.severity < 5);
-    if (pureDuplicate && !unknownRisks.length && !unknownSev5) {
-      return {
-        outcome: "en_cola",
-        vital,
-        severity5,
-        reason: `Duplicado de ${c.incidentId} con riesgo vital ya conocido por la sala (${vitalText(vital, severity5)}): sigue en la cola humana en su orden, sin pasar por delante.`,
-      };
-    }
     const all = vitalText(vital, severity5);
     const unknown = vitalText(unknownRisks, unknownSev5);
-    // Duplicado sin información nueva que escala: dice qué parte de lo vital no tenía el incidente.
-    const head = pureDuplicate
+    // Si trae riesgo vital nuevo, dice qué parte no conocía la sala.
+    const head = pureDuplicate && unknown
       ? `Escala de inmediato a un operador humano: ${all}${unknown === all ? `, nuevo para ${c.incidentId}` : `; nuevo para ${c.incidentId}: ${unknown}`}.`
       : `Escala de inmediato a un operador humano: ${all}.`;
     const also = [
@@ -348,7 +337,7 @@ export const WAITING_ASSUMPTIONS: readonly string[] = [
   `Simulación con supuestos declarados, no datos reales: ${NEW_CALL_SECONDS} s de operador por llamada nueva y ${DUPLICATE_SECONDS} s por repetida, los mismos de la franja de sala de la consola (lib/metrics.ts).`,
   "Sin agente de espera la cola es la del copiloto: primero las emergencias nuevas, por gravedad.",
   "El asistente solo atiende llamadas que llegan con todos los operadores ocupados, y puede atender varias a la vez.",
-  "Con agente de espera solo escala (y pasa por delante en la cola humana) el riesgo vital que la sala aún no conoce; un duplicado con riesgo vital ya conocido sigue en la cola en su orden; los duplicados que cierra no ocupan a ningún operador y el resto cuesta al operador lo mismo que sin asistente.",
+  "Con agente de espera escalan con prioridad en la cola humana todas las llamadas con riesgo vital o gravedad 5, incluidos los duplicados; los duplicados que cierra no ocupan a ningún operador y el resto cuesta lo mismo que sin asistente.",
 ];
 
 function indicators(room: RoomRun, calls: readonly WaitingCall[], critical: SimCall | undefined): RoomIndicators {

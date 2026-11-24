@@ -89,11 +89,11 @@ describe("triaje del asistente de espera", () => {
     expect(triage(mk("E1", 0, { extraction: { severity: 5, risks: ["vida", "dolor_pecho", "mayor"] } })).reason).toMatch(/dolor torácico, riesgo vital y gravedad 5/);
   });
 
-  it("un duplicado sin novedad con riesgo vital ya conocido no escala y no se cierra: sigue en la cola", () => {
+  it("un duplicado sin novedad con riesgo vital ya conocido también escala", () => {
     const t = triage(knownVital("A2", 0));
-    expect(t.outcome).toBe("en_cola");
+    expect(t.outcome).toBe("escalada");
     expect(t.vital).toEqual(["vida"]);
-    expect(t.reason).toBe("Duplicado de INC-X con riesgo vital ya conocido por la sala (riesgo vital y gravedad 5): sigue en la cola humana en su orden, sin pasar por delante.");
+    expect(t.reason).toBe("Escala de inmediato a un operador humano: riesgo vital y gravedad 5.");
   });
 
   it("el duplicado con riesgo vital escala si trae algo que nadie conoce: información nueva, gravedad 5 nueva o un provisional", () => {
@@ -226,13 +226,12 @@ describe("sala simulada con agente de espera", async () => {
     expect(ids("d")).toEqual(["asistente", "que_ocurre", "calma", "ya_avisado"]);
   });
 
-  it("el duplicado con riesgo vital ya conocido no pasa por delante de una emergencia nueva", () => {
+  it("el duplicado con riesgo vital ya conocido escala por delante de una emergencia no vital", () => {
     const calls = [mk("a", 0), mk("b", 10), knownVital("c", 20)];
     const con = simulateRoom(calls, 1, true);
-    expect(con.attentions.find((a) => a.callId === "c")).toMatchObject({ outcome: "en_cola", queuePosition: 2, escalation: null });
-    expect(con.wait).toEqual(simulateRoom(calls, 1, false).wait);
-    expect(con.wait.b).toBe(50);
-    expect(con.wait.c).toBe(100);
+    expect(con.attentions.find((a) => a.callId === "c")).toMatchObject({ outcome: "escalada", queuePosition: 1, escalation: { risks: ["vida"], severity5: true }, operatorAt: 60 });
+    expect(con.wait).toEqual({ a: 0, b: 65, c: 40 });
+    expect(simulateRoom(calls, 1, false).wait).toEqual({ a: 0, b: 50, c: 100 });
   });
 
   it("la escalada pasa la primera de la cola humana, por delante de lo que no es vital", () => {
@@ -261,12 +260,12 @@ describe("sala simulada con agente de espera", async () => {
     }
   });
 
-  it("DANA y apagón: los duplicados con riesgo vital ya conocido siguen en cola; G2 («vida» nueva en el garaje) escala", () => {
+  it("DANA y apagón: los duplicados con riesgo vital escalan tanto si es conocido como si es nuevo", () => {
     const known = ["A2", "A3", "A5", "A6", "F2", "B4", "G4", "J2", "K2"];
     for (const run of Object.values(runs))
       for (const n of [1, DEFAULT_OPERATORS])
         for (const a of compareWaiting(run.roomCalls, n).attentions) {
-          if (known.includes(a.callId)) expect(a).toMatchObject({ outcome: "en_cola", escalation: null });
+          if (known.includes(a.callId)) expect(a.outcome).toBe("escalada");
           if (["A4", "B3", "G3", "H3", "J3", "L2"].includes(a.callId)) expect(a.outcome).toBe("escalada");
         }
     const g2 = compareWaiting(runs.dana.roomCalls, 1).attentions.find((a) => a.callId === "G2")!;

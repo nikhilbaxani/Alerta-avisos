@@ -1034,9 +1034,11 @@ export function addProposals(actions: AgentAction[], proposals: Proposal[], at: 
   for (const p of proposals) {
     if (keys.has(p.key)) continue;
     keys.add(p.key);
-    const auto = p.policy === "automatica";
+    const policy = policyFor(p.tool, p.origin);
+    const auto = policy === "automatica";
     added.push({
       ...p,
+      policy,
       status: auto ? "enviada" : "propuesta",
       proposedAt: at,
       approval: auto ? { by: "automatica", at } : null,
@@ -1058,10 +1060,11 @@ function update(actions: AgentAction[], key: string, fn: (a: AgentAction) => Age
 /** El rol aprueba una propuesta. Las automáticas no esperan aprobación. */
 export function approve(actions: AgentAction[], key: string, role: Role, at: number): ActionResult {
   return update(actions, key, (a) => {
-    if (a.policy === "automatica") return "Las acciones automáticas no esperan aprobación: se envían en el momento y quedan registradas";
+    const policy = policyFor(a.tool, a.origin);
+    if (policy === "automatica") return "Las acciones automáticas no esperan aprobación: se envían en el momento y quedan registradas";
     if (a.status !== "propuesta") return `La acción ya está ${STATUS_TEXT[a.status]}`;
-    if (!canApprove(a.policy, role)) return `Esta acción la aprueba un ${a.policy}`;
-    return { ...a, status: "aprobada", approval: { by: role, at } };
+    if (!canApprove(policy, role)) return `Esta acción la aprueba un ${policy}`;
+    return { ...a, policy, status: "aprobada", approval: { by: role, at } };
   });
 }
 
@@ -1069,7 +1072,11 @@ export function approve(actions: AgentAction[], key: string, role: Role, at: num
 export function dispatch(actions: AgentAction[], key: string, at: number): ActionResult {
   return update(actions, key, (a) => {
     if (a.status !== "aprobada") return `Solo se envían acciones aprobadas; esta está ${STATUS_TEXT[a.status]}`;
-    return { ...a, status: "enviada", receipt: send(a, at) };
+    const policy = policyFor(a.tool, a.origin);
+    if (policy === "automatica") return "Las acciones automáticas se envían al registrarlas";
+    const role = a.approval?.by;
+    if (!role || role === "automatica" || !canApprove(policy, role)) return `Esta acción la aprueba un ${policy}`;
+    return { ...a, policy, status: "enviada", receipt: send(a, at) };
   });
 }
 
@@ -1077,8 +1084,9 @@ export function dispatch(actions: AgentAction[], key: string, at: number): Actio
 export function discard(actions: AgentAction[], key: string, role: Role, at: number, reason = "Descartada por el operador"): ActionResult {
   return update(actions, key, (a) => {
     if (a.status === "enviada" || a.status === "descartada") return `La acción ya está ${STATUS_TEXT[a.status]}`;
-    if (a.policy !== "automatica" && !canApprove(a.policy, role)) return `Esta acción la decide un ${a.policy}`;
-    return { ...a, status: "descartada", discarded: { by: role, at, reason } };
+    const policy = policyFor(a.tool, a.origin);
+    if (policy !== "automatica" && !canApprove(policy, role)) return `Esta acción la decide un ${policy}`;
+    return { ...a, policy, status: "descartada", discarded: { by: role, at, reason } };
   });
 }
 

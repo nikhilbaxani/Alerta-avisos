@@ -12,6 +12,7 @@ import {
   dispatch,
   planInputFrom,
   planRules,
+  planZoneAlerts,
   traceOf,
 } from "@/lib/actions";
 import type { AgentAction, PlanCall, PlanInput, Proposal } from "@/lib/actions";
@@ -83,8 +84,8 @@ describe("política de aprobación (tabla en código)", () => {
   });
 
   it("approve con rol operador sobre una acción de coordinador falla", () => {
-    const [p] = planRules(carA1);
-    const { actions } = addProposals([], [{ ...p, policy: "coordinador" }], 10);
+    const [p] = planZoneAlerts([carA1, { ...carA1, incidentId: "INC-02", calls: [call("F1", "es", ["atrapados"])] }]);
+    const { actions } = addProposals([], [p], 10);
     const r = approve(actions, p.key, "operador", 12);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/coordinador/);

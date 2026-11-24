@@ -340,7 +340,7 @@ export function waitingSummaryLines(w: WaitingReport): string[] {
   const out = [
     `Agente de espera · SIMULACIÓN de sala con ${operatorsText(w.operators)} · supuestos declarados: ${NEW_CALL_SECONDS} s de operador por llamada nueva y ${DUPLICATE_SECONDS} s por repetida (los de la franja de sala de la consola)`,
     `  Llegan con todos los operadores ocupados: sin agente de espera ${w.sin.waited}, que esperan sin que nadie les atienda · con agente ${w.con.waited}, todas atendidas por el asistente desde que llegan`,
-    `  Atendidas por el asistente: ${w.con.attendedByAgent} · duplicados resueltos sin operador: ${w.con.resolvedWithoutOperator} · escaladas por riesgo vital: ${w.con.escalated} · siguen en la cola humana: ${w.con.queued}`,
+    `  Atendidas por el asistente: ${w.con.attendedByAgent} (de ellas: ${w.con.resolvedWithoutOperator} duplicados resueltos sin operador, ${w.con.escalated} escaladas por riesgo vital y ${w.con.queued} en cola humana sin escalar)`,
   ];
   if (w.critical) {
     const attended = w.attentions.some((a) => a.callId === w.critical);
