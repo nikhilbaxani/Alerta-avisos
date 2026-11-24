@@ -53,8 +53,10 @@ Responsable previsto: `pitch-docs`. Dependencias: X05, X06 y X07 verificadas.
   cuando se cumplan los criterios. Después, marcar X08 como hecha.
 
 La entrega de marca «Avance 112» está en `docs/marca/avance-112/` con sus fuentes,
-SVG, PNG y animaciones. Su presencia no implica que la marca esté integrada en
-la consola ni cambia por sí sola el nombre «Agente 112» aprobado en MEMORIA §16.5.
+SVG, PNG y animaciones. Por petición posterior de Nick, su GIF transparente ya
+se integra en la cabecera, con PNG estático para movimiento reducido. La
+documentación del agente conserva el nombre aprobado en MEMORIA §16.5 hasta
+que se revise el relato en X08.
 
 ## 2. X04b: recuperar la agrupación con IA local
 
@@ -117,7 +119,8 @@ presenta como validación del modo simulado.
 ## Límites vigentes para quien retome el trabajo
 
 - La fase de agentes no modifica `components/`, `app/page.tsx`, `app/layout.tsx`,
-  `app/globals.css` ni `lib/useConsole.ts`.
+  `app/globals.css` ni `lib/useConsole.ts`. La integración del logo en la cabecera
+  es una petición posterior y acotada de Nick, registrada en DECISIONES.
 - El modo simulado funciona sin GPU, red ni claves; la zona gris la decide una
   persona y las políticas de herramientas permanecen en código.
 - Integración real con CAD, SMS, telefonía y ES-Alert, autenticación y persistencia

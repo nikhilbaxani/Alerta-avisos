@@ -102,12 +102,12 @@ kbd {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px;
   padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 8px; }
-.brand-mark {
-  display: inline-grid; place-items: center; height: 30px; padding: 0 7px; border-radius: 5px;
-  background: var(--red); color: #fff; font-weight: 800; font-size: 15px; font-variation-settings: "wdth" 80; letter-spacing: .02em;
+.brand {
+  display: block; flex: none; width: 252px; height: 56px; overflow: hidden;
+  background: transparent;
 }
-.brand-name { font-size: 19px; font-weight: 750; font-variation-settings: "wdth" 85; }
+/* Recorta solo el margen transparente del archivo original. */
+.brand-logo { display: block; width: 131%; height: auto; max-width: none; transform: translate(-4%, -19%); }
 .scn select {
   min-height: 38px; padding: 0 30px 0 12px; border: 1px solid var(--line-strong); border-radius: var(--radius);
   background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23384857' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 10px center;
@@ -362,9 +362,10 @@ kbd {
   .topbar { gap: 10px; padding: 10px 12px; }
   .scn select { width: 100%; }
   .playback { width: 100%; }
-  .brand-name { display: none; }
+  .brand { width: 158px; height: 36px; }
   .playback .btn-dark { flex: 1; }
   .topbar-end { order: 2; margin-left: auto; gap: 0; }
+  .topbar-end .engine { margin-right: 2px; padding: 0 8px; font-size: 12px; }
   .scn { order: 3; flex-basis: 100%; }
   .playback { order: 4; }
   .btn-text { display: none; }

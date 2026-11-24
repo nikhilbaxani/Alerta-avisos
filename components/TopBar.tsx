@@ -1,6 +1,8 @@
 import { scenarioEnd } from "@/lib/useConsole";
 import type { ConsoleState, EngineStatus, Speed } from "@/lib/useConsole";
 import { SCENARIOS, getScenario } from "@/data/scenarios";
+import animatedLogo from "@/docs/marca/avance-112/avance-112.gif";
+import staticLogo from "@/docs/marca/avance-112/avance-112.png";
 import Icon from "./Icon";
 import { mmss } from "./format";
 
@@ -27,10 +29,11 @@ export default function TopBar({ s, status, pending, onPlay, onPause, onSpeed, o
   return (
     <>
       <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">112</span>
-          <span className="brand-name">Copiloto</span>
-        </div>
+        <picture className="brand">
+          <source media="(prefers-reduced-motion: reduce)" srcSet={staticLogo.src} />
+          <img className="brand-logo" src={animatedLogo.src} width={1100} height={300}
+            alt="Avance 112. La IA propone. El operador decide." />
+        </picture>
 
         <label className="scn">
           <span className="sr-only">Escenario</span>

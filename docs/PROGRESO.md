@@ -99,3 +99,9 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Límite de la comprobación: el primer E2E con la configuración local de IA devolvió errores 502; al arrancar una instancia con `LLM_BASE_URL` y `STT_BASE_URL` vacíos, el E2E pasó. No se acredita IA real ni se cierra X04b.
 - Entrega adicional: fuentes y exportaciones de marca Avance 112, `docs/texto.md`, `nombres.md` y `pendiente de implementacion-agents.md`, que concreta X08, X04b y las validaciones restantes.
 - Siguiente: X08 (README, PITCH y verificación final para `agente-v1`). X04b sigue pendiente de resolver y medir con IA local.
+
+## 2026-11-24 · Logo Avance 112 en la cabecera
+- Petición de Nick: integrar arriba el GIF de Avance 112 sin fondo, hacer pull antes del push y subir la entrega.
+- Cambio: se reutilizan el GIF transparente y el PNG existentes mediante importaciones locales en `TopBar`; el PNG se selecciona con `prefers-reduced-motion`. Los estilos adaptan la cabecera a móvil y recortan solo el margen transparente del archivo.
+- Verificación: build y TypeScript correctos; Chromium comprueba carga del GIF, píxel con alfa 0, fondo CSS transparente, controles Iniciar/Pausar y ausencia de solapamientos o scroll horizontal a 320, 390, 768, 980, 1024, 1280 y 1440 px. Con movimiento reducido se carga el PNG. Capturas revisadas en `/tmp/alerta-avisos-logo-qa/`.
+- GitHub Pages: exportación estática comprobada en una copia temporal sin rutas API; el GIF y el PNG se incluyen bajo `/Alerta-avisos/_next/static/media/`. La petición autoriza únicamente esta actualización visual de la cabecera, sin modificar la lógica del agente.
