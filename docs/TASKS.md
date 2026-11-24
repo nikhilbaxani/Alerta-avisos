@@ -83,3 +83,7 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 - [ ] X08 README y PITCH: de copiloto a agente (MEMORIA §16.5) · agente: `pitch-docs` · deps: X05, X06, X07
   - Sección «El agente» en README (qué actúa, política de aprobación, seguridad, `npm run agente`), diapositiva percepción → decisión → acción en `docs/PITCH.md`, preguntas del jurado sobre inyección y automatismos. Métricas como simulación; cifras solo de MEMORIA §3. Sin cambiar el nombre de la interfaz.
   - Verificación final con `/verificar-mvp` y etiqueta `agente-v1`.
+
+## Fase 7: Llamadas del público (QR)
+- [x] X09 Llamadas del público por QR: `/llamar` → relay en VPS (Whisper CPU + reglas) → bandeja con aprobación del operador · seguimiento: `odd/tasks/llamadas-publico.md`
+  - Pendiente fuera del repo: despliegue en el VPS y variable `NEXT_PUBLIC_RELAY_URL` en Vercel.

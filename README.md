@@ -45,6 +45,15 @@ Todo se configura con `.env.local` (plantilla en `.env.example`): `LLM_BASE_URL`
 
 Audio de las llamadas simuladas (opcional): `pip install edge-tts` y `python3 scripts/generate_audio.py` (o Piper) crea `public/audio/<id>.wav` con filtro de teléfono y lluvia.
 
+## Llamadas del público por QR (opcional)
+
+El público escanea el QR de la consola, abre `/llamar` en el móvil y graba una llamada de prueba (sin mínimo, máximo 2 minutos). Dice qué pasa y **dónde** (calle o barrio de Málaga). El audio va a un relay en un VPS que lo transcribe con Whisper en CPU, extrae tipo, riesgos y lugar con reglas deterministas (`lib/rules.ts`, `lib/gazetteer.ts`, sin LLM) y lo envía por SSE a la **bandeja «Llamadas del público»** de la consola. Nada entra en el mapa ni en la agrupación hasta que el operador pulsa **Aceptar**. Si no se reconoce el lugar, la llamada nunca se fusiona sola.
+
+- Despliegue del relay (Docker + Caddy): [`server/README.md`](server/README.md).
+- En la consola (Vercel): `NEXT_PUBLIC_RELAY_URL=https://relay.tudominio.com`. El operador abre la consola una vez con `?op=<RELAY_TOKEN>` (se guarda en el navegador y se borra de la URL).
+- Sin `NEXT_PUBLIC_RELAY_URL` la consola es exactamente la de siempre (modo simulado intacto).
+- `/llamar` avisa de que es una demo y **no** un servicio de emergencias, pide consentimiento y no recoge teléfono ni nombre; el audio solo vive en memoria del relay.
+
 ## Arquitectura
 
 ```

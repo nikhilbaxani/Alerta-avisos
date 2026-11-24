@@ -83,3 +83,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Sin probar: function calling con qwen2.5 real (IA local parada); probado con fetch simulado y `mock-ai`.
 - Decisiones: 6 entradas X05 en DECISIONES (SMS solo a quien no habla castellano, destino de la distribuidora por canal, provisionales sin acciones, lo que propone el modelo siempre pasa por el operador…).
 - Siguiente: X06 (X04b espera a la IA local).
+
+## 2026-11-24 · Llamadas del público por QR (rama `feature/llamadas-publico`)
+- Seguimiento: `odd/tasks/llamadas-publico.md`. Contrato `lib/publicCall.ts`; extractor de reglas + nomenclátor (26/26 tipos correctos en las llamadas en castellano de los escenarios); relay `server/` con Docker, Caddy y Whisper CPU; `/llamar`, QR y bandeja en la consola.
+- Verificación: 269 tests, `tsc`, `npm run eval` y `eval:apagon` OK, `npm run build` OK (`/llamar` estática); capturas `docs/capturas/llamar-movil.png` y `bandeja.png` revisadas (aceptar y descartar probados contra un SSE simulado).
+- Sin probar: build de las imágenes Docker, Whisper real en CPU, grabación real en móvil (iOS Safari incluido). Necesita a Nick/equipo: desplegar en el VPS (`server/README.md`) y poner `NEXT_PUBLIC_RELAY_URL` en Vercel.

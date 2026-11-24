@@ -151,3 +151,10 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 ## 2026-11-24 · X05: `npm run agente`
 - Decisión: `lib/agent.ts` (`runAgent`, `summarize`, `formatRun`, `runToJson`) y `scripts/agente.ts`. Reproduce el escenario con las `mock` y el motor real; en la zona gris un operador simulado decide según `gold`, como el eval; tras cada llamada se vuelve a planificar el incidente afectado; el operador simulado aprueba las acciones de operador 5 s de escenario después (`APPROVAL_DELAY_S`) y el conector las envía en ese momento; las de coordinador (X07) se quedan pendientes. Opciones: `--escenario apagon` (o `--scenario=apagon`), `--json archivo` y `--live` (sin `LLM_BASE_URL` avisa y usa las reglas). Determinista sin `--live` (test). Traza y JSON rotulados como simulación.
 - Descartado: que `npm run agente` llame a `/api/plan` por HTTP (obligaría a tener el servidor arrancado); usa `planIncident` directamente, como `eval --live` usa `processCall`.
+
+## 2026-11-24 · Llamadas del público por QR con relay en un VPS
+- Decisión: `/llamar` (móvil) → relay Node en un VPS (Caddy + Whisper en CPU, `server/`) → SSE → bandeja de la consola con aprobación del operador. Extracción por reglas deterministas (`lib/rules.ts`) y lugar por nomenclátor (`lib/gazetteer.ts`); la agrupación se calcula en el navegador al aceptar.
+- Motivo: el equipo pidió que el público pueda «llamar» desde un QR; el VPS no tiene GPU (sin LLM) y la ubicación se dice en el audio. Moderación para que nada llegue a la pantalla del escenario sin el operador.
+- Reglas de seguridad: sin ubicación reconocida nunca hay fusión automática (merge → ask); ids `P<etiqueta de arranque><n>` para que un reinicio del relay no repita ids; límites de tamaño (8 MB), duración (120 s), 3 llamadas/10 min por IP, cola de 20, CORS por origen y token en `/events`.
+- Descartado: GPS del móvil (todo el público está en el mismo recinto y se fusionaría en un incidente), LLM en CPU (decenas de segundos por llamada) y telefonía real (cuenta y coste).
+- Pendiente: `npm audit` avisa de 2 vulnerabilidades en `next`/`postcss` previas a este cambio.
