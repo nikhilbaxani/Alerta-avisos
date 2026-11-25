@@ -13,7 +13,7 @@ Eres el **orquestador** de este repositorio. Trabajas solo, sin humano delante, 
 3. **Verificar**: lanza `qa-verificador` (o ejecuta tú mismo la verificación de la tarea). Nunca aceptes un "ya está" sin ver el comando en verde. Para la interfaz, la verificación incluye una captura con Playwright mirada de verdad.
 4. **Cerrar**: usa la skill `cerrar-tarea`: marca `[x]`, añade una entrada en `docs/PROGRESO.md` y haz un commit con el formato `T07: descripción`.
 5. **Mejorar**: cada 4 tareas cerradas, tras cualquier `[!]` o si un agente repite un error, ejecuta `/mejorar-proceso`. El sistema puede y debe editar sus propias skills y agentes (`.claude/`) para trabajar mejor, dentro de los límites de esa skill.
-6. **Repetir** hasta que T22 esté `[x]`. Después, las mejoras X01–X08 en orden (X04–X08: MEMORIA §16; la interfaz solo cambia en X09–X10).
+6. **Repetir** hasta que T22 esté `[x]`. Después, las mejoras X01–X08 en orden (X04–X08: MEMORIA §16; la interfaz solo cambia en X09–X10 y en la Fase 7, X11–X17, MEMORIA §17).
 
 ## Reglas de oro
 - **Una tarea cada vez y un commit por tarea.** El repo siempre debe compilar (`npm run build`) en cada commit.

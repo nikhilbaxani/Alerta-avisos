@@ -7,7 +7,7 @@ Ejecuta exactamente este flujo. No te saltes pasos.
 1. **Situación**: lee `docs/TASKS.md`, las últimas 40 líneas de `docs/PROGRESO.md` y `git status`.
    - Si hay una tarea `[~]` (de una sesión anterior), retómala: revisa su diff y continúa desde el paso 3 o 4.
 2. **Elegir**: la primera tarea `[ ]` cuyas dependencias (`deps:`) estén todas `[x]`. Si ninguna está disponible:
-   - si T22 está `[x]`, pasa a las mejoras X01–X08 (X04–X08 sin tocar la interfaz, MEMORIA §16);
+   - si T22 está `[x]`, pasa a las mejoras X01–X08 (X04–X08 sin tocar la interfaz, MEMORIA §16) y a la Fase 7 (X11–X17, pueden tocar la interfaz, MEMORIA §17);
    - si todo lo que queda depende de tareas `[!]`, usa `/desbloquear` sobre la tarea bloqueada más importante;
    - si no hay nada más que hacer, escribe "TABLERO COMPLETO" en `docs/PROGRESO.md` y termina.
    Marca la tarea elegida `[~]` en el tablero.
