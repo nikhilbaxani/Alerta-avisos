@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { PUBLIC_RELAY_URL } from "@/lib/consoleMode";
 import { snapshot } from "@/lib/engine";
-import { acceptEvent, addEvent, discardEvent, emptyInbox, loadHandled, markLoaded, publicEventToCall, saveHandled } from "@/lib/inbox";
+import { acceptEvent, addEvent, discardEvent, emptyInbox, handleAckEvent, loadHandled, markLoaded, publicEventToCall, saveHandled } from "@/lib/inbox";
 import type { InboxState } from "@/lib/inbox";
 import { RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import type { ProcessResult } from "@/lib/types";
@@ -15,10 +15,11 @@ import { langName } from "./format";
 const TOKEN_KEY = "copiloto112.operatorToken";
 
 type Conn = "connecting" | "open" | "down";
-type Act = { type: "event"; raw: unknown } | { type: "accept" | "discard"; id: string } | { type: "load"; ids: string[] };
+type Act = { type: "event"; raw: unknown } | { type: "handled"; raw: unknown } | { type: "accept" | "discard"; id: string } | { type: "load"; ids: string[] };
 
 function reducer(s: InboxState, a: Act): InboxState {
   if (a.type === "event") return addEvent(s, a.raw);
+  if (a.type === "handled") return handleAckEvent(s, a.raw);
   if (a.type === "load") return markLoaded(s, a.ids);
   if (a.type === "discard") return discardEvent(s, a.id);
   return acceptEvent(s, a.id).state;
@@ -42,8 +43,7 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
   const ref = useRef({ s, inbox });
   ref.current = { s, inbox };
 
-  // Tras recargar, el relay reenvía los últimos 50 eventos: las llamadas ya aceptadas o descartadas (guardadas por relay
-  // en localStorage) no se ofrecen otra vez. Los incidentes aceptados no se recrean: el estado en vivo no se guarda.
+  // La lista local también evita volver a ofrecer una llamada si el acuse al relay no llegó.
   useEffect(() => {
     if (!PUBLIC_RELAY_URL) return;
     try {
@@ -113,13 +113,15 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
         timer = setTimeout(connect, delay);
         delay = Math.min(delay * 2, 15_000);
       };
-      src.addEventListener("call", (e) => {
+      const receive = (type: "event" | "handled") => (e: Event) => {
         try {
-          dispatch({ type: "event", raw: JSON.parse((e as MessageEvent<string>).data) });
+          dispatch({ type, raw: JSON.parse((e as MessageEvent<string>).data) });
         } catch {
           /* evento mal formado: se ignora */
         }
-      });
+      };
+      src.addEventListener("call", receive("event"));
+      src.addEventListener("handled", receive("handled"));
     };
     connect();
     return () => {
@@ -127,6 +129,19 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
       if (timer) clearTimeout(timer);
       es?.close();
     };
+  }, [token]);
+
+  const acknowledge = useCallback(async (id: string, outcome: "accepted" | "discarded") => {
+    if (!PUBLIC_RELAY_URL || !token) return;
+    try {
+      await fetch(`${PUBLIC_RELAY_URL}/events/ack`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ id, outcome }),
+      });
+    } catch {
+      /* Un acuse fallido no bloquea la decisión ni la lista local. */
+    }
   }, [token]);
 
   const accept = useCallback(
@@ -137,8 +152,9 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
       const { meta, result } = publicEventToCall(ev, cs.engine.incidents.map(snapshot), cs.clock);
       onLive(meta, result);
       dispatch({ type: "accept", id });
+      void acknowledge(id, "accepted");
     },
-    [onLive],
+    [onLive, acknowledge],
   );
 
   if (!PUBLIC_RELAY_URL) return null; // S8: sin relay, la consola es la de siempre
@@ -201,7 +217,7 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
                 {ev.translation_en && <p className="inbox-text note"><b>EN:</b> {ev.translation_en}</p>}
                 <div className="inbox-actions">
                   <button className="btn btn-dark btn-sm" onClick={() => accept(ev.id)} aria-label={`Aceptar llamada ${ev.id}`}>Aceptar</button>
-                  <button className="btn btn-sm" onClick={() => dispatch({ type: "discard", id: ev.id })} aria-label={`Descartar llamada ${ev.id}`}>Descartar</button>
+                  <button className="btn btn-sm" onClick={() => { dispatch({ type: "discard", id: ev.id }); void acknowledge(ev.id, "discarded"); }} aria-label={`Descartar llamada ${ev.id}`}>Descartar</button>
                 </div>
               </li>
             );

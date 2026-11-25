@@ -5,7 +5,8 @@
  *   GET  /llamar/:id          → {status: transcribing|ready|publishing|failed|expired|sent, transcript?, language?, error?}
  *   POST /llamar/:id/enviar   → confirma al instante; publica el evento una sola vez al terminar la extracción (S18)
  *   DELETE /llamar/:id        → «Volver a grabar»: descarta la llamada si aún no se ha confirmado
- *   GET  /events   SSE (token obligatorio): últimos 50 eventos + en vivo
+ *   GET  /events   SSE (token obligatorio): últimos 50 eventos sin tratar + en vivo
+ *   POST /events/ack   acuse del operador (Bearer): {id, outcome} → {ok: true}
  *   GET  /health   {ok, queue, maxCallSeconds}
  * Uso: npx tsx server/relay.ts   (variables de entorno: ver server/README.md)
  * El audio solo vive en memoria y se descarta tras transcribir. No se registra texto ni IPs completas.
@@ -18,6 +19,7 @@ import {
   DEFAULT_MAX_CALL_SECONDS,
   KNOWN_LOCATION_ACC,
   MAX_TRANSCRIPT_CHARS,
+  PUBLIC_CALL_ID,
   UNKNOWN_LOCATION_AML,
   isPublicCallEvent,
 } from "../lib/publicCall";
@@ -36,13 +38,13 @@ export type Extractor = (input: {
   translation_en: string | null;
 }) => { extraction: Extraction; location: PublicLocation } | Promise<{ extraction: Extraction; location: PublicLocation }>;
 
-export type LlmExtractor = (transcript: string, language: string) => Promise<Extraction>;
+export type LlmExtractor = (transcript: string, language: string, signal?: AbortSignal) => Promise<Extraction>;
 
 const DEFAULT_LLM_TIMEOUT_MS = 20_000;
 const RELAY_EXTRACTION_SYSTEM = `${EXTRACTION_SYSTEM}\nIncluye también la clave "translation_es": traducción fiel al castellano si la llamada no está en castellano, o null si ya está en castellano.`;
 
 export function createLlmExtractor(cfg: AppConfig, timeoutMs = DEFAULT_LLM_TIMEOUT_MS): LlmExtractor {
-  return async (transcript: string, language: string) => {
+  return async (transcript: string, language: string, signal = AbortSignal.timeout(timeoutMs)) => {
     const raw = await chatJSON(
       cfg,
       [
@@ -50,6 +52,7 @@ export function createLlmExtractor(cfg: AppConfig, timeoutMs = DEFAULT_LLM_TIMEO
         { role: "user", content: extractionUser(transcript) },
       ],
       timeoutMs,
+      signal,
     );
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
     // Con idioma conocido manda el del STT; con "" se queda el que detecta el LLM en esta misma petición.
@@ -77,9 +80,13 @@ export function sttApiKeyFromEnv(env: NodeJS.ProcessEnv): string {
   return sttOrigin && sttOrigin === llmOrigin ? (env.LLM_API_KEY?.trim() ?? "") : "";
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number, controller: AbortController): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`tiempo agotado (${ms} ms)`)), ms);
+    const timer = setTimeout(() => {
+      const error = new Error(`tiempo agotado (${ms} ms)`);
+      controller.abort(error);
+      reject(error);
+    }, ms);
     p.then(
       (v) => {
         clearTimeout(timer);
@@ -288,12 +295,12 @@ class SttError extends Error {
   }
 }
 
-async function readCapped(req: http.IncomingMessage, maxBytes: number): Promise<Buffer> {
+async function readCapped(req: http.IncomingMessage, maxBytes: number, keepOpenOnOverflow = false): Promise<Buffer> {
   const declared = Number(req.headers["content-length"] ?? 0);
   if (Number.isFinite(declared) && declared > maxBytes) throw new TooBig();
   const chunks: Buffer[] = [];
   let total = 0;
-  for await (const c of req) {
+  for await (const c of keepOpenOnOverflow ? req.iterator({ destroyOnReturn: false }) : req) {
     total += (c as Buffer).length;
     if (total > maxBytes) throw new TooBig();
     chunks.push(c as Buffer);
@@ -320,6 +327,9 @@ export function createRelay(opts: RelayOptions) {
   const sttUrl = `${opts.sttBaseUrl.replace(/\/$/, "")}/audio/transcriptions`;
 
   const history: PublicCallEvent[] = [];
+  // Solo ids (y si ya tuvieron acuse), incluidas llamadas que una consola aún puede tener fuera del replay.
+  const published = new Map<string, boolean>();
+  const publishedCap = Math.max(replayN, 500);
   const clients = new Set<http.ServerResponse>();
   const quota = slidingWindow(limit.max, limit.windowMs);
   const uploads = slidingWindow(opts.uploadLimit ?? limit.max * 3, limit.windowMs);
@@ -367,9 +377,21 @@ export function createRelay(opts: RelayOptions) {
   let reserving = 0;
 
   function publish(ev: PublicCallEvent) {
-    const frame = `event: call\ndata: ${JSON.stringify(ev)}\n\n`;
+    published.set(ev.id, false);
+    if (published.size > publishedCap) {
+      const oldest = published.keys().next().value!;
+      published.delete(oldest);
+      // Un historial con huecos por acuses puede retener ids anteriores a la ventana de publicación.
+      const index = history.findIndex((call) => call.id === oldest);
+      if (index >= 0) history.splice(index, 1);
+    }
     history.push(ev);
     if (history.length > replayN) history.shift();
+    broadcast("call", ev);
+  }
+
+  function broadcast(event: "call" | "handled", data: unknown) {
+    const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const c of clients) c.write(frame);
   }
 
@@ -523,13 +545,11 @@ export function createRelay(opts: RelayOptions) {
         const slot = await acquireLlm(p);
         if (!slot) return null; // descartada, caducada o fallida mientras esperaba hueco: no se llama al LLM
         try {
-          let raw: Extraction;
-          try {
-            // El tiempo máximo cuenta desde que la petición sale de verdad, no desde que espera hueco.
-            raw = await withTimeout(opts.llmExtract(transcript, language), llmTimeoutMs);
-          } finally {
-            slot();
-          }
+          // El plazo empieza al usar el hueco. El respaldo no espera a un extractor que ignore el aborto,
+          // pero ese extractor sigue ocupando su hueco hasta que realmente termine.
+          const controller = new AbortController();
+          const request = Promise.resolve().then(() => opts.llmExtract!(transcript, language, controller.signal));
+          const raw = await withTimeout(request.finally(slot), llmTimeoutMs, controller);
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
           const sanitized = sanitizeExtraction(language ? { ...raw, language } : raw, language);
           if (!/^[a-z]{2}$/.test(sanitized.language)) throw new Error("idioma no detectado");
@@ -843,9 +863,45 @@ export function createRelay(opts: RelayOptions) {
     llmNext(); // «Enviar» pulsado: la extracción aplazada de esta llamada ya es elegible
   }
 
+  function authorizeOperator(req: http.IncomingMessage, res: http.ServerResponse, token: string): boolean {
+    if (req.headers.origin && !origins.has(req.headers.origin)) json(req, res, 403, { error: "Origen no permitido" });
+    else if (!opts.token) json(req, res, 503, { error: "El relay no tiene token configurado" });
+    else if (!sameToken(token, opts.token)) json(req, res, 401, { error: "Token no válido" });
+    else return true;
+    return false;
+  }
+
+  async function handleAck(req: http.IncomingMessage, res: http.ServerResponse) {
+    const token = /^Bearer (.+)$/i.exec(req.headers.authorization ?? "")?.[1] ?? "";
+    if (!authorizeOperator(req, res, token)) return;
+    const maxAckBytes = 1024;
+    let body: unknown;
+    try {
+      body = JSON.parse((await readCapped(req, maxAckBytes, true)).toString("utf8"));
+    } catch (e) {
+      if (e instanceof TooBig) {
+        req.resume();
+        return json(req, res, 413, { error: "El acuse supera 1024 bytes" });
+      }
+      return json(req, res, 400, { error: "Acuse no válido" });
+    }
+    const { id, outcome } = (body ?? {}) as { id?: unknown; outcome?: unknown };
+    if (typeof id !== "string" || !PUBLIC_CALL_ID.test(id) || (outcome !== "accepted" && outcome !== "discarded")) {
+      return json(req, res, 400, { error: "Acuse no válido" });
+    }
+    const handled = published.get(id);
+    if (handled === undefined) return json(req, res, 404, { error: "No encontramos esa llamada." });
+    if (!handled) {
+      published.set(id, true);
+      const index = history.findIndex((ev) => ev.id === id);
+      if (index >= 0) history.splice(index, 1);
+      broadcast("handled", { id, outcome });
+    }
+    return json(req, res, 200, { ok: true });
+  }
+
   function handleEvents(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
-    if (!opts.token) return json(req, res, 503, { error: "El relay no tiene token configurado" });
-    if (!sameToken(url.searchParams.get("token") ?? "", opts.token)) return json(req, res, 401, { error: "Token no válido" });
+    if (!authorizeOperator(req, res, url.searchParams.get("token") ?? "")) return;
     cors(req, res);
     res.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
@@ -876,7 +932,7 @@ export function createRelay(opts: RelayOptions) {
       cors(req, res);
       if (res.hasHeader("Access-Control-Allow-Origin")) {
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        res.setHeader("Access-Control-Allow-Headers", url.pathname === "/events/ack" ? "Content-Type, Authorization" : "Content-Type");
         res.setHeader("Access-Control-Max-Age", "600");
       }
       res.writeHead(204);
@@ -886,6 +942,7 @@ export function createRelay(opts: RelayOptions) {
       return json(req, res, 200, { ok: true, queue: queue.length + (running ? 1 : 0), maxCallSeconds: maxCall });
     }
     if (req.method === "GET" && url.pathname === "/events") return handleEvents(req, res, url);
+    if (req.method === "POST" && url.pathname === "/events/ack") return handleAck(req, res);
     if (req.method === "POST" && url.pathname === "/llamar") {
       return handleCall(req, res);
     }

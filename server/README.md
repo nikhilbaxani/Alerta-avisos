@@ -89,7 +89,7 @@ tailscale funnel status
 docker compose -f server/docker-compose.vps.yml --env-file server/relay.env logs relay
 ```
 
-Cada línea `recibida` termina en `ip <hash de 8 caracteres>`: deben ser **distintos** entre los dos móviles. Si salen iguales (o ambos como la IP local), Funnel no reenvía la IP del cliente y todo el público compartiría una cuota: pon `RATE_LIMIT=60` en `server/relay.env` y reinicia con el comando del paso c). La moderación del operador sigue protegiendo la pantalla.
+Cada línea `recibida` termina en `ip <hash de 8 caracteres>`: deben ser **distintos** entre los dos móviles. Si salen iguales (o ambos como la IP local), Funnel no reenvía la IP del cliente y todo el público compartiría una cuota: ajusta los tres límites de «Demo en una sala (misma wifi)» en `server/relay.env` y reinicia con el comando del paso c). La moderación del operador sigue protegiendo la pantalla.
 
 **Prueba de suplantación (después de la anterior).** Desde un portátil fuera de la tailnet, envía una llamada con una IP falsa en la cabecera y comprueba que el relay registra tu IP real, no la falsa:
 
@@ -98,7 +98,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-For: 9.9.9.9' \
   -F consent=1 -F 'file=@llamada.webm;type=audio/webm' https://<nodo>.<tailnet>.ts.net/relay/llamar
 ```
 
-Repite la petición sin la cabecera: las dos líneas `recibida` del log deben llevar **el mismo** hash de IP. Si son distintos, Funnel deja pasar la cabecera del cliente sin añadir la suya: pon `RATE_LIMIT=60` como arriba y no confíes en el límite por IP. Caddy conserva la cabecera de Funnel gracias a `trusted_proxies static private_ranges` en `server/Caddyfile`.
+Repite la petición sin la cabecera: las dos líneas `recibida` del log deben llevar **el mismo** hash de IP. Si son distintos, Funnel deja pasar la cabecera del cliente sin añadir la suya: sigue «Demo en una sala (misma wifi)» y no confíes en el límite por IP. Caddy conserva la cabecera de Funnel gracias a `trusted_proxies static private_ranges` en `server/Caddyfile`.
 
 **h) Parar:**
 
@@ -120,7 +120,7 @@ Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/rel
 | Variable | Por defecto | Qué hace |
 |---|---|---|
 | `SITE_ADDRESS` | `:8080` | Dirección de Caddy. `:8080` = HTTP plano detrás de Funnel. |
-| `RELAY_TOKEN` | — | Token de `/events`. Sin él, `/events` responde 503. |
+| `RELAY_TOKEN` | — | Token de `/events` y `/events/ack`. Sin él, ambos responden 503. |
 | `ALLOWED_ORIGINS` | — | Orígenes permitidos (CORS y `Origin` de los POST), separados por comas: el de Funnel. |
 | `MAX_CALL_SECONDS` | 120 | Máximo de duración; `stt` responde 413 (sin transcribir) si supera máximo + 5 s. También se usa al construir la web. |
 | `RATE_LIMIT` / `RATE_WINDOW_MIN` | 3 / 10 | Cuota por IP y ventana: cuenta las llamadas aceptadas, salvo devolución por descarte, caducidad, retirada por falta de sitio o fallo del servicio (ver «Límites»). |
@@ -183,7 +183,24 @@ STT_MODEL=whisper
 - **Pendientes por IP** (`PENDING_PER_IP`, 2): llamadas transcribiéndose, esperando «Enviar» o pendientes de publicar. La tercera → 429. Publicar, descartar, caducar o fallar liberan hueco.
 - **Cola global** (`MAX_PENDING`, 20 retenidas más una en proceso; las publicadas no cuentan). Si está llena, solo una subida ya validada y admitida **retira a la llamada `ready` más antigua** (esperando «Enviar»; nunca una que se transcribe ni una que ya se envía): su dueño ve el mensaje de caducada, se libera su memoria y se le devuelve la cuota. Solo si no hay ninguna retirable → 503. Así llamadas abandonadas no bloquean a nadie.
 - **STT sin respuesta.** Tras tres transcripciones consecutivas fallidas por red o tiempo agotado, las llamadas que aún esperan turno fallan de inmediato y recuperan su cuota. Una respuesta de error HTTP no cuenta como fallo de conexión. La siguiente subida vuelve a probar el STT; una transcripción correcta reinicia la cuenta.
-- **Mucha gente a la vez.** El STT va en serie (≈9 s por llamada): 50 personas a la vez esperan hasta ≈8 min la última. La página muestra los segundos y «Hay N llamadas por delante de la tuya» y sigue esperando mientras el relay conteste `transcribing`; solo se rinde si el relay dice `failed`/`expired`/404 o fallan 8 consultas seguidas. Ni el TTL ni el olvido (2×TTL) corren mientras la llamada espera turno, y el tiempo máximo del STT (`STT_TIMEOUT_MS`) cuenta desde el turno de cada llamada. Con `MAX_PENDING=50` y las IP distintas de un grupo, caben las 50; desde una misma IP (p. ej. wifi compartida con NAT) solo 2 a la vez y 3 por ventana: si pasa, sube `RATE_LIMIT` y `PENDING_PER_IP`.
+- **Mucha gente a la vez.** El STT va en serie (≈9 s por llamada): 50 personas a la vez esperan hasta ≈8 min la última. La página muestra los segundos y «Hay N llamadas por delante de la tuya» y sigue esperando mientras el relay conteste `transcribing`; solo se rinde si el relay dice `failed`/`expired`/404 o fallan 8 consultas seguidas. Ni el TTL ni el olvido (2×TTL) corren mientras la llamada espera turno, y el tiempo máximo del STT (`STT_TIMEOUT_MS`) cuenta desde el turno de cada llamada. Con `MAX_PENDING=50` y las IP distintas de un grupo, caben las 50; desde una misma IP (p. ej. wifi compartida con NAT) solo 2 a la vez y 3 por ventana: consulta el ajuste de sala.
+
+## Demo en una sala (misma wifi)
+
+Con la misma wifi, todos comparten una IP pública. Para una demo de hasta 60 llamadas, sube **juntos** en `server/relay.env` estos tres límites y reinicia el relay:
+
+- `RATE_LIMIT=60`: cuota de llamadas aceptadas por IP durante la ventana de 10 min; limita el volumen por conexión.
+- `PENDING_PER_IP=60`: tope de llamadas simultáneas aún sin publicar por IP; evita que una conexión acapare los huecos.
+- `MAX_PENDING=60`: tope global de llamadas retenidas más una en proceso; protege la memoria y acota la cola.
+
+Si `UPLOAD_LIMIT` está vacío, sigue a `RATE_LIMIT` (3 × 60 = 180): limita los audios admitidos, incluso si luego se descartan o fallan. Si lo fijaste explícitamente, comprueba que no quede por debajo de lo previsto para la demo. Restaura luego los valores por defecto (3 / 2 / 20 y `UPLOAD_LIMIT` sin fijar) y reinicia de nuevo.
+
+## API de la consola del operador
+
+- `GET /events?token=…` abre el SSE: reenvía hasta 50 llamadas sin tratar (`event: call`, datos `PublicCallEvent`) y transmite los eventos nuevos.
+- `POST /events/ack` (en Caddy, `/relay/events/ack`) recibe JSON de hasta 1024 bytes, por ejemplo `{"id":"PABC1","outcome":"accepted"}` (`accepted` o `discarded`). Usa `Authorization: Bearer <token>` con el mismo `RELAY_TOKEN` del SSE. Ambos admiten peticiones sin `Origin` y rechazan orígenes no configurados; el preflight del acuse permite `Content-Type` y `Authorization` solo en los orígenes configurados.
+- Responde `200 {"ok":true}` al primer acuse y a sus repeticiones; la primera decisión prevalece. Respuestas de error JSON: 400 cuerpo o id no válido, 401 token ausente o incorrecto, 403 origen no permitido, 404 llamada no reconocida, 413 cuerpo demasiado grande y 503 token sin configurar.
+- El primer acuse retira la llamada del historial y emite `event: handled` con `data: {"id":"PABC1","outcome":"accepted"}` a las consolas conectadas. Las pestañas antiguas solo escuchan `call`, así que ignoran `handled`. El relay conserva en memoria los ids de las últimas 500 publicaciones para reconocer los acuses repetidos; un reinicio borra el historial y los acuses.
 
 ## Latencia esperada (CPU)
 
@@ -194,10 +211,16 @@ Con el Whisper del sobremesa (6 hilos): 8,9 s para 14,5 s de castellano, 9,1–9
 - El audio solo vive en memoria del relay y de quien lo transcribe: no se escribe en disco en ninguno y se descarta al terminar la transcripción. El texto de una llamada pendiente solo está en memoria hasta la publicación, «Volver a grabar» o la caducidad.
 - **Texto al LLM antes de «Enviar»:** la extracción empieza cuando la transcripción está lista. Con LLM configurado, el texto de una llamada que luego se descarta ya se envió al LLM del equipo.
 - Los registros no contienen texto de las llamadas, el id secreto ni IPs completas (solo un hash corto).
-- Se conserva en memoria el último medio centenar de eventos (texto y extracción) para reenviarlos al conectar; se pierden al reiniciar.
+- Se conservan en memoria hasta 50 eventos sin tratar (texto y extracción) para reenviarlos al conectar; se pierden al reiniciar.
 - La transcripción es texto no confiable: no dispara acciones y la consola la muestra como texto plano. Tras aceptarla, el operador decide.
 - Los datos llegan al VPS del equipo. Con el `stt` local, Whisper se ejecuta en el VPS (sin APIs externas; solo la descarga inicial del modelo). Con el STT del sobremesa (despliegue actual), el audio se transcribe **en el sobremesa del equipo** —ahí es donde va para el STT, por HTTPS— y el texto transcrito se envía al LLM del equipo en ese mismo sobremesa; en ninguno de los dos sitios se guarda en disco.
-- **Consola del operador tras recargar:** el relay reenvía los últimos 50 eventos al conectar. La consola guarda en `localStorage`, por URL de relay, las ids ya aceptadas o descartadas (las últimas 500) y no las ofrece otra vez. El estado de la sesión en vivo **no** se guarda: tras recargar, los incidentes aceptados ya no están en el mapa y no se recrean.
+- **Consola del operador tras recargar:** las últimas 500 ids tratadas se guardan por URL del relay como respaldo si falla un acuse. La copia de la sesión en directo, incluidas las transcripciones de las llamadas públicas de prueba aceptadas, se guarda solo en el navegador del operador y se borra con “Limpiar sesión en directo”.
+
+### Limitaciones conocidas
+
+- El token de operador viaja en la query del SSE y puede aparecer en los registros de error del proxy.
+- La etiqueta de IP en los registros es un hash truncado sin sal.
+- La clave de cuota se deriva de la cadena de reenvío y presupone la topología Funnel → Caddy documentada arriba.
 
 ## Desarrollo local
 

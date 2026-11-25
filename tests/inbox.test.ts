@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { scenario } from "@/data/scenario-dana-malaga";
 import { initialState, processCall, snapshot } from "@/lib/engine";
 import type { EngineCall } from "@/lib/engine";
-import { HANDLED_CAP, PENDING_CAP, acceptEvent, addEvent, discardEvent, emptyInbox, handledKey, loadHandled, markLoaded, publicEventToCall, saveHandled } from "@/lib/inbox";
+import { HANDLED_CAP, PENDING_CAP, acceptEvent, addEvent, discardEvent, emptyInbox, handledKey, loadHandled, markLoaded, publicEventToCall, saveHandled, handleAckEvent } from "@/lib/inbox";
 import { MAX_TRANSCRIPT_CHARS, isPublicCallEvent } from "@/lib/publicCall";
 import type { PublicCallEvent } from "@/lib/publicCall";
 
@@ -72,6 +72,14 @@ describe("bandeja", () => {
     expect(s.pending).toHaveLength(1);
     const bad = addEvent(s, { id: "x" });
     expect(bad).toBe(s);
+  });
+
+  it("un acuse de otra consola quita solo esa llamada y evita que se vuelva a ofrecer", () => {
+    const s = addEvent(addEvent(emptyInbox, event()), event({ id: "P2" }));
+    expect(handleAckEvent(s, { id: "P2", outcome: "inválido" })).toBe(s);
+    const next = handleAckEvent(s, { id: "P1", outcome: "accepted" });
+    expect(next.pending.map((e) => e.id)).toEqual(["P2"]);
+    expect(addEvent(next, event())).toBe(next);
   });
 
   it("descartar quita la llamada y no la deja volver", () => {

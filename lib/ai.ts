@@ -16,24 +16,25 @@ async function fetchTimeout(url: string, init: RequestInit, ms: number): Promise
   }
 }
 
-async function chatRaw(cfg: AppConfig, messages: Msg[], json: boolean, timeoutMs: number): Promise<string> {
-  const res = await fetchTimeout(
-    `${cfg.llmBaseUrl}/chat/completions`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.llmApiKey}` },
-      body: JSON.stringify({
-        // Primero los extras: nunca pueden pisar modelo, mensajes, temperatura ni formato.
-        ...cfg.llmExtraBody,
-        model: cfg.llmModel,
-        messages,
-        temperature: 0,
-        ...(json ? { response_format: { type: "json_object" } } : {}),
-      }),
-    },
-    timeoutMs,
-  );
-  if (!res.ok) throw new Error(`LLM ${res.status}`);
+async function chatRaw(cfg: AppConfig, messages: Msg[], json: boolean, timeoutMs: number, signal?: AbortSignal): Promise<string> {
+  const url = `${cfg.llmBaseUrl}/chat/completions`;
+  const request: RequestInit = {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.llmApiKey}` },
+    body: JSON.stringify({
+      // Primero los extras: nunca pueden pisar modelo, mensajes, temperatura ni formato.
+      ...cfg.llmExtraBody,
+      model: cfg.llmModel,
+      messages,
+      temperature: 0,
+      ...(json ? { response_format: { type: "json_object" } } : {}),
+    }),
+  };
+  const res = signal ? await fetch(url, { ...request, signal }) : await fetchTimeout(url, request, timeoutMs);
+  if (!res.ok) {
+    if (signal) await res.body?.cancel();
+    throw new Error(`LLM ${res.status}`);
+  }
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
   const text = data.choices?.[0]?.message?.content;
   if (!text) throw new Error("LLM sin contenido");
@@ -41,11 +42,12 @@ async function chatRaw(cfg: AppConfig, messages: Msg[], json: boolean, timeoutMs
 }
 
 /** Pide JSON al modelo; un reintento si no se puede parsear o falla la red. */
-export async function chatJSON(cfg: AppConfig, messages: Msg[], timeoutMs = 60_000): Promise<unknown> {
+export async function chatJSON(cfg: AppConfig, messages: Msg[], timeoutMs = 60_000, signal?: AbortSignal): Promise<unknown> {
   let last: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
+    signal?.throwIfAborted();
     try {
-      return parseJSON(await chatRaw(cfg, messages, true, timeoutMs));
+      return parseJSON(await chatRaw(cfg, messages, true, timeoutMs, signal));
     } catch (e) {
       last = e;
     }

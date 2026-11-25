@@ -1,5 +1,5 @@
 import { decide } from "@/lib/cluster";
-import { isPublicCallEvent } from "@/lib/publicCall";
+import { isPublicCallEvent, PUBLIC_CALL_ID } from "@/lib/publicCall";
 import type { PublicCallEvent } from "@/lib/publicCall";
 import type { IncidentSnapshot, ProcessResult } from "@/lib/types";
 import type { CallMeta } from "@/lib/useConsole";
@@ -46,7 +46,7 @@ export function publicEventToCall(
 
 export interface InboxState {
   pending: PublicCallEvent[];
-  /** Ids ya vistos (aceptados o descartados): el relay reenvía los últimos 50 al reconectar. */
+  /** Ids tratados que no se deben volver a ofrecer. */
   seen: string[];
 }
 
@@ -66,6 +66,13 @@ const drop = (s: InboxState, id: string): InboxState => ({
   pending: s.pending.filter((e) => e.id !== id),
   seen: s.seen.includes(id) ? s.seen : [...s.seen, id].slice(-HANDLED_CAP),
 });
+
+export function handleAckEvent(s: InboxState, raw: unknown): InboxState {
+  if (!raw || typeof raw !== "object") return s;
+  const { id, outcome } = raw as { id?: unknown; outcome?: unknown };
+  if (typeof id !== "string" || !PUBLIC_CALL_ID.test(id) || (outcome !== "accepted" && outcome !== "discarded")) return s;
+  return s.seen.includes(id) ? s : drop(s, id);
+}
 
 type ReadStore = Pick<Storage, "getItem">;
 type WriteStore = ReadStore & Pick<Storage, "setItem">;
