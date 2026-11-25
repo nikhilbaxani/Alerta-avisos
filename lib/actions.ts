@@ -150,9 +150,10 @@ export interface ToolArgs {
     llamada: string;
     telefono: string | null;
     idioma: string;
-    /** Llamada que trajo la información nueva. */
+    /** Llamada que trajo la información nueva (o la propia llamada perdida, X15). */
     noticia: string;
-    motivo: "sin_respuesta";
+    /** `llamada_perdida` (X15): se colgó antes de que la atendieran y no se sabe de qué incidente es. */
+    motivo: "sin_respuesta" | "llamada_perdida";
   };
   sms_duplicado: {
     /** Llamada a cuyo teléfono se envía (la primera de ese número en el incidente). */
@@ -165,6 +166,8 @@ export interface ToolArgs {
     texto_es: string;
     /** Información nueva que trajo ese teléfono: si no está vacía, no entra en el lote y el operador la ve antes. */
     revisar: RiskTag[];
+    /** Llamada perdida (X15) y cómo se asoció al incidente; por `posicion` no entra en el lote. */
+    perdida?: "telefono" | "posicion";
   };
   proponer_es_alert: {
     zona: EsAlertZone;
@@ -731,9 +734,46 @@ export function planZoneAlerts(inputs: readonly PlanInput[]): Proposal[] {
   return out;
 }
 
-/** Incidentes de una acción: los de la zona para un ES-Alert; si no, el suyo. */
+/** Incidentes de una acción: los de la zona para un ES-Alert; ninguno para la devolución de una llamada perdida; si no, el suyo. */
 export function actionIncidents(p: Proposal): string[] {
+  if (p.incidentId === LOST_CALLS_ID) return [];
   return p.tool === "proponer_es_alert" ? [...p.args.incidentes] : [p.incidentId];
+}
+
+// ───────────────────────────── Llamadas perdidas: devolver_llamada (X15) ─────────────────────────────
+
+/**
+ * `incidentId` de las devoluciones de llamadas perdidas que no son de ningún incidente: no es un INC-xx,
+ * así que no se descartan como huérfanas ni cuentan en los pendientes de un incidente.
+ */
+export const LOST_CALLS_ID = "PERDIDAS";
+
+/** Lo que el planificador sabe de una llamada perdida: teléfono, idioma y cuándo. Nada de su frase. */
+export interface LostCallFacts {
+  id: string;
+  t: number;
+  phone: string;
+  lang: string;
+}
+
+/**
+ * Devolver la llamada a quien se colgó antes de que le atendieran y no se puede asociar a ningún
+ * incidente abierto (X15): puede ser un aviso nuevo. La aprueba el operador (tabla `ACTION_POLICY`);
+ * el motivo lo pone quien la llama (`lib/lostCalls.ts`).
+ */
+export function lostCallbackProposal(lost: LostCallFacts, reason: string): ProposalOf<"devolver_llamada"> {
+  const tool = "devolver_llamada";
+  return {
+    key: actionKey(LOST_CALLS_ID, tool, lost.id),
+    incidentId: LOST_CALLS_ID,
+    tool,
+    destination: lost.id,
+    args: { llamada: lost.id, telefono: lost.phone, idioma: lost.lang, noticia: lost.id, motivo: "llamada_perdida" },
+    reason,
+    evidence: { type: "otro", risks: [], callIds: [lost.id] },
+    policy: policyFor(tool, "reglas"),
+    origin: "reglas",
+  };
 }
 
 // ───────────────────────────── Aviso de duplicado: sms_duplicado (X14) ─────────────────────────────
@@ -820,7 +860,9 @@ export function planDuplicateSms(input: PlanInput, actions: readonly AgentAction
 
 /** Avisos de duplicado de un incidente que se pueden aprobar en lote: propuestos y sin información nueva. */
 export function duplicateBatch(actions: readonly AgentAction[], incidentId: string): AgentAction[] {
-  return actions.filter((a) => a.tool === "sms_duplicado" && a.incidentId === incidentId && a.status === "propuesta" && a.args.revisar.length === 0);
+  return actions.filter(
+    (a) => a.tool === "sms_duplicado" && a.incidentId === incidentId && a.status === "propuesta" && a.args.revisar.length === 0 && a.args.perdida !== "posicion",
+  );
 }
 
 export type BatchResult = { ok: true; actions: AgentAction[]; approved: AgentAction[] } | { ok: false; error: string };
@@ -1006,7 +1048,10 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
       return callbackProposal(input, c, news, "ia_local");
     },
     target: (p) => (p.args.telefono ? `${p.args.llamada} (${p.args.telefono})` : p.args.llamada),
-    describe: (p) => `rellamada prioritaria en ${langName(p.args.idioma)} · información nueva de ${p.args.noticia}: ${riskLabel("sin_respuesta")}`,
+    describe: (p) =>
+      p.args.motivo === "llamada_perdida"
+        ? `rellamada prioritaria en ${langName(p.args.idioma)} · llamada perdida ${p.args.noticia} sin incidente conocido`
+        : `rellamada prioritaria en ${langName(p.args.idioma)} · información nueva de ${p.args.noticia}: ${riskLabel("sin_respuesta")}`,
     send: (p, at) => receipt("TEL", "Telefonía de sala (simulada)", p, at, `Rellamada prioritaria en cola para ${p.args.telefono ?? p.args.llamada} (${p.args.llamada})`),
   },
   proponer_es_alert: {
@@ -1043,7 +1088,7 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
     fromModel: () => "El aviso de duplicado lo propone solo el sistema cuando el incidente ya tiene recursos aprobados o enviados",
     target: (p) => `${p.args.llamada} (${p.args.telefono})`,
     describe: (p) =>
-      `${langName(p.args.idioma)}: «${p.args.texto}»${p.args.revisar.length ? ` · trajo información nueva: ${joinEs(p.args.revisar.map(riskLabel))} (fuera del lote)` : " · en el lote del incidente"}`,
+      `${langName(p.args.idioma)}: «${p.args.texto}»${p.args.revisar.length ? ` · trajo información nueva: ${joinEs(p.args.revisar.map(riskLabel))} (fuera del lote)` : p.args.perdida === "posicion" ? " · llamada perdida asociada por la posición (fuera del lote)" : " · en el lote del incidente"}`,
     send: (p, at) => receipt("DUP", "Pasarela SMS (simulada)", p, at, `SMS de duplicado en ${langName(p.args.idioma)} a ${p.args.telefono} (${p.args.llamada})`),
   },
 };
@@ -1261,7 +1306,8 @@ export interface TraceEntry {
   clave: string;
   /** Id del incidente, o de la zona (`ZONA-…`) en una acción de zona. */
   incidente: string;
-  ambito: "incidente" | "zona";
+  /** `llamada_perdida`: devolución de una llamada perdida sin incidente (X15). */
+  ambito: "incidente" | "zona" | "llamada_perdida";
   incidentes: string[];
   origen: ActionOrigin;
   propuestaEn: number;
@@ -1278,7 +1324,7 @@ export function traceOf(a: AgentAction): TraceEntry {
   return {
     clave: a.key,
     incidente: a.incidentId,
-    ambito: ZONE_TOOLS.includes(a.tool) ? "zona" : "incidente",
+    ambito: ZONE_TOOLS.includes(a.tool) ? "zona" : a.incidentId === LOST_CALLS_ID ? "llamada_perdida" : "incidente",
     incidentes: actionIncidents(a),
     origen: a.origin,
     propuestaEn: a.proposedAt,

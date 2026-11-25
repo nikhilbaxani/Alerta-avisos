@@ -807,3 +807,33 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 .ecall-data { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px 14px; margin: 0; font-size: 13px; }
 .ecall-data dt { color: var(--ink-3); font-size: 12px; }
 .ecall-data dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---------- llamadas perdidas (X15, simulación) ---------- */
+.col-left:has(#box-lost) { grid-template-rows: minmax(0, 1.05fr) minmax(0, .9fr) minmax(0, 1.05fr); }
+#box-lost .wait-assume p { margin-top: 6px; padding: 8px 10px; border-radius: var(--radius); background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; }
+#box-lost .wait-assume summary b { color: var(--ink-2); }
+.lost-lists { display: grid; gap: 4px; padding-bottom: 6px; }
+.lost-lists h3 { display: flex; align-items: center; gap: 6px; padding: 8px 12px 0; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.lost-lists h3 .pill { padding: 0 6px; font-size: 11.5px; }
+.lost-lists .note { padding: 4px 12px; }
+.lost-lists .wait-list { padding: 6px 8px 2px; }
+.lost-row { display: grid; gap: 4px; padding: 9px 10px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface-2); }
+.lost-row:has([data-state="pending"]) { box-shadow: inset 4px 0 0 var(--amber); }
+.lost-said { display: grid; gap: 1px; padding: 6px 9px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); font-size: 13px; font-variation-settings: "wdth" 100; }
+.lost-said small { font-size: 12.5px; color: var(--ink-3); }
+.lost-prop { display: grid; gap: 5px; }
+.lost-prop-title { font-size: 13px; font-weight: 700; }
+.lost-prop .act-buttons { margin-top: 0; }
+.lost-wait { font-size: 12.5px; color: var(--ink-3); font-style: italic; }
+.lost-done { font-size: 12.5px; }
+#box-lost .panel-count { display: inline-flex; gap: 4px; }
+
+/* Avisos del agente: dentro del mapa, abajo a la derecha (sobre la atribución), cortos */
+.map-wrap .agent-feed { position: absolute; right: 12px; bottom: 30px; width: min(276px, calc(100% - 24px)); z-index: 3; }
+.map-wrap .feed-item { padding: 7px 10px; }
+.map-wrap .feed-ack { display: none; }
+.console:has(.deck-return) .map-wrap .agent-feed { bottom: 30px; }
+@media (max-width: 1100px) {
+  #box-lost { order: 2; max-height: 620px; }
+  .map-wrap .agent-feed { top: 54px; bottom: auto; left: 12px; right: auto; }
+}

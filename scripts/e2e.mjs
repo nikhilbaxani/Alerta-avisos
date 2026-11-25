@@ -136,6 +136,28 @@ if ((await sentDup.count()) !== 3) fail(`el lote no pasa a enviada (${await sent
 if (!(await sentDup.first().innerText()).match(/Aprobado en lote y enviado · acuse DUP-[0-9A-F]{6}/)) fail("el aviso enviado no dice que se aprobó en lote");
 await acts.getByRole("button", { name: /Por aprobar/ }).click();
 
+// Llamadas perdidas (X15): las desconocidas (P3, P4) arriba con «devolver la llamada»; los probables
+// duplicados (P1, P2, P5) debajo. P1 (francés, junto a A) ya tiene su SMS de duplicado tras aprobar los
+// bomberos de A. Nada se envía sin clic: aprobar P3 cambia su estado.
+const lostBox = page.locator("#box-lost");
+await lostBox.waitFor({ timeout: 5000 }).catch(() => fail("no aparece la caja Llamadas perdidas"));
+const lostText = await lostBox.innerText();
+const lostHelp = await lostBox.locator(".wait-foot").textContent();
+if (!lostText.includes("Simulación") || !lostHelp.includes("10.000") || !lostHelp.includes("fuente: 112 autonómicos / prensa")) fail("la caja de perdidas no se rotula como simulación con la cifra y su fuente");
+if (lostText.indexOf("Devolver primero") > lostText.indexOf("Probables duplicados")) fail("las desconocidas no van por delante de los duplicados");
+for (const [id, kind] of [["P3", "unknown"], ["P4", "unknown"], ["P1", "duplicate"], ["P2", "duplicate"], ["P5", "duplicate"]]) {
+  if ((await lostBox.locator(`[data-lost="${id}"][data-kind="${kind}"]`).count()) !== 1) fail(`${id} no sale como ${kind} en Llamadas perdidas`);
+}
+const p3 = lostBox.locator('[data-lost="P3"][data-kind="unknown"]');
+if ((await p3.locator('[data-state="pending"]').count()) !== 1 || !(await p3.innerText()).includes("Devolver la llamada")) fail("P3 no propone devolver la llamada pendiente del operador");
+const p1 = lostBox.locator('[data-lost="P1"][data-kind="duplicate"]');
+if ((await p1.locator('[data-state="pending"]').count()) !== 1 || !(await p1.innerText()).includes("Aviso de duplicado en francés")) fail("P1 no propone el SMS de duplicado en francés");
+if ((await acts.locator('.act[data-tool="devolver_llamada"][data-status="propuesta"]', { hasText: "Llamada perdida P3" }).count()) !== 1) fail("la devolución de P3 no aparece en Acciones");
+await p3.getByRole("button", { name: /Aprobar y enviar: .*llamada perdida P3/ }).click();
+await p3.locator('[data-state="sent"]').waitFor({ timeout: 3000 }).catch(() => fail("aprobar la devolución de P3 no cambia su estado"));
+if (!(await p3.innerText()).includes("aprobada y enviada")) fail("P3 enviada no lo dice");
+if ((await p1.locator('[data-state="pending"]').count()) !== 1) fail("aprobar P3 ha enviado también el SMS de P1");
+
 // Separar una llamada del coche de A (6 llamadas y la eCall EC1; F es el otro vehículo, con 2).
 await prio(/Vehículo atrapado por agua[\s\S]*7 llamadas/).click();
 // La tarjeta de la eCall enseña sus datos y no ofrece «Escuchar»: es un mensaje de datos, sin voz.
@@ -203,4 +225,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, lote de duplicados, agente de espera, falta saber, audio, Separar, sin errores de consola");
+console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, lote de duplicados, llamadas perdidas, agente de espera, falta saber, audio, Separar, sin errores de consola");

@@ -168,3 +168,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Decisiones: ver DECISIONES (X14).
 - Pendiente menor: en escritorio la caja de Acciones es baja (~250 px) y hay que desplazarse para llegar a «Aprobar todos».
 - Siguiente: X15.
+
+## 2026-11-25T03:26:10+01:00 · X15 · hecha
+- Qué se hizo: llamadas perdidas simuladas en `data/lost-calls.ts` (P1–P5 DANA, P6–P7 apagón; `Scenario.lost`, fuera del motor y del eval). `lib/lostCalls.ts` puro (`analyzeLostCalls`: mismo teléfono y luego posición con `spatial()` de `lib/cluster.ts`, solo incidentes abiertos; devoluciones delante de duplicados). `devolver_llamada` con `motivo: "llamada_perdida"` y SMS de X14 para duplicados, ambos de operador. Caja `#box-lost` (`components/LostCallsBox.tsx`) con «Devolver primero» y «Probables duplicados», motivo, estado y Aprobar/Descartar; ayuda plegable con la cifra de §3 y su fuente. El aviso flotante del agente va ahora dentro del mapa (pendiente de X11/X12 resuelto).
+- Verificación (qa-verificador APTO): lint OK, build OK, 405 tests (17 en `tests/lostCalls.test.ts`), eval 7/0/2 y eval:apagon 6/0/1 sin cambios, `e2e.mjs` OK (caja, P3 desconocida antes de P1 duplicado, aprobar P3 no envía P1), GitHub Pages OK, capturas `docs/capturas/X15-*` revisadas, 0 errores de consola, sin scroll horizontal en móvil. Escenario protegido intacto.
+- Decisiones: ver DECISIONES («X15: llamadas perdidas»).
+- Pendiente menor: a 1440×900 la caja de perdidas es baja (solo se ve P3 sin desplazar); columna izquierda llena (X16/X17 no deberían añadir otra caja ahí); `/presentacion` no muestra la caja; una devolución propuesta no se retira si la perdida pasa a duplicado.
+- Siguiente: X16.

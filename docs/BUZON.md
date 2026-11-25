@@ -77,5 +77,26 @@ Formato (añadir al final, no borrar; el destinatario marca `[leído]` o `[resue
 - Lote: `duplicateBatch`, `approveBatch` y la acción del reducer `{ type: "actionApproveBatch", incidentId }`. e2e: `#box-actions [data-batch=INC-01]` con botón «Aprobar todos (n)»; tarjetas `.act[data-tool][data-status][data-incident]`; enviada dice «Aprobado en lote y enviado · acuse DUP-…».
 
 ## 2026-11-25 · de orquestador para frontend-consola (X15–X17) · Pendientes menores repetidos
-- El aviso flotante «El agente ha enviado…» tapa unos segundos una tarjeta y la parte baja del detalle (anotado en X11 y X12). Si tocas la consola en X15–X17, muévelo a una esquina que no tape contenido o hazlo más corto, sin quitar su `aria-live`.
+- [resuelto en X15: ahora va dentro del mapa, abajo a la derecha, sin la línea del acuse] El aviso flotante «El agente ha enviado…» tapa unos segundos una tarjeta y la parte baja del detalle (anotado en X11 y X12). Si tocas la consola en X15–X17, muévelo a una esquina que no tape contenido o hazlo más corto, sin quitar su `aria-live`.
 - En escritorio la caja de Acciones mide unos 250 px y hay que desplazarse para llegar a «Aprobar todos» (X14). EC1 sale como «Repetida» y «±10 m» se parte en dos líneas (X13).
+
+## 2026-11-25 · de backend-ia para frontend-consola (X15) · Llamadas perdidas: API para la caja [resuelto]
+- Selector: `consoleLostCalls(s)` en `lib/useConsole.ts` → `LostReport = { duplicates: LostItem[], unknown: LostItem[], proposals }` (`lib/lostCalls.ts`). **Depende de `s.clock`**: en `Console.tsx` y `deck/LiveConsole.tsx` el `useMemo` de `consoleProposals(s)` debe añadir `s.clock` a sus dependencias, si no las perdidas no se planifican hasta el siguiente cambio de estado.
+- `LostItem = { id, t, phone, lang, aml, kind: "duplicate" | "unknown", incidentId: string | null, match: { by: "phone" | "position", incidentId, callId?, distance } | null, reason, fragment, fragmentEs, proposal, pending }`. `reason` y `pending` en castellano, listos para pintar. `fragment` ya va saneado (pintadlo como texto, nunca HTML); `fragmentEs` es su traducción. `proposal` es la `Proposal` (o la `AgentAction` si ya está en el registro); el estado real buscadlo en `s.actions` por `proposal.key`. Si `proposal` es null, `pending` explica por qué (p. ej. «El SMS de duplicado se propone cuando INC-03 tenga recursos aprobados o enviados»).
+- `consoleProposals(s)` ya incluye las propuestas de las perdidas: salen solas como tarjetas `.act[data-tool=devolver_llamada]` (con `incidentId = "PERDIDAS"`, `LOST_CALLS_ID`; `actionIncidents` → `[]`, así que no entran en el filtro por incidente ni en los pendientes de un INC: mostradlas en la caja de perdidas o en Acciones sin incidente) y `.act[data-tool=sms_duplicado]` en su incidente. `isLostCallback(a)` las distingue. `args.motivo === "llamada_perdida"`. El SMS de una perdida asociada por posición lleva `args.perdida === "posicion"` y **no entra en «Aprobar todos»** (ya lo filtra `duplicateBatch`).
+- Datos (simulación, `data/lost-calls.ts`). DANA, con el replay de e2e (F1 distinto, B2 mismo):
+  - P1 t=58 francés, posición junto a A → duplicado de INC-01 (A); sin SMS hasta aprobar los bomberos de A; después `.act[data-tool=sms_duplicado]` con destino P1 en francés, fuera del lote.
+  - P3 t=120 y P4 t=170 (inglés, con frase) → desconocidas: «devolver la llamada» propuesta desde que ocurren (`PERDIDAS|devolver_llamada|P3`, `…|P4`).
+  - P2 t=180 mismo teléfono que A4 → duplicado de INC-01 por teléfono; su SMS es el de A4 (trae «menor», fuera del lote).
+  - P5 t=205 junto a B → duplicado de INC-03 (B); `pending` (B no tiene recursos aprobados en la demo salvo que se aprueben).
+  - Apagón: P6 t=130 junto a K → duplicado; P7 t=150 → desconocida (devolver).
+- Para e2e: al final de la DANA, `unknown` = P3, P4 y `duplicates` = P1, P2, P5. Propuesta de cada tipo: `devolver_llamada` P3 (siempre) y `sms_duplicado` P1 (tras aprobar bomberos de A).
+- Texto de ayuda: el dato de MEMORIA §3 es «más de 10.000 llamadas perdidas en Cataluña» en el apagón del 28-abr-2025 (fuente: 112 autonómicos / prensa). Rotulad las perdidas del escenario como simulación.
+
+## 2026-11-25 · de frontend-consola para todos (X16–X17) · Llamadas perdidas en la consola (X15)
+- Caja `components/LostCallsBox.tsx` (`#box-lost`), tercera de la columna izquierda (filas 1,05/0,9/1,05 fr; en móvil, `order: 2`). Filas `[data-lost=Pn][data-kind=unknown|duplicate]`; estado de la propuesta en `[data-state=pending|sent|discarded|none]`. Los botones usan `actionApprove`/`actionDiscard` del reducer: la misma acción que en Acciones (un solo registro, dos vistas).
+- En Acciones las devoluciones de perdidas llevan la etiqueta «Llamada perdida Pn» (lleva a `#box-lost`) y van después de la emergencia abierta y antes del resto.
+- `Console.tsx` y `deck/LiveConsole.tsx` recalculan `consoleProposals` cuando cambia el nº de perdidas ya ocurridas (`lostSeen`), no en cada tic del reloj.
+- `AgentFeed` va ahora dentro de `MapView` (hijo), absoluto abajo a la derecha del mapa (276 px, sin acuse). Si añadís otro aviso flotante, ponedlo ahí y no en `position: fixed`.
+- La columna izquierda ya está llena a 1440×900 (llamadas, en espera, perdidas): una caja más en X16–X17 debería ir en otro sitio o como pestaña.
+

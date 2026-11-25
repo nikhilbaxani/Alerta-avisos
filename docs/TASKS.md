@@ -113,7 +113,7 @@ Verificación común (además de la propia de cada tarea): `npm run build`, `npm
   - Política en la tabla de código: la aprueba el operador (no es automática, va al ciudadano); se puede aprobar **en lote** para todos los duplicados de un incidente. Una vez por teléfono; no se envía a quien trajo información nueva sin que el operador lo vea.
   - En la consola: tarjeta de acción y botón «Aprobar todos» del lote; queda en la traza del agente y en el registro exportado.
   - Verificación: tests de política, de no duplicado por teléfono y de lote; `npm run agente` lo muestra en la traza; `e2e.mjs` aprueba el lote en el incidente de A.
-- [ ] X15 Recuperar llamadas perdidas (idea #13) · agente: `backend-ia` (lógica) + `datos-escenario` (datos) + `frontend-consola` (interfaz) · deps: X14
+- [x] X15 Recuperar llamadas perdidas (idea #13) · agente: `backend-ia` (lógica) + `datos-escenario` (datos) + `frontend-consola` (interfaz) · deps: X14
   - Llamadas que se cuelgan antes de ser atendidas (campo nuevo en el escenario, anotado en DECISIONES; en simulado salen de `lib/waiting.ts`/`lib/metrics.ts` o de llamadas del escenario marcadas como abandonadas, con sus datos AML y, si la hay, una frase).
   - `lib/lostCalls.ts` puro: cruza cada llamada perdida con los incidentes abiertos (mismo algoritmo de `lib/cluster.ts`, solo con lo que se sabe: AML y teléfono). Si es probable duplicado → propone el SMS de X14; si es desconocida → propone «devolver llamada» con prioridad por delante de los duplicados. Nada se envía sin el operador.
   - En la consola: caja o sección «Llamadas perdidas» con las dos listas y el motivo de cada una. Se puede citar el dato de §3 (más de 10.000 llamadas perdidas en Cataluña en el apagón) solo en texto de ayuda, con su fuente.

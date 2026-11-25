@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { toolTarget } from "@/lib/actions";
+import { LOST_CALLS_ID, toolTarget } from "@/lib/actions";
 import type { AgentAction } from "@/lib/actions";
 import Icon from "./Icon";
 import { TOOL_ICON, actionTitle } from "./AgentActions";
@@ -37,7 +37,7 @@ export default function AgentFeed({ actions, epoch }: { actions: AgentAction[]; 
         <div key={a.key} className="feed-item">
           <span className="feed-icon" aria-hidden="true"><Icon name={TOOL_ICON[a.tool]} size={16} /></span>
           <div>
-            <span className="feed-head">{a.approval?.by === "automatica" ? "El agente ha enviado" : "Enviado con tu aprobación"} · {a.tool === "proponer_es_alert" ? "zona" : a.incidentId}</span>
+            <span className="feed-head">{a.approval?.by === "automatica" ? "El agente ha enviado" : "Enviado con tu aprobación"} · {a.tool === "proponer_es_alert" ? "zona" : a.incidentId === LOST_CALLS_ID ? `llamada perdida ${a.destination}` : a.incidentId}</span>
             <span className="feed-title">{actionTitle(a)}</span>
             <span className="feed-ack">{toolTarget(a)} · acuse {a.receipt?.reference}</span>
           </div>

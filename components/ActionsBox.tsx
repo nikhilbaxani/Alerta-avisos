@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { DUPLICATE_PHRASES } from "@/lib/phrases";
-import { actionIncidents, canApprove, duplicateBatch } from "@/lib/actions";
+import { LOST_CALLS_ID, actionIncidents, canApprove, duplicateBatch } from "@/lib/actions";
 import type { AgentAction } from "@/lib/actions";
 import type { Incident } from "@/lib/engine";
 import type { ArchivedIncident } from "@/lib/useConsole";
@@ -28,16 +28,19 @@ interface Props {
   /** «Aprobar todos» los avisos de duplicado de un incidente (X14). */
   onApproveBatch: (incidentId: string) => void;
   onIncident: (id: string) => void;
+  /** Lleva a la caja «Llamadas perdidas» (X15). */
+  onLost: () => void;
 }
 
 /** Caja de acciones del agente: lo que espera tu confirmación y lo ya enviado, filtrable por emergencia. */
-export default function ActionsBox({ actions, archived, onArchived, selected, incidents, ranks, filter, onFilter, provisional, onApprove, onDiscard, onApproveBatch, onIncident }: Props) {
+export default function ActionsBox({ actions, archived, onArchived, selected, incidents, ranks, filter, onFilter, provisional, onApprove, onDiscard, onApproveBatch, onIncident, onLost }: Props) {
   const [show, setShow] = useState<"todo" | "done">("todo");
   const byId = new Map(incidents.map((i) => [i.id, i]));
   const inFilter = (a: AgentAction) => !filter || actionIncidents(a).includes(filter);
   const pending = actions.filter((a) => a.status === "propuesta");
   const mineAll = pending.filter((a) => canApprove(a.policy, "operador"));
-  const first = (a: AgentAction) => Number(!!selected && actionIncidents(a).includes(selected));
+  // Primero la emergencia abierta; después las devoluciones de llamadas perdidas (X15), que pueden ser un aviso nuevo.
+  const first = (a: AgentAction) => 2 * Number(!!selected && actionIncidents(a).includes(selected)) + Number(a.incidentId === LOST_CALLS_ID);
   const mine = mineAll.filter(inFilter).sort((a, b) => first(b) - first(a));
   const coord = pending.filter((a) => !canApprove(a.policy, "operador")).filter(inFilter);
   const doneAll = actions.filter((a) => a.status !== "propuesta");
@@ -52,7 +55,11 @@ export default function ActionsBox({ actions, archived, onArchived, selected, in
   }
   const chips = [...any].map((id) => byId.get(id)).filter((i): i is Incident => !!i).sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0));
   const solved = new Set(archived.map((x) => x.incident.id));
-  const tokens = (a: AgentAction) => actionIncidents(a).map((id) => {
+  const tokens = (a: AgentAction) => a.incidentId === LOST_CALLS_ID ? (
+    <button className="inc-token" onClick={onLost} aria-label={`Ver la llamada perdida ${a.destination} en Llamadas perdidas`}>
+      <i className="inc-n" aria-hidden="true"><Icon name="callback" size={11} /></i><span>Llamada perdida {a.destination}</span>
+    </button>
+  ) : actionIncidents(a).map((id) => {
     const inc = byId.get(id);
     if (inc) return <IncToken key={id} inc={inc} rank={ranks.get(id) ?? 0} onClick={() => onIncident(id)} />;
     if (solved.has(id)) {

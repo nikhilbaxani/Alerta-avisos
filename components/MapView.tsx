@@ -40,7 +40,7 @@ interface Streets {
 let streetsCache: Promise<Streets> | null = null;
 const loadStreets = () => (streetsCache ??= import("@/assets/map/streets.json").then((m) => (m.default ?? m) as unknown as Streets));
 
-export type FocusBox = "detail" | "translate" | "actions";
+export type FocusBox = "detail" | "translate" | "actions" | "lost";
 
 interface Props {
   s: ConsoleState;

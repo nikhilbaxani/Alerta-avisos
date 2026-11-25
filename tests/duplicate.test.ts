@@ -186,11 +186,13 @@ describe("sms_duplicado: consola y agente (DANA)", () => {
     s = reducer(s, { type: "actionApprove", key: `${a}|proponer_recursos|bomberos` });
     s = plan(s);
     const dups = s.actions.filter((x) => x.tool === "sms_duplicado" && x.incidentId === a);
-    expect(dups.map((x) => x.destination)).toEqual(["A2", "A3", "A4", "A5"]); // ni EC1 ni A6
+    // ni EC1 ni A6; P1 es la llamada perdida de X15 junto a A (asociada por la posición).
+    expect(dups.map((x) => x.destination)).toEqual(["A2", "A3", "A4", "A5", "P1"]);
     s = reducer(s, { type: "actionApproveBatch", incidentId: a });
     const after = s.actions.filter((x) => x.tool === "sms_duplicado" && x.incidentId === a);
     expect(after.filter((x) => x.status === "enviada").map((x) => x.destination)).toEqual(["A2", "A3", "A5"]);
     expect(after.find((x) => x.destination === "A4")!.status).toBe("propuesta");
+    expect(after.find((x) => x.destination === "P1")!.status).toBe("propuesta"); // por posición: fuera del lote
     for (const x of after.filter((y) => y.status === "enviada")) expect(x.receipt?.reference).toMatch(/^DUP-[0-9A-F]{6}$/);
     const log = buildAuditLog(s, "Modo simulado");
     expect(log.accionesAgente.filter((t) => t.herramienta.nombre === "sms_duplicado" && t.aprobacion?.lote)).toHaveLength(3);
@@ -207,7 +209,7 @@ describe("sms_duplicado: consola y agente (DANA)", () => {
     const phones = dups.map((a) => argsOf(a).telefono);
     expect(new Set(phones).size).toBe(phones.length);
     for (const a of dups) expect(a.approval?.by).toBe("operador");
-    expect(dups.filter((a) => a.incidentId === run.steps.find((s) => s.callId === "A1")!.incidentId).map((a) => a.destination)).toEqual(["A2", "A3", "A4", "A5"]);
+    expect(dups.filter((a) => a.incidentId === run.steps.find((s) => s.callId === "A1")!.incidentId).map((a) => a.destination)).toEqual(["A2", "P1", "A3", "A4", "A5"]); // P1: llamada perdida (X15)
     const keys = run.steps.flatMap((s) => s.added);
     for (const a of dups) expect(keys).toContain(a.key);
   });

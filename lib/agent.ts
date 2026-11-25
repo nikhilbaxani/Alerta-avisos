@@ -34,6 +34,7 @@ import { DEFAULT_OPERATORS, compareWaiting } from "@/lib/waiting";
 import type { Attention, RoomIndicators, WaitingCall, WaitingReport } from "@/lib/waiting";
 import { heardOf, roomCall } from "@/lib/waitingConsole";
 import { isEcall } from "@/lib/ecall";
+import { analyzeLostCalls } from "@/lib/lostCalls";
 import type { Heard } from "@/lib/waitingConsole";
 
 /** Segundos de escenario que tarda el operador simulado en aprobar una acción. */
@@ -148,12 +149,21 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
     actions = res.actions;
     return res.added;
   };
-  /** El operador simulado aprueba con «Aprobar todos» el lote de cada incidente; lo que trae información nueva, uno a uno. */
+  /** Llamadas perdidas (X15) ya ocurridas: devoluciones (el operador simulado las aprueba) y sus SMS de duplicado. */
+  const planLost = (at: number): AgentAction[] => {
+    const report = analyzeLostCalls(scenario.lost ?? [], at, { incidents: state.incidents, facts, actions });
+    const res = addProposals(actions, report.proposals, at);
+    actions = res.actions;
+    for (const a of res.added) if (a.tool === "devolver_llamada") queue.push({ key: a.key, due: at + delay, role: "operador" });
+    return res.added;
+  };
+  /** El operador simulado aprueba con «Aprobar todos» el lote de cada incidente; lo que trae información nueva (o es una perdida por posición), uno a uno. */
   const queueDuplicates = (added: AgentAction[], at: number) => {
-    for (const id of new Set(added.filter((a) => a.tool === "sms_duplicado" && a.args.revisar.length === 0).map((a) => a.incidentId))) {
+    const alone = (a: AgentAction & { tool: "sms_duplicado" }) => a.args.revisar.length > 0 || a.args.perdida === "posicion";
+    for (const id of new Set(added.filter((a): a is AgentAction & { tool: "sms_duplicado" } => a.tool === "sms_duplicado" && !alone(a)).map((a) => a.incidentId))) {
       queue.push({ key: `lote|${id}`, due: at + delay, role: "operador", batch: id });
     }
-    for (const a of added) if (a.tool === "sms_duplicado" && a.args.revisar.length > 0) queue.push({ key: a.key, due: at + delay, role: "operador" });
+    for (const a of added) if (a.tool === "sms_duplicado" && alone(a)) queue.push({ key: a.key, due: at + delay, role: "operador" });
     queue.sort((x, y) => x.due - y.due);
   };
 
@@ -185,7 +195,7 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
     // Zona (ES-Alert): sobre todos los incidentes, con reglas deterministas; la clave es la zona, así que no se repite.
     const zone = addProposals(actions, planZoneAlerts(state.incidents.map((i) => planInputFrom(i, facts))), c.t);
     actions = zone.actions;
-    const dups = planDuplicates(c.t);
+    const dups = [...planDuplicates(c.t), ...planLost(c.t)];
     const added = [...res.added, ...zone.added, ...dups];
     for (const a of [...res.added, ...zone.added]) {
       if (a.status !== "propuesta") continue;
@@ -214,7 +224,7 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
   approveUntil(Infinity);
   // Recursos aprobados después de la última llamada: sus avisos de duplicado salen al final, a la hora de esa aprobación.
   const lastApproval = Math.max(calls.at(-1)?.t ?? 0, ...actions.map((a) => (a.approval && a.approval.by !== "automatica" ? a.approval.at : 0)));
-  const late = planDuplicates(lastApproval);
+  const late = [...planDuplicates(lastApproval), ...planLost(Math.max(lastApproval, ...(scenario.lost ?? []).map((l) => l.t)))];
   if (late.length) {
     queueDuplicates(late, lastApproval);
     approveUntil(Infinity);

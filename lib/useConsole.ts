@@ -18,7 +18,9 @@ import type { EngineCall, EngineState, Incident } from "@/lib/engine";
 import type { Aml, CallChannel, Decision, ECallData, ProcessResult } from "@/lib/types";
 import { isEcall } from "@/lib/ecall";
 import { actionIncidents, addProposals, approve, approveBatch, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
-import { proposalsFor } from "@/lib/consoleActions";
+import { factsFrom, proposalsFor } from "@/lib/consoleActions";
+import { analyzeLostCalls } from "@/lib/lostCalls";
+import type { LostReport } from "@/lib/lostCalls";
 import type { AgentAction, Proposal } from "@/lib/actions";
 import { heardOf } from "@/lib/waitingConsole";
 import type { Heard } from "@/lib/waitingConsole";
@@ -57,6 +59,12 @@ export const callMeta = (s: ConsoleState, id: string): CallMeta | undefined =>
  * avisos de duplicado (X14, dependen del registro de acciones). La usan la consola, la presentación y `replay`.
  */
 export function consoleProposals(s: ConsoleState): Proposal[] {
+  const { phones, channels } = arrivedMeta(s);
+  // Llamadas perdidas (X15): sus devoluciones y sus SMS de duplicado.
+  return [...proposalsFor(s.engine.incidents, s.calls, phones, { channels, actions: s.actions }), ...consoleLostCalls(s).proposals];
+}
+
+function arrivedMeta(s: ConsoleState) {
   const phones: Record<string, string> = {};
   const channels: Record<string, CallChannel | undefined> = {};
   for (const id of s.arrived) {
@@ -64,7 +72,20 @@ export function consoleProposals(s: ConsoleState): Proposal[] {
     phones[id] = m?.phone ?? "";
     channels[id] = m?.channel;
   }
-  return proposalsFor(s.engine.incidents, s.calls, phones, { channels, actions: s.actions });
+  return { phones, channels };
+}
+
+/**
+ * Llamadas perdidas del escenario hasta el reloj (X15), cruzadas con los incidentes abiertos:
+ * `{ duplicates, unknown, proposals }` (`lib/lostCalls.ts`). Depende de `s.clock`.
+ */
+export function consoleLostCalls(s: ConsoleState): LostReport {
+  const { phones, channels } = arrivedMeta(s);
+  return analyzeLostCalls(getScenario(s.scenarioId).lost ?? [], s.clock, {
+    incidents: s.engine.incidents,
+    facts: factsFrom(s.calls, phones, channels),
+    actions: s.actions,
+  });
 }
 
 export interface Fx {

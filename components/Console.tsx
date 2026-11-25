@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { callMeta, consoleProposals, useConsole } from "@/lib/useConsole";
+import { callMeta, consoleLostCalls, consoleProposals, useConsole } from "@/lib/useConsole";
 import { actionIncidents, canApprove } from "@/lib/actions";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import { buildAuditLog } from "@/lib/audit";
@@ -27,6 +27,7 @@ import type { Theme } from "./TopBar";
 import TranslateBox from "./TranslateBox";
 import type { Ask } from "./ReplyPanel";
 import WaitingBox from "./WaitingBox";
+import LostCallsBox from "./LostCallsBox";
 
 /** Lleva la vista a una caja (útil en pantallas pequeñas) y la resalta un instante. */
 function focusBox(box: FocusBox) {
@@ -103,7 +104,10 @@ export default function Console() {
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
 
   // Agente de acciones (X05): las reglas proponen a partir del estado de los incidentes; las automáticas se envían al añadirse.
-  const proposals = useMemo(() => consoleProposals(s), [s.engine, s.calls, s.arrived, s.live, s.scenarioId, s.actions]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Llamadas perdidas (X15): dependen del reloj; basta con recalcular cuando ocurre una nueva.
+  const lostSeen = (getScenario(s.scenarioId).lost ?? []).filter((l) => l.t <= s.clock).length;
+  const proposals = useMemo(() => consoleProposals(s), [s.engine, s.calls, s.arrived, s.live, s.scenarioId, s.actions, lostSeen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lost = useMemo(() => consoleLostCalls(s), [s.engine, s.calls, s.arrived, s.scenarioId, s.actions, lostSeen]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     dispatch({ type: "plan", proposals });
   }, [proposals, dispatch]);
@@ -153,12 +157,15 @@ export default function Console() {
         <div className="col col-left">
           <CallQueue s={s} ranks={ranks} onArchived={openArchive} playing={audio.playing} sttUp={sttUp} localAI={status.mode === "local"} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
           <WaitingBox s={s} ranks={ranks} onSelect={selectIncident} />
+          <LostCallsBox report={lost} actions={s.actions} incidents={s.engine.incidents} ranks={ranks} onApprove={approve} onDiscard={discard} onIncident={selectIncident} />
         </div>
 
         <div className="col col-center">
           {/* La decisión ámbar va encima del mapa y nunca se resuelve sola. */}
           <div className="decision-slot" aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
           <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident} onResolve={resolve}>
+            {/* Avisos del agente en la esquina del mapa: no tapan tarjetas ni el detalle. */}
+            <AgentFeed actions={s.actions} epoch={s.epoch} />
             {notStarted && (
               <div className="welcome">
                 <h2>{scn.name}</h2>
@@ -172,7 +179,7 @@ export default function Console() {
             )}
           </MapView>
           <div className="pair">
-            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} />
+            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={() => focusBox("lost")} />
             <TranslateBox s={s} ask={ask} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
           </div>
         </div>
@@ -186,7 +193,6 @@ export default function Console() {
           </section>
         </div>
       </main>
-      <AgentFeed actions={s.actions} epoch={s.epoch} />
       <HelpDialog open={help} onClose={() => setHelp(false)} />
       <ArchiveDialog open={archive.open} focus={archive.focus} s={s} onClose={() => setArchive({ open: false, focus: null })} onReopen={reopen} />
       <DeckReturn />
