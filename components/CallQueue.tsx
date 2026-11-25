@@ -12,7 +12,7 @@ import type { IconName } from "./Icon";
 import IncToken from "./IncToken";
 import LivePanel from "./LivePanel";
 import ManualCall from "./ManualCall";
-import { langName, mmss, placeOf, plural, toneOf } from "./format";
+import { hasIdentifiedLanguage, langName, mmss, placeOf, plural, toneOf } from "./format";
 
 interface Props {
   s: ConsoleState;
@@ -46,7 +46,8 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
     const gray = !!inc?.provisional && inc.callIds[0] === id;
     const first = !!inc && inc.callIds[0] === id;
     const text = rec.result?.extraction.summary_es ?? call.transcript;
-    const foreign = call.lang !== "es";
+    const identified = hasIdentifiedLanguage(call.lang);
+    const foreign = identified && call.lang !== "es";
     let status: { cls: string; text: string; icon: IconName };
     if (rec.status === "queued") status = { cls: "wait", text: "En espera", icon: "clock" };
     else if (rec.status === "processing") status = { cls: "wait", text: "Analizando…", icon: "clock" };
@@ -56,13 +57,14 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
     else if (first) status = { cls: inc && toneOf(inc) === "critical" ? "critical" : "new", text: "Emergencia nueva", icon: "phone" };
     else status = { cls: "dup", text: "Repetida", icon: "merge" };
     const ecall = isEcall(call);
-    return { id, call, inc, solved, gray, text, foreign, status, ecall };
+    return { id, call, inc, solved, gray, text, identified, foreign, status, ecall };
   });
   const asks = rows.filter((r) => r.gray).length;
 
-  const row = ({ id, call, inc, solved, gray, text, foreign, status, ecall }: (typeof rows)[number], inGroup = false) => {
+  const row = ({ id, call, inc, solved, gray, text, identified, foreign, status, ecall }: (typeof rows)[number], inGroup = false) => {
     const onAir = playing === id;
     const rank = inc ? ranks.get(inc.id) ?? 0 : 0;
+    const spoken = ecall ? "" : `${identified ? " en " : " · "}${langName(call.lang)}`;
     return (
       <li
         key={id}
@@ -74,7 +76,7 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
         <button
           disabled={!inc && !solved}
           onClick={() => (inc ? onSelect(inc.id) : solved && onArchived(solved))}
-          aria-label={`${ecall ? `eCall ${id} (datos del vehículo, sin voz)` : `Llamada ${id}`} de las ${mmss(call.t)}${ecall ? "" : ` en ${langName(call.lang)}`}: ${text.replace(/\.$/, "")}. ${status.text}${inc ? ` · ${inc.id}` : ""}`}
+          aria-label={`${ecall ? `eCall ${id} (datos del vehículo, sin voz)` : `Llamada ${id}`} de las ${mmss(call.t)}${spoken}: ${text.replace(/\.$/, "")}. ${status.text}${inc ? ` · ${inc.id}` : ""}`}
         >
           <span className={`call-ico ${onAir ? "live" : status.cls}`} aria-hidden="true"><Icon name={ecall && status.icon !== "alert" ? "car" : status.icon} size={19} /></span>
           <span className="call-main">

@@ -2,7 +2,7 @@ import { TYPE_LABELS } from "@/lib/labels";
 import type { ConsoleState, Reply } from "@/lib/useConsole";
 import IncToken, { ranksOf } from "./IncToken";
 import ReplyPanel, { type Ask } from "./ReplyPanel";
-import { langName, placeOf } from "./format";
+import { hasIdentifiedLanguage, langName, placeOf } from "./format";
 
 interface Props {
   s: ConsoleState;
@@ -16,11 +16,12 @@ interface Props {
 export default function TranslateBox({ s, ask, localAI, onSelect, onReply }: Props) {
   const langsOf = (callIds: string[]) => [...new Set(callIds.map((id) => s.calls[id]?.extraction.language ?? "es"))];
   const list = s.engine.incidents
-    .map((i) => ({ inc: i, foreign: langsOf(i.callIds).filter((l) => l !== "es") }))
+    .map((i) => ({ inc: i, foreign: langsOf(i.callIds).filter((l) => l !== "es" && hasIdentifiedLanguage(l)) }))
     .filter((x) => x.foreign.length > 0)
     .sort((a, b) => Number(b.inc.id === s.selected) - Number(a.inc.id === s.selected)); // la abierta, primero
   const cur = list.find((x) => x.inc.id === s.selected);
   const sel = s.engine.incidents.find((i) => i.id === s.selected);
+  const unidentified = sel ? langsOf(sel.callIds).find((l) => !hasIdentifiedLanguage(l)) : undefined;
   const ranks = ranksOf(s);
 
   return (
@@ -46,12 +47,14 @@ export default function TranslateBox({ s, ask, localAI, onSelect, onReply }: Pro
       )}
       <div className="box-body tr-body">
         {cur ? (
-          <ReplyPanel key={cur.inc.id} incidentId={cur.inc.id} langs={langsOf(cur.inc.callIds)} clock={s.clock} ask={ask?.incidentId === cur.inc.id ? ask : null} localAI={localAI} replies={s.replies} onReply={onReply} />
+          <ReplyPanel key={cur.inc.id} incidentId={cur.inc.id} langs={cur.foreign} clock={s.clock} ask={ask?.incidentId === cur.inc.id ? ask : null} localAI={localAI} replies={s.replies} onReply={onReply} />
         ) : (
           <p className="note">
-            {list.length === 0
-              ? "Cuando llame alguien en otro idioma, aquí podrás responderle con frases leídas en voz alta en su idioma."
-              : `${sel ? `${sel.id} es en castellano. ` : ""}Elige arriba una emergencia con llamante extranjero para responderle.`}
+            {unidentified !== undefined
+              ? `${langName(unidentified)}.${list.length ? " Elige arriba una emergencia con llamante extranjero para responderle." : ""}`
+              : list.length === 0
+                ? "Cuando llame alguien en otro idioma, aquí podrás responderle con frases leídas en voz alta en su idioma."
+                : `${sel ? `${sel.id} es en castellano. ` : ""}Elige arriba una emergencia con llamante extranjero para responderle.`}
           </p>
         )}
       </div>

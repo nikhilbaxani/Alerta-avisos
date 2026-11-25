@@ -200,7 +200,7 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
               <li key={ev.id} className="inbox-item">
                 <div className="call-top">
                   <span className="call-time">{hh}</span>
-                  <span className="lang">{ev.language === "und" ? "Idioma no detectado" : langName(ev.language)}</span>
+                  <span className="lang">{langName(ev.language)}</span>
                   <span className="call-id">{ev.id} · {Math.round(ev.durationS)} s</span>
                 </div>
                 <p className="inbox-type">{TYPE_LABELS[ev.extraction.incident_type]}</p>

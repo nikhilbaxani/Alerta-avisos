@@ -13,6 +13,9 @@ export const placeOf = (i: Incident) => i.locations[0] ?? "";
 export const toneOf = (i: Incident): "pending" | "critical" | "normal" =>
   i.provisional ? "pending" : i.severity >= 5 || i.risks.includes("vida") ? "critical" : "normal";
 
-export const langName = (code: string) => LANG_NAMES[code] ?? code.toUpperCase();
+export const hasIdentifiedLanguage = (code: string) => code.trim() !== "" && code.trim().toLowerCase() !== "und";
+
+export const langName = (code: string) =>
+  hasIdentifiedLanguage(code) ? LANG_NAMES[code] ?? code.toUpperCase() : "Idioma no detectado";
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

@@ -11,7 +11,7 @@ import IncToken from "./IncToken";
 import ResolveButton from "./ResolveButton";
 import type { Ask } from "./ReplyPanel";
 import type { CallAudio } from "./useCallAudio";
-import { langName, mmss, placeOf, plural } from "./format";
+import { hasIdentifiedLanguage, langName, mmss, placeOf, plural } from "./format";
 
 interface Props {
   s: ConsoleState;
@@ -36,7 +36,7 @@ export default function IncidentDetail({ s, onSplit, audio, onResolve, ask, onAs
   }
   const rank = rankIncidents(s.engine.incidents, s.clock).findIndex((i) => i.id === inc.id) + 1;
   const langs = [...new Set(inc.callIds.map((id) => s.calls[id]?.extraction.language ?? "es"))];
-  const foreign = langs.filter((l) => l !== "es");
+  const foreign = langs.filter((l) => l !== "es" && hasIdentifiedLanguage(l));
   const missing = incidentMissing(inc, s.calls);
   const asked = ask?.incidentId === inc.id ? missing.find((m) => m.phraseId === ask.phraseId) : undefined;
   const inLang = foreign.length > 0 ? `en ${langName(foreign[0]).toLowerCase()}` : "en castellano";
