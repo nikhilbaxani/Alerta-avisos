@@ -2,8 +2,8 @@ import Deck from "@/components/deck/Deck";
 import "./deck.css";
 
 export const metadata = {
-  title: "Presentación · Avance 112",
-  description: "Presentación interactiva de Avance 112: el problema de las líneas del 112 en una catástrofe y la consola en directo.",
+  title: "Presentación · Agente 112",
+  description: "Pitch de 3 minutos de Agente 112: el problema de las líneas del 112 en una catástrofe, la solución, la consola en directo y la hoja de ruta.",
 };
 
 export default function PresentationPage() {

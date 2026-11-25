@@ -16,7 +16,7 @@ const HOME = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`;
 /**
  * Presentación interactiva anexa a la consola (/presentacion). Flechas, espacio o los botones para avanzar;
  * F pantalla completa; N notas del orador. La dirección guarda la diapositiva (#3). Al pasar de la última
- * (la del QR) se vuelve a la página principal.
+ * (logo y eslogan) se vuelve a la página principal.
  */
 export default function Deck() {
   const router = useRouter();
@@ -154,9 +154,9 @@ export default function Deck() {
         })}
 
         <header className="chrome">
-          <a href={HOME} className="brandmark" aria-label="Avance 112: ir a la consola" onClick={() => markDeckReturn(iRef.current + 1)}>
+          <a href={HOME} className="brandmark" aria-label="Agente 112: ir a la consola" onClick={() => markDeckReturn(iRef.current + 1)}>
             <Mark size={34} />
-            <span>Avance <b>112</b></span>
+            <span>Agente <b>112</b></span>
           </a>
           <span className="section">{cur.section}</span>
           <span className="count" aria-live="polite">{String(i + 1).padStart(2, "0")} / {String(n).padStart(2, "0")}</span>

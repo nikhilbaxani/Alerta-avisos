@@ -13,6 +13,7 @@ import HelpDialog from "@/components/HelpDialog";
 import MapView from "@/components/MapView";
 import PriorityList from "@/components/PriorityList";
 import TopBar from "@/components/TopBar";
+import TranslateBox from "@/components/TranslateBox";
 import { useCallAudio } from "@/components/useCallAudio";
 
 const STATUS: EngineStatus = { mode: "simulated", label: "Modo simulado" };
@@ -35,8 +36,12 @@ export default function LiveConsole({ active }: { active: boolean }) {
   useEffect(() => {
     if (active) {
       if (!started.current) {
-        started.current = true;
-        const t = setTimeout(() => dispatch({ type: "play" }), 1100);
+        // Se marca al arrancar de verdad: si el efecto se limpia antes (salir enseguida o el doble montaje
+        // de desarrollo), la próxima vez vuelve a intentarlo.
+        const t = setTimeout(() => {
+          started.current = true;
+          dispatch({ type: "play" });
+        }, 1100);
         return () => clearTimeout(t);
       }
       if (resume.current) dispatch({ type: "play" });
@@ -98,7 +103,11 @@ export default function LiveConsole({ active }: { active: boolean }) {
           <MapView s={s} onSelect={select} onFxDone={fxDone} pendingActions={pendingByIncident} units={units} hazards={hazards} hazardWarnings={hazardWarnings} />
           <AgentFeed actions={s.actions} epoch={s.epoch} />
         </section>
-        <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
+        {/* Prioridad y traducción: la respuesta en árabe a E1 se enseña sin salir de la diapositiva. */}
+        <div className="embed-side">
+          <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
+          <TranslateBox s={s} localAI={false} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
+        </div>
       </div>
       {finished && <span className="sr-only" role="status">Escenario terminado</span>}
       {mounted && createPortal(<HelpDialog open={help} onClose={() => setHelp(false)} />, document.body)}

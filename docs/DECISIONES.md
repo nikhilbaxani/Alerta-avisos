@@ -2,6 +2,13 @@
 
 Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descartada.
 
+## 2026-11-25 · Presentación de pitch en 7 diapositivas con el nombre Agente 112 (petición de Nick)
+- Decisión: `/presentacion` pasa de 12 a 7 diapositivas para un pitch de 3 minutos: (1) DANA, 19.821 llamadas / 4.770 incidentes; (2) «Son las líneas»: apagón ×4, +10.000 perdidas, 43.845 en otro idioma y ~30 s de intérprete; (3) la solución en cuatro verbos (agrupa, prioriza, traduce, actúa) con las garantías (si duda pregunta, 100 % local, Ley de IA); (4) «Llama tú», QR para que el público grabe su llamada; (5) la consola en directo, con el QR pequeño en la esquina y ahora también la caja de Traducción para responder en árabe a E1 sin salir; (6) hoja de ruta **provisional** con cliente, modelo y una cifra de mercado; (7) logo Agente 112 con el eslogan «Cuando todos llaman, que nadie se pierda.» y «La IA propone · El operador decide». La marca de la presentación es Agente 112: logo dibujado en SVG + texto (`LogoLockup`), sin el SVG de Avance 112; dentro de la consola incrustada se oculta su logo (la barra del marco ya dice «Agente 112»). La consola principal no cambia.
+- QR del público: apunta a `/llamar` de la propia web (rama `feature/llamadas-publico`, aún sin fusionar en `main`); `NEXT_PUBLIC_CALL_URL` lo fija y, si no, se forma con `NEXT_PUBLIC_DEMO_URL` o con el origen. Hasta fusionar esa rama, en `main` el QR lleva a una página que no existe.
+- Cifras: solo las de MEMORIA §3 con su fuente; la fecha de la Ley de IA (dic-2027) es de MEMORIA §4. Las fechas de la hoja de ruta son un borrador para cambiar.
+- Motivo: Nick pide un pitch claro y tajante de 3 minutos: problema con datos reales, solución breve, demo con QR para que el público mande sus grabaciones, y cierre con logo, eslogan y hoja de ruta.
+- Descartado: mantener las diapositivas sueltas de zona gris, agente y traducción (en 3 minutos se enseñan dentro de la consola en directo); unir logo y hoja de ruta en una sola (el cierre pierde fuerza); regenerar el logo animado de Avance 112 con otro nombre (necesita Pango y PyCairo del sistema y no aporta en el lienzo de la presentación).
+
 ## 2026-11-24 · Entrada única del logo en la consola
 - Decisión: la cabecera utiliza `avance-112-animado.svg`, cuya entrada se reproduce una sola vez y termina en reposo. Conserva la transparencia y la alternativa PNG para movimiento reducido.
 - Motivo: Nick pide que el logo no se repita en la interfaz; la repetición se reserva para una futura landing. El GIF original con bucle sigue disponible para ese uso.
