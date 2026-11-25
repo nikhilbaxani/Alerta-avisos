@@ -813,28 +813,30 @@ describe("relay /llamar + /events", () => {
     });
 
     it.each([
-      ["is", "es", "es"], ["ar", "ar", "ar"], ["is", undefined, "und"], ["en", "es", "es"],
-      ["ar", "is", "ar"], ["is", "ru", "und"],
-    ])("S32 por HTTP: Whisper %s y LLM %s → %s", async (sttLanguage, llmLanguage, expected) => {
-      const stt = fakeStt({ text: "Hay un incendio", language: sttLanguage });
+      ["is", "es", "es"], ["ar", "ar", "ar"], ["is", undefined, "und"], ["en", "es", "en"],
+      ["en", "es\n<script>", "en"], ["ar", "is", "ar"], ["is", "ru", "und"], ["is", "xx", "und"], ["is", 7, "und"],
+    ] as const)("S32 por HTTP: Whisper %s y LLM %s → %s", async (sttLanguage, llmLanguage, expected) => {
+      const stt = fakeStt({ text: "Hay un incendio", language: sttLanguage, translation: "There is a fire" });
       if (llmLanguage) {
         const realFetch = globalThis.fetch;
-        const llmAnswer = answer({ ...base, language: llmLanguage });
+        const llmAnswer = answer({ ...base, language: llmLanguage, translation_es: "Hay un incendio" });
         vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) =>
           String(input).startsWith("http://llm.test/") ? llmAnswer(String(input), init!) : realFetch(input, init));
       }
       const { relay, base: url } = await boot(stt, { llmExtract: llmLanguage ? createLlmExtractor(cfg, 1000) : undefined });
       await deliver(url, relay);
       const [ev] = await readEvents(url, 1);
-      expect(ev).toMatchObject({ language: expected, extraction: { language: expected }, extractor: llmLanguage ? "llm" : "rules" });
+      expect(ev).toMatchObject({ language: expected, extraction: {
+        language: expected, translation_es: llmLanguage && expected !== "es" ? "Hay un incendio" : null,
+      }, extractor: llmLanguage ? "llm" : "rules", translation_en: llmLanguage ? null : "There is a fire" });
     });
 
-    it("si discrepan, manda la detección del LLM sobre la transcripción", async () => {
+    it("si discrepan, manda el idioma admitido de Whisper y se conserva la traducción", async () => {
       bodies.length = 0;
       vi.stubGlobal("fetch", answer({ ...base, language: "es", translation_es: "x" }));
       const ex = await createLlmExtractor(cfg, 1000)("حريق", "ar");
-      expect(ex.language).toBe("es");
-      expect(ex.translation_es).toBeNull();
+      expect(ex.language).toBe("ar");
+      expect(ex.translation_es).toBe("x");
     });
   });
 });

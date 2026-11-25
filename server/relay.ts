@@ -54,10 +54,10 @@ function supportedLanguage(value: unknown): string | undefined {
   return Object.hasOwn(LANG_NAMES, code) ? code : undefined;
 }
 
-// El LLM identifica el idioma a partir de la transcripción; si discrepan, prima su código
-// admitido. Sin ese código (o sin LLM), se conserva el de Whisper si se admite; si no, «und».
+// Prima Whisper si su código se admite. El LLM solo rescata códigos no admitidos;
+// si ninguno se admite (o no hay LLM), se usa «und».
 function relayExtraction(raw: Record<string, unknown>, whisper: string): Extraction {
-  const language = supportedLanguage(raw.language) ?? supportedLanguage(whisper) ?? "und";
+  const language = supportedLanguage(whisper) ?? supportedLanguage(raw.language) ?? "und";
   return { ...sanitizeExtraction({ ...raw, language }, language), language };
 }
 
@@ -681,15 +681,13 @@ export function createRelay(opts: RelayOptions) {
     // Solo después de «Enviar» y solo el campo de dirección, nunca el texto íntegro de la llamada.
     let { location, extraction } = built;
     const geocodeStart = Date.now();
-    if (geocoderUrl) {
-      const address = extraction.location_text || (built.extractor === "rules" && !location.known
-        ? extractAddressFragment(built.translation ?? "") || extractAddressFragment(p.transcript ?? "") : "");
-      if (address) {
-        const resolved = await resolveLocation(address, { url: geocoderUrl, timeoutMs: opts.geocoderTimeoutMs ?? 3000, fetch: opts.geocodeFetch });
-        if (resolved.known) {
-          location = resolved;
-          if (!extraction.location_text) extraction = { ...extraction, location_text: address };
-        }
+    const address = extraction.location_text || (built.extractor === "rules" && !location.known
+      ? extractAddressFragment(built.translation ?? "") || extractAddressFragment(p.transcript ?? "") : "");
+    if (address) {
+      const resolved = await resolveLocation(address, { url: geocoderUrl, timeoutMs: opts.geocoderTimeoutMs ?? 3000, fetch: opts.geocodeFetch });
+      if (resolved.known) {
+        location = resolved;
+        if (!extraction.location_text) extraction = { ...extraction, location_text: address };
       }
     }
     const sttMs = p.sttMs ?? 0;
@@ -703,7 +701,7 @@ export function createRelay(opts: RelayOptions) {
       extraction,
       location,
       extractor: built.extractor,
-      timings: { sttMs, totalMs: sttMs + built.extractMs + (geocoderUrl ? Date.now() - geocodeStart : 0) },
+      timings: { sttMs, totalMs: sttMs + built.extractMs + (Date.now() - geocodeStart) },
     };
     if (!isPublicCallEvent(ev)) {
       log(`[relay] ${id} descartada: el evento no cumple el contrato`);

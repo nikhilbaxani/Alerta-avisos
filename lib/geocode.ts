@@ -13,7 +13,7 @@ export interface GeocodeOptions {
 // Caja envolvente aproximada del municipio (no es su perímetro administrativo).
 const MALAGA = { west: -4.63, north: 36.94, east: -4.29, south: 36.65 };
 const CACHE_LIMIT = 256;
-const MAX_STREET_REFINEMENT_METERS = 1500;
+const BASE_STREET_REFINEMENT_METERS = 1500;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const cache = new Map<string, Aml>();
 const QUEUE_LIMIT = 10;
@@ -135,7 +135,7 @@ export async function resolveLocation(locationText: string, opts: GeocodeOptions
   if (!base) return fallback;
 
   const usable = (aml: Aml): boolean =>
-    !street || haversine(street.location.aml, aml) <= MAX_STREET_REFINEMENT_METERS;
+    !street || haversine(street.location.aml, aml) <= Math.max(BASE_STREET_REFINEMENT_METERS, street.extent);
   const located = (aml: Aml): PublicLocation => ({ place: street ? street.location.place : place, known: true, aml: { ...aml } });
   try {
     const url = searchUrl(base, street?.address ?? place);

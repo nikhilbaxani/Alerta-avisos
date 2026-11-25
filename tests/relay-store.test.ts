@@ -79,12 +79,23 @@ it.each([undefined, "bad epoch\n"])("S31: persiste la época al abrir un almacé
 });
 
 it("S31: migra un archivo antiguo sin epoch", async () => {
-  await writeFile(join(dir, "calls.json"), JSON.stringify({ version: 1, counter: 8, calls: [] }));
+  const file = join(dir, "calls.json");
+  const original = await boot();
+  await publish(original);
+  await publish(original);
+  const [one, two] = await frames(original);
+  expect((await ack(original, one.data.id, "accepted")).status).toBe(200);
+  await close(original.server);
+  const { version, calls } = JSON.parse(await readFile(file, "utf8"));
+  await writeFile(file, JSON.stringify({ version, counter: 8, calls }));
   const r = await boot();
-  const [hello] = await frames(r, true);
-  expect(hello).toMatchObject({ type: "hello", data: { epoch: expect.any(String) } });
+  const [hello, ...replay] = await frames(r, true);
+  expect(hello).toEqual({ type: "hello", data: { epoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) } });
+  expect(replay).toEqual([{ ...one, type: "accepted" }, two]);
+  expect(await readdir(dir)).toEqual(["calls.json"]);
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ version, counter: 8, calls, epoch: hello.data.epoch });
   await publish(r);
-  expect((await frames(r))[0].data.id).toBe("PTEST9");
+  expect((await frames(r)).map(({ data }) => data.id)).toEqual([one.data.id, two.data.id, "PTEST9"]);
 });
 
 it("conserva eventos y contador sin audio ni token, con modo 0600", async () => {
@@ -210,6 +221,34 @@ it("S27: archivo hostil no se reenvía ni rompe el relay", async () => {
 });
 
 const root = process.getuid?.() === 0;
+it.skipIf(root)("S31: un borrado fallido no cambia la época ni notifica cleared", async () => {
+  const r = await boot();
+  await publish(r);
+  const before = await frames(r, true);
+  const file = join(dir, "calls.json");
+  const disk = await readFile(file, "utf8");
+  const reader = (await r.req(`/events?token=${TOKEN}`)).body!.getReader();
+  try {
+    await chmod(dir, 0o500);
+    const response = await wipe(r, AUTH);
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Error interno del relay" });
+    const decoder = new TextDecoder();
+    let text = "";
+    do {
+      const { value, done } = await reader.read();
+      if (done) throw new Error("El flujo SSE se cerró antes del latido");
+      text += decoder.decode(value, { stream: true });
+    } while (!text.includes(": ping\n\n"));
+    expect(text).not.toContain("event: cleared\n");
+    expect(await frames(r, true)).toEqual(before);
+    expect(await readFile(file, "utf8")).toBe(disk);
+    expect(await readdir(dir)).toEqual(["calls.json"]);
+  } finally {
+    await chmod(dir, 0o700);
+    await reader.cancel();
+  }
+});
 it.skipIf(root)(`S27: publica y acusa con DATA_DIR de solo lectura${root ? " (omitida: root puede escribir pese a chmod 0500)" : ""}`, async () => {
   const log = vi.fn();
   const r = await boot({ log });
@@ -288,6 +327,23 @@ it("una URL vacía no consulta; un geocodificador colgado no bloquea la publicac
   expect(geocodeFetch).toHaveBeenCalledTimes(1);
   expect(geocodeFetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
   expect((await frames(slow))[0].data.location).toEqual({ place: null, known: false, aml: UNKNOWN_LOCATION_AML });
+});
+
+it.each(["rules", "llm"] as const)("S32: resuelve Demóstenes por HTTP sin GEOCODER_URL (%s)", async (mode) => {
+  const location_text = "Calle de Móstenes número 29, Málaga";
+  const geocodeFetch = vi.fn<typeof fetch>();
+  const r = await boot({ geocodeFetch,
+    fetch: async () => Response.json({ text: "Estamos en calle de Móstenes número 29, Málaga, donde ha ocurrido un accidente.", language: "es", duration: 15 }),
+    llmExtract: mode === "llm" ? async () => ({ location_text, language: "es", summary_es: "Accidente.",
+      translation_es: null, incident_type: "otro", keywords: [], risks: [], people_at_risk: 0, severity: 3 }) : undefined });
+  await publish(r);
+  const events = await frames(r);
+  expect(events).toEqual([{ type: "call", data: expect.objectContaining({ extractor: mode,
+    location: { known: true, place: "Calle Demóstenes, 29", aml: { lat: expect.any(Number), lng: expect.any(Number), acc: expect.any(Number) } },
+  }) }]);
+  expect(events[0].data.location.aml.acc).toBeGreaterThanOrEqual(250);
+  expect(events[0].data.location.aml.acc).toBeLessThanOrEqual(1500);
+  expect(geocodeFetch).not.toHaveBeenCalled();
 });
 
 it.each(["rules", "llm"] as const)("envía solo la dirección extraída (%s)", async (mode) => {

@@ -31,18 +31,20 @@ function splitType(text: string) {
 
 function phonetic(name: string): string {
   return name.replace(/c(?=[ei])/g, "s").replace(/z/g, "s").replace(/v/g, "b")
-    .replace(/ll/g, "y").replace(/(?<!c)h/g, "").replace(/([a-z])\1+/g, "$1");
+    .replace(/g(?=[ei])/g, "j").replace(/ll/g, "y").replace(/(?<!c)h/g, "")
+    .replace(/([a-z])\1+/g, "$1").replace(/sky$/, "ski"); // Apellidos como Stravinsky.
 }
 
 function keys(name: string) {
   const literal = name.replace(/ /g, "");
-  const core = name.replace(PARTICLES, "").replace(/ +/g, "");
-  return { literal, core, sound: phonetic(literal), coreSound: phonetic(core) };
+  const contentWords = name.replace(PARTICLES, "").trim();
+  const core = contentWords.replace(/ +/g, "");
+  return { literal, core, sound: phonetic(literal), coreSound: phonetic(core), compound: contentWords.includes(" ") };
 }
 
-const INDEX = STREET_NAMES.map(([name, lat, lng, acc]) => {
+const INDEX = STREET_NAMES.map(([name, lat, lng, acc, extent = acc]) => {
   const parsed = splitType(words(name));
-  return { name, lat, lng, acc, type: parsed.type, keys: keys(parsed.name),
+  return { name, lat, lng, acc, extent, type: parsed.type, keys: keys(parsed.name),
     // Nombre habitual; el resultado conserva la denominación de OpenStreetMap.
     alias: name === "Calle Marqués de Larios" ? "larios" : undefined };
 });
@@ -72,22 +74,30 @@ function matchCost(query: ReturnType<typeof keys>, street: ReturnType<typeof key
   if (query.core === street.core) return 0.125;
   if (query.sound.length >= 5 && query.sound === street.sound) return 0.25;
   if (query.coreSound.length >= 5 && query.coreSound === street.coreSound) return 0.375;
-  // Cuanto más corto es el nombre, menos se puede cambiar sin confundir vías.
+  // Una errata libre puede convertir una palabra en otra (Escuelas/Espuelas).
+  // Solo en nombres compuestos queda contexto suficiente: conservamos al menos
+  // 9 caracteres sin editar para una errata y 12 para dos. No quitamos la -s.
+  if (!street.compound) return Infinity;
   const length = Math.min(query.coreSound.length, street.coreSound.length);
-  const limit = length >= 12 ? 2 : length >= 7 ? 1 : 0;
+  const limit = length >= 14 ? 2 : length >= 10 ? 1 : 0;
   if (!limit) return Infinity;
   const edits = editDistance(query.coreSound, street.coreSound, limit);
   return edits <= limit ? edits : Infinity;
 }
 
 /** Coincide con una vía, no con el portal: nunca consulta la red. */
-export function matchStreet(text: string): { location: PublicLocation; address: string } | null {
-  const normalized = words(text).replace(INTRO, "").split(END_OF_STREET, 1)[0].trim();
+export function matchStreet(text: string): { location: PublicLocation; address: string; extent: number } | null {
+  const spoken = words(text);
+  const normalized = spoken.replace(INTRO, "").split(END_OF_STREET, 1)[0].trim();
   const { type, name } = splitType(normalized);
   // No se buscan palabras sueltas dentro de la frase ni se pasa a la segunda calle.
   const fragment = name.replace(LOCATION_SUFFIX, "").trim();
   const number = /(?:^| )(?:(?:numero|num|n|no) )?(\d{1,4})$/.exec(fragment);
-  const query = keys(fragment.slice(0, number?.index ?? fragment.length).trim().replace(/\b(?:numero|num)$/, "").trim());
+  const streetName = fragment.slice(0, number?.index ?? fragment.length).trim().replace(/\b(?:numero|num)$/, "").trim();
+  // Una palabra aislada no basta. Conserva «Demóstenes, Málaga»: la localidad
+  // explícita, igual que una introducción locativa, indica que es una dirección.
+  if (!type && !streetName.includes(" ") && !INTRO.test(spoken) && !LOCATION_SUFFIX.test(name)) return null;
+  const query = keys(streetName);
   if (query.core.length < 4) return null;
 
   let best: (typeof INDEX)[number] | undefined;
@@ -112,5 +122,6 @@ export function matchStreet(text: string): { location: PublicLocation; address: 
     location: { place: number ? `${best.name}, ${number[1]}` : best.name, known: true,
       aml: { lat: best.lat, lng: best.lng, acc: best.acc } },
     address: `${best.name}${number ? ` ${number[1]}` : ""}, Málaga`,
+    extent: best.extent,
   };
 }

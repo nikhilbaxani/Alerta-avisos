@@ -41,6 +41,19 @@ describe("resolveLocation", () => {
     expect(new URL(fetch.mock.calls[0][0] as string).searchParams.get("q")).toBe("Calle Demóstenes, Málaga");
   });
 
+  it("refina un portal fuera de 1500 m cuando está dentro de una avenida extensa", async () => {
+    const input = "Avenida José Ortega y Gasset 29";
+    const local = await resolveLocation(input);
+    expect(local).toMatchObject({ known: true, place: "Avenida José Ortega y Gasset, 29", aml: { acc: 1500 } });
+    const house = { lat: local.aml.lat, lon: local.aml.lng + 0.02, type: "house" };
+    expect(haversine(local.aml, { lat: house.lat, lng: house.lon })).toBeGreaterThan(1500);
+    const fetch = mockResponse([house]);
+    expect(await resolveLocation(input, { url, fetch })).toEqual({
+      known: true, place: "Avenida José Ortega y Gasset, 29", aml: { lat: house.lat, lng: house.lon, acc: 100 },
+    });
+    expect(new URL(fetch.mock.calls[0][0] as string).searchParams.get("q")).toBe("Avenida José Ortega y Gasset 29, Málaga");
+  });
+
   it("sitúa Demóstenes sin consultar el geocodificador si no tiene URL", async () => {
     const fetch = mockResponse();
     const location = await resolveLocation(demostenes, { fetch });
