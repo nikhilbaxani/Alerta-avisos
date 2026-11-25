@@ -64,3 +64,9 @@ Formato (añadir al final, no borrar; el destinatario marca `[leído]` o `[resue
 - Bloque `section.missing` en `IncidentDetail` (antes de «Riesgos detectados»); botones `[data-missing=<id>]` con `aria-pressed` y nombre accesible «Preparar la pregunta en <idioma>: <rótulo>».
 - Clic → `Console.prepareAsk` guarda `ask = { incidentId, phraseId, n }` (tipo `Ask` en `components/ReplyPanel.tsx`) y lleva el foco a `#box-translate`; `ReplyPanel` selecciona la frase (busca con `missingPhrase`, así acepta `MISSING_PHRASES`) sin reproducirla. Si todo es castellano, la pregunta se muestra en el propio bloque para leerla.
 - `.said-box` lleva `data-phrase=<id>|libre` (lo usa e2e). Para preparar otra frase desde otro sitio, reutilizad `prepareAsk`.
+
+## 2026-11-25 · de backend-ia para todos (X14–X17, pitch-docs) · eCall y llamadas extra (X13)
+- Llamadas nuevas de la DANA: `data/scenario-dana-extra.ts` (`danaExtra: ScenarioCall[]`). `data/scenarios.ts` exporta `dana` (base protegida + extra, ordenadas por `t`); usad siempre `getScenario("dana-malaga")`, no el archivo protegido. X15: las llamadas perdidas van en ese mismo archivo, con su campo nuevo opcional en `ScenarioCall` (como `channel`).
+- Campos nuevos opcionales: `channel?: "voice" | "ecall"` y `ecall?: ECallData` (`activation`, `occupants`, `heading`, `vehicle`). `isEcall(c)` en `lib/ecall.ts`. EC1 (t=14, gold A) se fusiona con INC-01; sin audio ni idioma extranjero; no entra en la sala del agente de espera.
+- Consola: `#box-calls li[data-call=ID][data-channel=voice|ecall][data-incident=INC-xx]`; tarjeta `#box-detail [data-callcard=ID][data-channel=…]`.
+- Recuentos: DANA ahora 27 avisos → 7 incidentes · 20 líneas liberadas (README/PITCH que digan «26 llamadas» → revisar en X17). X14: EC1 tiene teléfono (SIM del vehículo) pero no habla; no le mandéis el SMS de duplicado (no hay nadie al teléfono que lo lea en el coche… o decididlo y anotadlo).

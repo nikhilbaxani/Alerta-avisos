@@ -55,8 +55,29 @@ export interface Extraction {
   severity: 1 | 2 | 3 | 4 | 5;
 }
 
+/** Canal por el que entra el aviso (X13). Sin `channel`, es una llamada de voz. */
+export type CallChannel = "voice" | "ecall";
+
+/**
+ * Datos estructurados de una eCall (mensaje mínimo del vehículo, MSD). No hay voz ni transcripción:
+ * la posición es el `aml` de la llamada.
+ */
+export interface ECallData {
+  activation: "automatic" | "manual";
+  /** Ocupantes según el vehículo (cinturones abrochados). */
+  occupants: number;
+  /** Dirección de marcha en grados (0 = norte, 90 = este). */
+  heading: number;
+  /** Tipo de vehículo, en castellano («Turismo»). */
+  vehicle: string;
+}
+
 export interface ScenarioCall {
   id: string;
+  /** Canal (X13): sin valor, voz. */
+  channel?: CallChannel;
+  /** Solo en las eCall. */
+  ecall?: ECallData;
   /** Segundos desde el inicio del escenario. */
   t: number;
   lang: Lang;

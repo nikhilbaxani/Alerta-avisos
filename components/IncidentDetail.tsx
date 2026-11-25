@@ -3,6 +3,7 @@ import { rankIncidents } from "@/lib/priority";
 import { callMeta } from "@/lib/useConsole";
 import { resolveBlocker } from "@/lib/engine";
 import { incidentMissing } from "@/lib/missingInfo";
+import { ecallFields, isEcall } from "@/lib/ecall";
 import type { ConsoleState } from "@/lib/useConsole";
 import type { RiskTag } from "@/lib/types";
 import Icon from "./Icon";
@@ -118,13 +119,15 @@ export default function IncidentDetail({ s, onSplit, audio, onResolve, ask, onAs
             const call = callMeta(s, id)!;
             const ex = s.calls[id]!.extraction;
             const translated = ex.language !== "es" && ex.translation_es;
+            const ecall = isEcall(call) && call.ecall ? call.ecall : null;
             return (
-              <article className="callcard" key={id}>
+              <article className={`callcard ${ecall ? "is-ecall" : ""}`} key={id} data-callcard={id} data-channel={ecall ? "ecall" : "voice"}>
                 <header>
                   <b>{id}</b>
                   <span>{mmss(call.t)}</span>
-                  <span>{langName(ex.language)}</span>
+                  {ecall ? <span className="chan-ecall"><Icon name="car" size={13} />eCall</span> : <span>{langName(ex.language)}</span>}
                   <span className="phone">{call.phone}</span>
+                  {ecall && <span className="no-voice">Mensaje de datos (sin voz)</span>}
                   {audio?.hasAudio(id) && (
                     audio.playing === id ? (
                       <button className="btn btn-sm btn-listen is-on" onClick={audio.stop} aria-label={`Detener la llamada ${id}`}><Icon name="stop" size={14} />Detener</button>
@@ -138,7 +141,13 @@ export default function IncidentDetail({ s, onSplit, audio, onResolve, ask, onAs
                     </button>
                   )}
                 </header>
-                {translated ? (
+                {ecall ? (
+                  <dl className="ecall-data" aria-label={`Datos de la eCall ${id}`}>
+                    {ecallFields(ecall, call.aml).map((f) => (
+                      <div key={f.label}><dt>{f.label}</dt><dd>{f.value}</dd></div>
+                    ))}
+                  </dl>
+                ) : translated ? (
                   <div className="cols2">
                     <div>
                       <h4>Original · {langName(ex.language)}</h4>

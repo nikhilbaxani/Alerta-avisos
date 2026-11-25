@@ -31,6 +31,7 @@ import type { DecisionAction, IncidentType, RiskTag, Scenario } from "@/lib/type
 import { DEFAULT_OPERATORS, compareWaiting } from "@/lib/waiting";
 import type { Attention, RoomIndicators, WaitingCall, WaitingReport } from "@/lib/waiting";
 import { heardOf, roomCall } from "@/lib/waitingConsole";
+import { isEcall } from "@/lib/ecall";
 import type { Heard } from "@/lib/waitingConsole";
 
 /** Segundos de escenario que tarda el operador simulado en aprobar una acción. */
@@ -182,7 +183,8 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
   approveUntil(Infinity);
 
   // Sala simulada: «primera de su incidente» con el estado final, como la franja de sala de la consola.
-  const roomCalls: WaitingCall[] = calls.map((c) =>
+  // Las eCall no tienen voz: no ocupan la cola de voz ni a un operador al teléfono (DECISIONES X13).
+  const roomCalls: WaitingCall[] = calls.filter((c) => !isEcall(c)).map((c) =>
     roomCall({ id: c.id, t: c.t, extraction: c.mock }, state.incidents.find((i) => i.id === state.assignment[c.id]), heard[c.id]),
   );
 

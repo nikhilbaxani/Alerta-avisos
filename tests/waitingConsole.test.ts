@@ -89,7 +89,8 @@ describe("agente de espera en la consola (X11)", () => {
   it("solo cuenta lo que ya ha llegado según el reloj", () => {
     const s = play("dana-malaga", 60);
     const ids = consoleRoomCalls(s).map((c) => c.id);
-    expect(ids.length).toBe(getScenario("dana-malaga").calls.filter((c) => c.t <= 60).length);
+    // Las eCall (X13) no entran en la sala de voz.
+    expect(ids.length).toBe(getScenario("dana-malaga").calls.filter((c) => c.t <= 60 && c.channel !== "ecall").length);
     expect(consoleWaiting(init()).rows).toEqual([]);
   });
 });

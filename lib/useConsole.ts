@@ -15,7 +15,8 @@ import {
   splitCall,
 } from "@/lib/engine";
 import type { EngineCall, EngineState, Incident } from "@/lib/engine";
-import type { Aml, Decision, ProcessResult } from "@/lib/types";
+import type { Aml, CallChannel, Decision, ECallData, ProcessResult } from "@/lib/types";
+import { isEcall } from "@/lib/ecall";
 import { actionIncidents, addProposals, approve, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
 import type { AgentAction, Proposal } from "@/lib/actions";
 import { heardOf } from "@/lib/waitingConsole";
@@ -42,6 +43,9 @@ export interface CallMeta {
   aml: Aml;
   transcript: string;
   live?: boolean;
+  /** X13: `ecall` = datos del vehículo, sin voz. */
+  channel?: CallChannel;
+  ecall?: ECallData;
 }
 
 export const callMeta = (s: ConsoleState, id: string): CallMeta | undefined =>
@@ -185,7 +189,8 @@ function applyResult(s: ConsoleState, src: CallMeta, result: ProcessResult): Con
     inflight: src.live ? s.inflight : null,
     engine,
     calls: { ...s.calls, [id]: call },
-    heard: { ...s.heard, [id]: heardOf(s.engine, engine, id, decision) },
+    // Una eCall no tiene a nadie al teléfono: no entra en la sala de voz del agente de espera (DECISIONES X13).
+    heard: isEcall(src) ? s.heard : { ...s.heard, [id]: heardOf(s.engine, engine, id, decision) },
     recs: { ...s.recs, [id]: { ...s.recs[id], status: "done", result: { ...result, decision } } },
     audit,
     fx,

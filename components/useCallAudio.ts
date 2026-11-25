@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { findCall } from "@/data/scenarios";
+import { isEcall } from "@/lib/ecall";
 import type { ConsoleState } from "@/lib/useConsole";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -42,7 +43,11 @@ export function useCallAudio(s: ConsoleState) {
     a.play().catch(done);
   }, [stop]);
 
-  const hasAudio = useCallback((id: string) => !s.live[id] && !!findCall(id), [s.live]);
+  // Las eCall (X13) son datos del vehículo, sin voz: no hay audio que escuchar.
+  const hasAudio = useCallback((id: string) => {
+    const c = s.live[id] ? undefined : findCall(id);
+    return !!c && !isEcall(c);
+  }, [s.live]);
 
   // Reinicio o cambio de escenario: silencio.
   useEffect(() => {

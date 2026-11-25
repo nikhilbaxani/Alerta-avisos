@@ -154,3 +154,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Decisiones: ver DECISIONES («X12: Falta saber»).
 - Pendiente menor: el aviso flotante «El agente ha enviado…» tapa unos segundos la parte baja del detalle (ya anotado en X11).
 - Siguiente: X13.
+
+## 2026-11-25T02:40:57+01:00 · X13 · hecha
+- Qué se hizo: canal `ecall` en `lib/types.ts` y `lib/ecall.ts` (datos estructurados: activación, ocupantes, rumbo, vehículo, posición; transcripción generada a partir de los datos, sin STT ni LLM). eCall EC1 (t=14, gold A, manual, 3 ocupantes, ±10 m) en `data/scenario-dana-extra.ts`, unida en `data/scenarios.ts`; el escenario protegido no se toca. En la consola: icono de coche y rótulo «eCall» en la cola, tarjeta «Mensaje de datos (sin voz)» con sus datos y sin «Escuchar».
+- Verificación (qa-verificador APTO): lint OK, build OK, 374 tests (6 en `tests/ecall.test.ts`), eval 7/0/2 (F1 y B2, E1 2.º; EC1 merge INC-01 0,90), eval:apagon 6/0/1, `e2e.mjs` OK (27 llamadas, eCall en A), GitHub Pages OK, capturas `docs/capturas/X13-*` revisadas en escritorio y móvil, oscuro y claro, sin errores de consola ni scroll horizontal.
+- Decisiones: ver DECISIONES (X13: canal eCall, transcripción generada, fuera de la sala de voz del agente de espera, tipo fijado en el escenario). Recuentos 26→27 ajustados solo en el número.
+- Pendiente menor: EC1 sale como «Repetida» en la cola; «±10 m» se parte en dos líneas en la tarjeta; README/PITCH dicen 26 llamadas (para X08). En X14 decidir si EC1 recibe SMS de duplicado.
+- Siguiente: X14.

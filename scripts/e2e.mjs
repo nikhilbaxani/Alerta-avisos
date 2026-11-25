@@ -38,10 +38,19 @@ for (let i = 0; i < 2; i++) {
   await page.waitForTimeout(300);
 }
 if (!asked[0].includes("F1") || !asked[1].includes("B2")) fail(`preguntas inesperadas: ${asked}`);
-await page.getByText(/26 de 26/).waitFor({ timeout: 45000 });
+await page.getByText(/27 de 27/).waitFor({ timeout: 45000 });
 await page.waitForTimeout(1500);
 const kpi = async (pg, k) => Number(await pg.locator(`[data-kpi=${k}]`).getAttribute("data-value"));
-if ((await kpi(page, "calls")) !== 26 || (await kpi(page, "incidents")) !== 7) fail(`contadores: ${await page.locator(".kpis").innerText()}`);
+if ((await kpi(page, "calls")) !== 27 || (await kpi(page, "incidents")) !== 7) fail(`contadores: ${await page.locator(".kpis").innerText()}`);
+
+// eCall (X13): EC1 aparece en la cola como eCall y queda en el mismo incidente que A1 (no en el de F1).
+const qCall = (id) => page.locator(`#box-calls [data-call="${id}"]`).first();
+const ec1 = page.locator('#box-calls [data-call="EC1"][data-channel="ecall"]');
+if ((await ec1.count()) !== 1) fail("la eCall EC1 no aparece en la cola como eCall");
+const ecInc = await ec1.getAttribute("data-incident");
+if (!ecInc || ecInc !== (await qCall("A1").getAttribute("data-incident"))) fail(`EC1 no queda en el incidente de A1 (${ecInc})`);
+if (ecInc === (await qCall("F1").getAttribute("data-incident"))) fail("EC1 se ha juntado con el coche de F1");
+if (!(await ec1.innerText()).includes("eCall")) fail("la eCall no se rotula como eCall en la cola");
 
 // Agente de espera (X11): la caja aparece, el asistente atiende llamadas en la DANA y E1 sale escalada.
 const wait = page.locator("#box-waiting");
@@ -105,8 +114,14 @@ if ((await es.count()) !== 1) fail("falta la tarjeta del ES-Alert en el coche de
 if (await es.getByRole("button", { name: /Aprobar y enviar/ }).count()) fail("el operador no debe poder aprobar un ES-Alert");
 if (!(await es.innerText()).includes("La aprueba un coordinador")) fail("el ES-Alert no avisa de que lo aprueba un coordinador");
 
-// Separar una llamada del coche de A (6 llamadas; F es el otro vehículo, con 2).
-await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
+// Separar una llamada del coche de A (6 llamadas y la eCall EC1; F es el otro vehículo, con 2).
+await prio(/Vehículo atrapado por agua[\s\S]*7 llamadas/).click();
+// La tarjeta de la eCall enseña sus datos y no ofrece «Escuchar»: es un mensaje de datos, sin voz.
+const ecCard = page.locator('#box-detail [data-callcard="EC1"][data-channel="ecall"]');
+if ((await ecCard.count()) !== 1) fail("el detalle del coche de A no muestra la eCall EC1");
+const ecText = await ecCard.innerText();
+for (const k of ["Mensaje de datos (sin voz)", "Activación", "Ocupantes", "Dirección de marcha", "Posición"]) if (!ecText.includes(k)) fail(`a la tarjeta de EC1 le falta «${k}»`);
+if (await page.getByRole("button", { name: "Escuchar la llamada EC1" }).count()) fail("la eCall ofrece «Escuchar» y no tiene voz");
 await page.getByRole("button", { name: "Separar llamada A6" }).click();
 await page.waitForTimeout(300);
 if ((await kpi(page, "incidents")) !== 8) fail("Separar no creó un incidente");
@@ -115,7 +130,7 @@ if ((await kpi(page, "incidents")) !== 8) fail("Separar no creó un incidente");
 const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar registro" }).click()]);
 const log = JSON.parse(await (await import("node:fs/promises")).readFile(await dl.path(), "utf8"));
 const kinds = new Set(log.eventos.map((e) => e.kind));
-if (log.llamadas.length !== 26 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
+if (log.llamadas.length !== 27 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
 if (!kinds.has("accion_auto") || !kinds.has("accion_aprobada") || !log.accionesAgente?.length) fail("el registro no incluye las acciones del agente");
 
 // Incidencia solucionada → archivo → reabrir. Con confirmación en dos pasos.
@@ -165,4 +180,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, acciones del agente, agente de espera, falta saber, audio, Separar, sin errores de consola");
+console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, agente de espera, falta saber, audio, Separar, sin errores de consola");
