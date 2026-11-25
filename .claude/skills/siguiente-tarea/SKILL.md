@@ -15,6 +15,7 @@ Ejecuta exactamente este flujo. No te saltes pasos.
    - id y título de la tarea, y sus criterios de aceptación copiados literalmente;
    - qué secciones de `docs/MEMORIA.md` aplican y qué archivos debe crear o tocar;
    - "Al terminar, ejecuta la verificación y devuelve: archivos tocados, comandos y resultado, y pendientes."
+   - los «Pendiente menor» de PROGRESO que tocan los mismos archivos o la misma pantalla (si un pendiente ya sale en 2 entradas, pide que se arregle dentro de la tarea si es pequeño, o anótalo en `docs/BUZON.md` para el agente de esa zona).
    Si la tarea es pequeña (menos de unas 30 líneas), puedes hacerla tú directamente.
 4. **Verificar**: lanza `qa-verificador` con el id de la tarea. Si el veredicto es NO APTO, vuelve a delegar al mismo agente con la lista de fallos literal. Cuenta los intentos: al tercer NO APTO, usa `/desbloquear`.
 5. **Cerrar**: usa `/cerrar-tarea` con el id.
