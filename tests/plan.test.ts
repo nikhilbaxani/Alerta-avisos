@@ -5,6 +5,7 @@ import { actionKey, planRules, proposalsFromModel } from "@/lib/actions";
 import type { PlanInput } from "@/lib/actions";
 import { getConfig } from "@/lib/config";
 import { planIncident } from "@/lib/plan";
+import { INCIDENT_TYPES } from "@/lib/types";
 import { LIMITS } from "@/lib/validate";
 
 /** Incidente de A tras A4, tal y como lo construye el agente (solo datos estructurados). */
@@ -180,6 +181,52 @@ const expectSpanish = async (res: Response, status: number) => {
 };
 
 describe("POST /api/plan", () => {
+  const floodAdvice = [
+    "No entre a pie ni en vehículo en zonas inundadas.",
+    "Si el agua sube y sigue dentro del vehículo, suba al techo si puede hacerlo sin meterse en la corriente.",
+    "No cruce pasos inferiores inundados.",
+    "Mantenga el teléfono libre.",
+  ];
+
+  it("da entre dos y cuatro consejos para cada tipo de incidente, incluso sin riesgos detectados", async () => {
+    vi.stubEnv("LLM_BASE_URL", "");
+    for (const type of INCIDENT_TYPES) {
+      const res = await planPOST(json({ ...incA, type, risks: [], calls: [{ ...incA.calls[0], risks: [] }] }));
+      expect(res.status).toBe(200);
+      const { advice } = await res.json();
+      expect(advice, type).toEqual(expect.arrayContaining(["Mantenga el teléfono libre."]));
+      expect(advice.length, type).toBeGreaterThanOrEqual(2);
+      expect(advice.length, type).toBeLessThanOrEqual(4);
+      if (type === "otro") expect(advice).toEqual(["Aléjese del peligro y siga las indicaciones de los servicios de emergencia.", "Mantenga el teléfono libre."]);
+    }
+  });
+
+  it("adapta el consejo al vehículo inundado y al riesgo de que suba el agua", async () => {
+    vi.stubEnv("LLM_BASE_URL", "");
+    const res = await planPOST(json(incA));
+    expect(res.status).toBe(200);
+    expect((await res.json()).advice).toEqual(floodAdvice);
+
+    const safe = { ...incA, risks: [], calls: [{ ...incA.calls[0], risks: [] }] };
+    const withoutRise = await planPOST(json(safe));
+    expect(withoutRise.status).toBe(200);
+    expect((await withoutRise.json()).advice).toEqual(floodAdvice.filter((line) => !line.includes("techo")));
+  });
+
+  it("una transcripción de prueba recibe los mismos consejos; una nota libre del modelo no se muestra", async () => {
+    vi.stubEnv("LLM_BASE_URL", LLM);
+    const withheld = "No doy consejos porque es una prueba";
+    const f = toolReply([{ name: "sms_al_llamante", arguments: { llamada: "A1", frases: [withheld] } }]);
+    vi.stubGlobal("fetch", f);
+    const res = await planPOST(json({ ...incA, transcript: "Es una prueba del hackathon. Estamos atrapados en el coche y sube el agua." }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(JSON.stringify(body)).not.toContain(withheld);
+    expect(body.advice).toEqual(floodAdvice);
+    expect(body.proposals).toEqual(JSON.parse(JSON.stringify(planRules(incA))));
+    expect(body.issues).toEqual([{ tool: "sms_al_llamante", outcome: "descartada", reason: "Frase fuera de la lista pretraducida" }]);
+    expect(JSON.stringify(sentBody(f).messages)).not.toContain("hackathon");
+  });
   it("200 en modo simulado con el plan de reglas", async () => {
     vi.stubEnv("LLM_BASE_URL", "");
     const res = await planPOST(json(incA));

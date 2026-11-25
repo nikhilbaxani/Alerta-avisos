@@ -345,18 +345,12 @@ function policyFor(tool: ActionTool, origin: ActionOrigin): ApprovalPolicy {
   return origin === "ia_local" && table === "automatica" ? "operador" : table;
 }
 
-/** Texto de un valor que propuso el modelo, corto y sin saltos, para los motivos de descarte. */
-function shown(v: unknown): string {
-  const s = typeof v === "string" ? v : JSON.stringify(v) ?? String(v);
-  return `«${s.replace(/\s+/g, " ").slice(0, 40)}»`;
-}
-
 /** Riesgos con los que el modelo justifica una acción: del vocabulario y presentes en el incidente. */
 function modelRisks(v: unknown, input: PlanInput): RiskTag[] | string {
   if (v === undefined) return [];
   if (!Array.isArray(v) || v.length > RISK_TAGS.length) return "Los riesgos deben ser una lista corta del vocabulario";
   for (const r of v) {
-    if (!RISK_TAGS.includes(r as RiskTag)) return `Riesgo fuera del vocabulario: ${shown(r)}`;
+    if (!RISK_TAGS.includes(r as RiskTag)) return "Riesgo fuera del vocabulario";
     if (!input.risks.includes(r as RiskTag)) return `Justifica con un riesgo que el incidente no tiene: ${riskLabel(r as RiskTag)}`;
   }
   return uniq(v as RiskTag[]);
@@ -928,7 +922,7 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
     modelArgs: ["servicio", "riesgos"],
     rules: resourceRules,
     fromModel: (a, input) => {
-      if (!RESOURCE_SERVICES.includes(a.servicio as ResourceService)) return `Servicio fuera del vocabulario: ${shown(a.servicio)}`;
+      if (!RESOURCE_SERVICES.includes(a.servicio as ResourceService)) return "Servicio fuera del vocabulario";
       const servicio = a.servicio as ResourceService;
       const risks = modelRisks(a.riesgos, input);
       if (typeof risks === "string") return risks;
@@ -956,9 +950,9 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
     rules: smsRules,
     fromModel: (a, input) => {
       const c = typeof a.llamada === "string" ? canonicalCall(input, a.llamada) : undefined;
-      if (!c) return `La llamada no es de este incidente: ${shown(a.llamada)}`;
+      if (!c) return "La llamada no es de este incidente";
       if (!Array.isArray(a.frases) || !a.frases.length || a.frases.length > SMS_PHRASE_IDS.length) return "Las frases deben ser una lista de 1 a 3 frases pretraducidas";
-      for (const f of a.frases) if (!SMS_PHRASE_IDS.includes(f as SmsPhraseId)) return `Frase fuera de la lista pretraducida: ${shown(f)}`;
+      for (const f of a.frases) if (!SMS_PHRASE_IDS.includes(f as SmsPhraseId)) return "Frase fuera de la lista pretraducida";
       const phrases = uniq(a.frases as SmsPhraseId[]);
       // «calma» vale siempre; las demás solo si corresponden a los datos (nada de «cables» en un garaje inundado).
       const fits = new Set<SmsPhraseId>(["calma", ...phrasesFor(input)]);
@@ -983,7 +977,7 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
     modelArgs: ["canal"],
     rules: utilityRules,
     fromModel: (a, input) => {
-      if (!UTILITY_CHANNELS.includes(a.canal as UtilityChannel)) return `Canal fuera del vocabulario: ${shown(a.canal)}`;
+      if (!UTILITY_CHANNELS.includes(a.canal as UtilityChannel)) return "Canal fuera del vocabulario";
       const canal = a.canal as UtilityChannel;
       const need: RiskTag = canal === "averias" ? "cables_electricos" : "sin_luz";
       if (!input.risks.includes(need)) return `Aviso a ${UTILITY_LABELS[canal]} sin ${riskLabel(need)} en los datos del incidente`;
@@ -1017,7 +1011,7 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
     modelArgs: ["motivo"],
     rules: cityRules,
     fromModel: (a, input) => {
-      if (!CITY_REASONS.includes(a.motivo as CityReason)) return `Motivo fuera del vocabulario: ${shown(a.motivo)}`;
+      if (!CITY_REASONS.includes(a.motivo as CityReason)) return "Motivo fuera del vocabulario";
       const m = cityMotives(input).find((x) => x.motivo === a.motivo);
       if (!m) return `Aviso al ayuntamiento por ${CITY_LABELS[a.motivo as CityReason]} sin ese tipo o ese riesgo en los datos del incidente`;
       return cityProposal(input, m.motivo, m.trigger, "ia_local");
@@ -1042,7 +1036,7 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
     rules: callbackRules,
     fromModel: (a, input) => {
       const c = typeof a.llamada === "string" ? canonicalCall(input, a.llamada) : undefined;
-      if (!c) return `La llamada no es de este incidente: ${shown(a.llamada)}`;
+      if (!c) return "La llamada no es de este incidente";
       if (!input.risks.includes("sin_respuesta")) return `Devolver la llamada sin «${riskLabel("sin_respuesta")}» en los datos del incidente`;
       const news = input.calls.find((x) => x.risks.includes("sin_respuesta")) ?? c;
       return callbackProposal(input, c, news, "ia_local");
@@ -1158,7 +1152,7 @@ export function proposalsFromModel(calls: ModelToolCall[], input: PlanInput): { 
   for (const call of calls.slice(0, MAX_MODEL_CALLS)) {
     const name = typeof call.name === "string" && /^[a-z_]{1,40}$/.test(call.name) ? call.name : null;
     if (!name || !ACTION_TOOLS.includes(name as ActionTool)) {
-      issues.push({ tool: name ?? "-", outcome: "descartada", reason: `Herramienta desconocida: ${shown(call.name)}` });
+      issues.push({ tool: "-", outcome: "descartada", reason: "Herramienta desconocida" });
       continue;
     }
     const tool = name as ActionTool;
@@ -1182,12 +1176,11 @@ export function proposalsFromModel(calls: ModelToolCall[], input: PlanInput): { 
       issues.push({ tool, outcome: "descartada", reason: p });
       continue;
     }
-    const extra = Object.keys(args).filter((k) => !ts.modelArgs.includes(k));
-    if (extra.length) {
+    if (Object.keys(args).some((k) => !ts.modelArgs.includes(k))) {
       issues.push({
         tool,
         outcome: "corregida",
-        reason: `Se ignoran argumentos no previstos (${extra.slice(0, 5).map((k) => shown(k)).join(", ")}): quién aprueba lo fija la tabla de política (${p.policy})`,
+        reason: `Se ignoran argumentos no previstos: quién aprueba lo fija la tabla de política (${p.policy})`,
       });
     }
     if (seen.has(p.key)) continue;

@@ -7,6 +7,7 @@ import type { AgentAction } from "@/lib/actions";
 import type { Incident } from "@/lib/engine";
 import type { ActionUnit, ArchivedIncident } from "@/lib/useConsole";
 import type { UnitHazardWarning } from "@/lib/hazards";
+import AdviceList from "./AdviceList";
 import Icon from "./Icon";
 import { ActionCard, TOOL_ICON } from "./AgentActions";
 import { langName } from "./format";
@@ -47,6 +48,7 @@ export default function ActionsBox({ actions, archived, onArchived, selected, in
   // Primero la emergencia abierta; después las devoluciones de llamadas perdidas (X15), que pueden ser un aviso nuevo.
   const first = (a: AgentAction) => 2 * Number(!!selected && actionIncidents(a).includes(selected)) + Number(a.incidentId === LOST_CALLS_ID);
   const mine = mineAll.filter(inFilter).sort((a, b) => first(b) - first(a));
+  const adviceIds = [...new Set(mine.filter((a) => a.tool === "sms_al_llamante").map((a) => a.incidentId))];
   const coord = pending.filter((a) => !canApprove(a.policy, "operador")).filter(inFilter);
   const doneAll = actions.filter((a) => a.status !== "propuesta");
   const done = doneAll.filter(inFilter).sort((a, b) => (b.receipt?.at ?? b.discarded?.at ?? 0) - (a.receipt?.at ?? a.discarded?.at ?? 0));
@@ -151,6 +153,10 @@ export default function ActionsBox({ actions, archived, onArchived, selected, in
         {show === "todo" ? (
           <>
             {provisional > 0 && <p className="note">Hasta que decidas la duda ámbar, el agente no prepara acciones para esa emergencia.</p>}
+            {adviceIds.map((id) => {
+              const inc = byId.get(id);
+              return inc ? <AdviceList key={id} type={inc.type} risks={inc.risks} context={id} /> : null;
+            })}
             {mine.length === 0 ? <p className="note">{filter ? `Nada que confirmar en ${filter}.` : "Nada que confirmar ahora."}</p> : <ul className="acts">{mineList()}</ul>}
             {coord.length > 0 && (
               <>

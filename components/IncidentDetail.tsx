@@ -6,6 +6,7 @@ import { incidentMissing } from "@/lib/missingInfo";
 import { ecallFields, isEcall } from "@/lib/ecall";
 import type { ConsoleState } from "@/lib/useConsole";
 import type { RiskTag } from "@/lib/types";
+import AdviceList from "./AdviceList";
 import Icon from "./Icon";
 import IncToken from "./IncToken";
 import ResolveButton from "./ResolveButton";
@@ -57,6 +58,8 @@ export default function IncidentDetail({ s, onSplit, audio, onResolve, ask, onAs
           {foreign.length > 0 && <li><Icon name="globe" size={15} />{foreign.map(langName).join(", ")}</li>}
         </ul>
       </header>
+
+      <AdviceList type={inc.type} risks={inc.risks} />
 
       {inc.alerts.length > 0 && (
         <div className="newinfo" role="status">

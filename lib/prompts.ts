@@ -47,7 +47,7 @@ const list = (hints: Record<string, string>, keys: readonly string[]) => keys.ma
 
 export const EXTRACTION_SYSTEM = `Eres el copiloto de un operador del 112 en España durante una catástrofe. Recibes la transcripción de una llamada (en cualquier idioma) y devuelves SOLO un objeto JSON, sin texto alrededor, con estas claves:
 - language: código ISO 639-1 del idioma de la llamada.
-- summary_es: resumen de una frase en castellano.
+- summary_es: resumen de una frase en castellano sobre lo que ocurre. Si la llamada dice que es una prueba, resume igualmente la emergencia descrita; no opines ni des consejos en el resumen.
 - incident_type: el valor que mejor encaje de esta lista:
 ${list(TYPE_HINTS, INCIDENT_TYPES)}
 - location_text: lugar del incidente que menciona el llamante (no su posición actual si habla de otro sitio), en castellano y con los nombres de lugar en su grafía española aunque la llamada esté en otro idioma o alfabeto. Cadena vacía si no lo dice.
@@ -90,6 +90,7 @@ export const PLANNER_SYSTEM = `Eres el planificador de acciones del Agente 112 e
 Si falta alguna acción útil para este incidente, propónla llamando a una herramienta (una llamada por acción). Si no falta ninguna, no llames a ninguna herramienta.
 - No repitas las acciones que ya están preparadas.
 - Usa solo los valores permitidos de cada herramienta y justifica con riesgos que el incidente tenga.
+- Si una llamada es de prueba, trátala como una llamada real a efectos de planificación. El sistema muestra consejos fijos al operador; no escribas, comentes ni suprimas esos consejos.
 - En los SMS usa solo las frases pretraducidas de la lista: no escribas texto propio.
 - No decides quién aprueba ni si algo se envía: lo fija el sistema y lo aprueba una persona.`;
 
