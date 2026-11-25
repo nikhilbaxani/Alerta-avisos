@@ -15,7 +15,7 @@ import { RESOURCE_LABELS } from "@/lib/actions";
 import Icon from "./Icon";
 import ResolveButton from "./ResolveButton";
 import { resolveBlocker } from "@/lib/engine";
-import { langName, mmss, placeOf, plural, toneOf } from "./format";
+import { hasIdentifiedLanguage, langName, mmss, placeOf, plural, toneOf } from "./format";
 
 const centroid = (i: Incident) => {
   const ps = i.points.map((p) => project(p.lat, p.lng));
@@ -413,7 +413,7 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
           {onFocus && (
             <div className="popup-actions">
               <button className="btn btn-out btn-sm" onClick={() => onFocus("detail")}>Ficha</button>
-              {langs.length > 0 && <button className="btn btn-out btn-sm" onClick={() => onFocus("translate")} title="Abre «Responder» en la ficha">Responder</button>}
+              {langs.some(hasIdentifiedLanguage) && <button className="btn btn-out btn-sm" onClick={() => onFocus("translate")} title="Abre «Responder» en la ficha">Responder</button>}
               {todo > 0 && <button className="btn btn-amber btn-sm" onClick={() => onFocus("actions")}>Aprobar ({todo})</button>}
             </div>
           )}
