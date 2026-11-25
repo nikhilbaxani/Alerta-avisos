@@ -44,8 +44,8 @@ const kpi = async (pg, k) => Number(await pg.locator(`[data-kpi=${k}]`).getAttri
 if ((await kpi(page, "calls")) !== 27 || (await kpi(page, "incidents")) !== 7) fail(`contadores: ${await page.locator(".kpis").innerText()}`);
 
 // eCall (X13): EC1 aparece en la cola como eCall y queda en el mismo incidente que A1 (no en el de F1).
-const qCall = (id) => page.locator(`#box-calls [data-call="${id}"]`).first();
-const ec1 = page.locator('#box-calls [data-call="EC1"][data-channel="ecall"]');
+const qCall = (id) => page.locator(`#box-incoming [data-call="${id}"]`).first();
+const ec1 = page.locator('#box-incoming [data-call="EC1"][data-channel="ecall"]');
 if ((await ec1.count()) !== 1) fail("la eCall EC1 no aparece en la cola como eCall");
 const ecInc = await ec1.getAttribute("data-incident");
 if (!ecInc || ecInc !== (await qCall("A1").getAttribute("data-incident"))) fail(`EC1 no queda en el incidente de A1 (${ecInc})`);
@@ -53,8 +53,13 @@ if (ecInc === (await qCall("F1").getAttribute("data-incident"))) fail("EC1 se ha
 if (!(await ec1.innerText()).includes("eCall")) fail("la eCall no se rotula como eCall en la cola");
 
 // Agente de espera (X11): la caja aparece, el asistente atiende llamadas en la DANA y E1 sale escalada.
+// Entrantes, En espera y Perdidas son pestañas de una misma caja (#box-calls).
+if ((await page.locator("#box-calls [role=tab]").count()) !== 3) fail("la caja de llamadas no tiene las tres pestañas");
+if (await page.locator("#box-waiting").isVisible()) fail("la pestaña En espera se ve sin elegirla");
+await page.locator("#tab-waiting").click();
 const wait = page.locator("#box-waiting");
 await wait.waitFor({ timeout: 5000 });
+if (await page.locator("#box-incoming").isVisible()) fail("al elegir En espera siguen a la vista las entrantes");
 if (!(await wait.innerText()).includes("Simulación con supuestos declarados")) fail("la caja En espera no se rotula como simulación");
 const waitNum = async (k) => Number(await wait.locator(`[data-wait=${k}]`).innerText());
 for (const ops of ["1 operador", "2 operadores"]) {
@@ -63,6 +68,7 @@ for (const ops of ["1 operador", "2 operadores"]) {
   if ((await wait.locator('[data-call="E1"]').getAttribute("data-outcome")) !== "escalada") fail(`con ${ops}, E1 no sale escalada`);
 }
 if (!(await wait.locator('[data-call="E1"]').innerText()).includes("Escalada")) fail("E1 escalada sin aviso visible");
+await page.locator("#tab-incoming").click();
 
 // Los incidentes se buscan por contenido (tipo, motivo y nº de llamadas), no por su número INC-xx:
 // los números no se reutilizan y dependen de las decisiones del operador.
@@ -165,6 +171,7 @@ await acts.getByRole("button", { name: /Por aprobar/ }).click();
 // Llamadas perdidas (X15): las desconocidas (P3, P4) arriba con «devolver la llamada»; los probables
 // duplicados (P1, P2, P5) debajo. P1 (francés, junto a A) ya tiene su SMS de duplicado tras aprobar los
 // bomberos de A. Nada se envía sin clic: aprobar P3 cambia su estado.
+await page.locator("#tab-lost").click();
 const lostBox = page.locator("#box-lost");
 await lostBox.waitFor({ timeout: 5000 }).catch(() => fail("no aparece la caja Llamadas perdidas"));
 const lostText = await lostBox.innerText();

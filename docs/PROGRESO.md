@@ -197,3 +197,7 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Sin tocar (por encargo): X04b sigue `[!]` (necesita Ollama/Whisper) y X08 (README/PITCH) pendiente: ya puede contar lo de la Fase 7.
 - Pendientes menores conocidos: en móvil el aviso «Enviado con tu aprobación» tapa un momento la parte alta del mapa; a vista general el peligro de INC-06 se monta sobre INC-01; columna izquierda llena a 1440×900; si se aprueba recursos con el escenario terminado la unidad queda «asignada».
 - Cómo probarlo: `git switch noche/ideas-pitch && npm install && npm run dev` → http://localhost:3000, escenario DANA a ×10, aprobar «Enviar Bomberos» de INC-01 y mirar el mapa (B-2, triángulos) y la tarjeta en Acciones › Enviadas. Nada se ha subido: el push es tuyo.
+
+## 2026-11-25 · Llamadas en una caja con pestañas · hecho
+- Qué se hizo: ver DECISIONES (misma fecha). Nuevo `components/CallsBox.tsx`. `CallQueue`, `WaitingBox` y `LostCallsBox` pasan a ser el contenido de cada pestaña. Pestañas con teclado (flechas, Inicio y Fin). `scripts/e2e.mjs` cambia de pestaña antes de comprobar En espera y Perdidas, y comprueba que hay tres pestañas y que solo se ve la activa.
+- Verificación: lint, build, 432 tests, `eval` y `eval:apagon` en verde; `node scripts/e2e.mjs` OK; capturas de las tres pestañas en escritorio (oscuro y claro) y móvil revisadas, sin errores de consola ni scroll horizontal; la franja «B1 escalada» aparece a mitad de escenario y lleva a En espera.

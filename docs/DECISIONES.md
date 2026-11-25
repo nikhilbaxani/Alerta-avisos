@@ -312,3 +312,8 @@ Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descart
 - **Tarjeta**: el texto de `UnitHazardWarning` va dentro de `.act-unit` como `role="note"`, en caja roja suave con «Aviso.» y la coletilla «Solo informa: la ruta la decides tú». Sin botones. Solo se muestra con la unidad ya asignada (no en la propuesta).
 - **Ficha del mapa**: al asignar una unidad nueva al incidente seleccionado, la ficha emergente se cierra sola para dejar ver la unidad, su trayecto y el peligro (pendiente de X16: tapaba B-2). Se reabre con un clic en el incidente. Alternativa descartada: recolocar la ficha esquivando la unidad (frágil con zoom).
 - **Móvil**: el aviso flotante del agente baja a `top: 96px` (≤700 px) para no tapar «Mapa/Satélite».
+
+## 2026-11-25 · Llamadas, En espera y Perdidas en una sola caja con pestañas (petición de Nick)
+- **Decisión**: la columna izquierda pasa de tres cajas (Llamadas entrantes, En espera, Llamadas perdidas) a una sola, «Llamadas» (`components/CallsBox.tsx`), con tres pestañas: **Entrantes**, **En espera** y **Perdidas**. Cada pestaña lleva su cifra: en rojo si el asistente ha escalado una llamada que aún espera, en ámbar si hay perdidas por aprobar. Si hay escaladas y no se está en «En espera», sale una franja roja bajo las pestañas que lleva a esa pestaña. «Ver en perdidas» (desde Acciones) abre la pestaña y resalta la caja. Las tres pestañas siguen montadas (`hidden`), así que no pierden su estado (por ejemplo, el número de operadores).
+- **Motivo**: con las tres cajas apiladas, la columna quedaba muy saturada y cada lista tenía muy poco alto.
+- **Alternativa descartada**: plegar las cajas con acordeón. Se descartó porque deja tres cabeceras siempre a la vista y sigue robando alto a la lista activa.

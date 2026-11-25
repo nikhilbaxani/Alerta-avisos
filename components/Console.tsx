@@ -12,7 +12,8 @@ import ActionsBox from "./ActionsBox";
 import ArchiveDialog from "./ArchiveDialog";
 import AgentFeed from "./AgentFeed";
 import { useCallAudio } from "./useCallAudio";
-import CallQueue from "./CallQueue";
+import CallsBox from "./CallsBox";
+import type { CallsTab } from "./CallsBox";
 import DecisionBanner from "./DecisionBanner";
 import DeckReturn from "./DeckReturn";
 import HelpDialog from "./HelpDialog";
@@ -26,12 +27,11 @@ import TopBar from "./TopBar";
 import type { Theme } from "./TopBar";
 import TranslateBox from "./TranslateBox";
 import type { Ask } from "./ReplyPanel";
-import WaitingBox from "./WaitingBox";
-import LostCallsBox from "./LostCallsBox";
 
 /** Lleva la vista a una caja (útil en pantallas pequeñas) y la resalta un instante. */
-function focusBox(box: FocusBox) {
-  const el = document.getElementById(`box-${box}`);
+function focusBox(box: FocusBox | "calls") {
+  // Las llamadas perdidas son una pestaña de la caja de llamadas: se resalta la caja entera.
+  const el = document.getElementById(`box-${box === "lost" ? "calls" : box}`);
   if (!el) return;
   el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   el.focus({ preventScroll: true });
@@ -47,6 +47,7 @@ export default function Console() {
   const [help, setHelp] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
   const [actionsFilter, setActionsFilter] = useState<string | null>(null);
+  const [callsTab, setCallsTab] = useState<CallsTab>("incoming");
   const [archive, setArchive] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
   // «Falta saber» (X12): pregunta que el operador ha pedido preparar en la caja de traducción (n cambia en cada clic).
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -130,8 +131,13 @@ export default function Console() {
   // Desde la ficha del mapa: «Aprobar» lleva a las acciones de esa emergencia ya filtradas
   const onMapFocus = useCallback((box: FocusBox) => {
     if (box === "actions") setActionsFilter(s.selected);
+    if (box === "lost") setCallsTab("lost");
     focusBox(box);
   }, [s.selected]);
+  const goLost = useCallback(() => {
+    setCallsTab("lost");
+    focusBox("lost");
+  }, []);
   useEffect(() => setActionsFilter(null), [s.epoch]);
   useEffect(() => {
     if (actionsFilter && !s.engine.incidents.some((i) => i.id === actionsFilter)) setActionsFilter(null);
@@ -160,9 +166,23 @@ export default function Console() {
       {/* Una sola pantalla: cada apartado en su caja, todos a la vista a la vez. */}
       <main className="board">
         <div className="col col-left">
-          <CallQueue s={s} ranks={ranks} onArchived={openArchive} playing={audio.playing} sttUp={sttUp} localAI={status.mode === "local"} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
-          <WaitingBox s={s} ranks={ranks} onSelect={selectIncident} />
-          <LostCallsBox report={lost} actions={s.actions} incidents={s.engine.incidents} ranks={ranks} onApprove={approve} onDiscard={discard} onIncident={selectIncident} />
+          <CallsBox
+            s={s}
+            ranks={ranks}
+            tab={callsTab}
+            onTab={setCallsTab}
+            playing={audio.playing}
+            sttUp={sttUp}
+            localAI={status.mode === "local"}
+            lost={lost}
+            actions={s.actions}
+            onSelect={select}
+            onSelectIncident={selectIncident}
+            onArchived={openArchive}
+            onLive={(call, result) => dispatch({ type: "live", call, result })}
+            onApprove={approve}
+            onDiscard={discard}
+          />
         </div>
 
         <div className="col col-center">
@@ -184,7 +204,7 @@ export default function Console() {
             )}
           </MapView>
           <div className="pair">
-            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={() => focusBox("lost")} unitOf={(a) => actionUnit(s, a)} hazardWarnings={hazardWarnings} />
+            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={goLost} unitOf={(a) => actionUnit(s, a)} hazardWarnings={hazardWarnings} />
             <TranslateBox s={s} ask={ask} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
           </div>
         </div>

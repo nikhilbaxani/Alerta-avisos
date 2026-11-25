@@ -55,14 +55,18 @@ function ProposalState({ item, actions, onApprove, onDiscard }: { item: LostItem
 }
 
 /**
- * Caja «Llamadas perdidas» (X15, simulación): quien se cuelga antes de que le atiendan. Las desconocidas
+ * Pestaña «Perdidas» de la caja de llamadas (X15, simulación): quien se cuelga antes de que le atiendan. Las desconocidas
  * (puede ser un aviso nuevo) van arriba para devolver la llamada primero; los probables duplicados, debajo,
  * con el SMS de duplicado de X14. Nada se envía sin el clic del operador.
  */
+/** Llamadas perdidas cuya propuesta (devolver o SMS) espera el clic del operador. */
+export function lostToApprove(report: LostReport, actions: AgentAction[]): number {
+  return [...report.unknown, ...report.duplicates].filter((i) => i.proposal && actions.find((a) => a.key === i.proposal!.key)?.status === "propuesta").length;
+}
+
 export default function LostCallsBox({ report, actions, incidents, ranks, onApprove, onDiscard, onIncident }: Props) {
   const byId = new Map(incidents.map((i) => [i.id, i]));
   const total = report.unknown.length + report.duplicates.length;
-  const todo = [...report.unknown, ...report.duplicates].filter((i) => i.proposal && actions.find((a) => a.key === i.proposal!.key)?.status === "propuesta").length;
 
   const row = (item: LostItem) => {
     const inc = item.incidentId ? byId.get(item.incidentId) : undefined;
@@ -86,11 +90,7 @@ export default function LostCallsBox({ report, actions, incidents, ranks, onAppr
   };
 
   return (
-    <section className="box" id="box-lost" tabIndex={-1} aria-labelledby="lost-h">
-      <div className="panel-head">
-        <h2 id="lost-h">Llamadas perdidas</h2>
-        {todo > 0 && <span className="pill amber" aria-label={`${todo} por aprobar`}>{todo} por aprobar</span>}
-      </div>
+    <>
       <div className="box-body">
         {total === 0 ? (
           <p className="empty">Si alguien cuelga antes de que le atiendan, aparece aquí con lo que se sabe: teléfono y posición.</p>
@@ -113,6 +113,6 @@ export default function LostCallsBox({ report, actions, incidents, ranks, onAppr
           <p>En el apagón del 28-abr-2025 hubo más de 10.000 llamadas perdidas en Cataluña (fuente: 112 autonómicos / prensa). Las de este escenario son simuladas.</p>
         </details>
       </div>
-    </section>
+    </>
   );
 }

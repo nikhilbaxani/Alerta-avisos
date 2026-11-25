@@ -1,10 +1,8 @@
-import { useMemo, useState } from "react";
 import { RISK_LABELS } from "@/lib/labels";
 import type { ConsoleState } from "@/lib/useConsole";
-import { DEFAULT_OPERATORS, WAITING_ASSUMPTIONS } from "@/lib/waiting";
+import { WAITING_ASSUMPTIONS } from "@/lib/waiting";
 import type { WaitingOutcome } from "@/lib/waiting";
-import { consoleWaiting } from "@/lib/waitingConsole";
-import type { WaitingRow } from "@/lib/waitingConsole";
+import type { ConsoleWaiting, WaitingRow } from "@/lib/waitingConsole";
 import IncToken from "./IncToken";
 import { langName, mmss, plural } from "./format";
 
@@ -24,32 +22,30 @@ const vitalOf = (r: WaitingRow) => {
 
 interface Props {
   s: ConsoleState;
+  /** Calculada en `CallsBox` (también da la cifra de la pestaña). */
+  view: ConsoleWaiting;
+  operators: number;
+  onOperators: (n: number) => void;
   ranks: Map<string, number>;
   onSelect: (incidentId: string) => void;
 }
 
 /**
- * Caja «En espera» (X11): el asistente automático atiende a quien llega con todos los operadores ocupados
+ * Pestaña «En espera» de la caja de llamadas (X11): el asistente automático atiende a quien llega con todos los operadores ocupados
  * (sala simulada con los supuestos de `lib/metrics.ts`). Nunca sustituye a un operador libre ni decide la zona gris.
  */
-export default function WaitingBox({ s, ranks, onSelect }: Props) {
-  const [operators, setOperators] = useState(DEFAULT_OPERATORS);
-  const view = useMemo(
-    () => consoleWaiting(s, operators),
-    [s.clock, s.arrived, s.calls, s.engine, s.archived, s.heard, operators],
-  );
+export default function WaitingBox({ s, view, operators, onOperators, ranks, onSelect }: Props) {
   const { con, sin } = view.report;
   const incOf = (id: string) => s.engine.incidents.find((i) => i.id === id) ?? s.archived.find((a) => a.incident.id === id)?.incident;
 
   return (
-    <section className="box" id="box-waiting" tabIndex={-1} aria-labelledby="wait-h">
-      <div className="panel-head">
-        <h2 id="wait-h">En espera</h2>
+    <>
+      <div className="calls-tools wait-tools">
         <div className="wait-ops" role="group" aria-label="Operadores disponibles en la sala simulada">
-          <span className="wait-ops-label" aria-hidden="true">Operadores</span>
+          <span className="wait-ops-label" aria-hidden="true">Operadores disponibles</span>
           <div className="seg">
             {OPERATOR_CHOICES.map((n) => (
-              <button key={n} aria-pressed={operators === n} aria-label={plural(n, "operador", "operadores")} onClick={() => setOperators(n)}>
+              <button key={n} aria-pressed={operators === n} aria-label={plural(n, "operador", "operadores")} onClick={() => onOperators(n)}>
                 {n}
               </button>
             ))}
@@ -119,6 +115,6 @@ export default function WaitingBox({ s, ranks, onSelect }: Props) {
           </ul>
         </details>
       </div>
-    </section>
+    </>
   );
 }

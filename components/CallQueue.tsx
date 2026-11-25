@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { getScenario } from "@/data/scenarios";
 import { isEcall } from "@/lib/ecall";
 import { TYPE_LABELS } from "@/lib/labels";
 import { callMeta } from "@/lib/useConsole";
@@ -30,7 +29,6 @@ type Mode = "recent" | "group" | "ask";
 
 export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect, onArchived, onLive }: Props) {
   const [mode, setMode] = useState<Mode>("recent");
-  const total = getScenario(s.scenarioId).calls.length;
   const byInc = new Map(s.engine.incidents.map((i) => [i.id, i]));
   const archivedIds = new Set(s.archived.map((x) => x.incident.id));
   const rows = [...s.arrived].reverse().map((id) => {
@@ -137,11 +135,7 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
   }
 
   return (
-    <section className="box calls-col" id="box-calls" aria-labelledby="calls-h">
-      <div className="panel-head">
-        <h2 id="calls-h">Llamadas entrantes</h2>
-        <span className="panel-count">{s.arrived.length} de {total}</span>
-      </div>
+    <>
       <div className="calls-tools">
         <div className="seg" role="group" aria-label="Cómo ver las llamadas">
           <button aria-pressed={mode === "recent"} onClick={() => setMode("recent")}>Recientes</button>
@@ -152,6 +146,6 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
       <ManualCall s={s} localAI={localAI} onCall={onLive} />
       <LivePanel s={s} sttUp={sttUp} onCall={onLive} />
       {body}
-    </section>
+    </>
   );
 }
