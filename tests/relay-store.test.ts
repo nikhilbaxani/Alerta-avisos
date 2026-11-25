@@ -346,6 +346,25 @@ it.each(["rules", "llm"] as const)("S32: resuelve Demóstenes por HTTP sin GEOCO
   expect(geocodeFetch).not.toHaveBeenCalled();
 });
 
+it.each(["rules", "llm"] as const)("S32: publica Santa Marina como desconocida sin enviar Santa María al geocodificador (%s)", async (mode) => {
+  const location_text = "Calle Santa Marina 3";
+  const transcript = "Hay un incendio en la calle Santa Marina 3";
+  const geocodeFetch = vi.fn<typeof fetch>(async (input) => {
+    const query = new URL(String(input)).searchParams.get("q");
+    return Response.json(query === "Calle Santa María 3, Málaga" ? [{ lat: 36.72, lon: -4.42, type: "house" }] : []);
+  });
+  const r = await boot({ geocoderUrl: `http://santa-marina-${mode}.invalid`, geocodeFetch,
+    fetch: async () => Response.json({ text: transcript, language: "es", duration: 15 }),
+    llmExtract: mode === "llm" ? async () => ({ location_text, language: "es", summary_es: "Incendio.",
+      translation_es: null, incident_type: "incendio", keywords: ["incendio"], risks: [], people_at_risk: 0, severity: 4 }) : undefined });
+  await publish(r);
+  expect(await frames(r)).toEqual([{ type: "call", data: expect.objectContaining({ transcript, extractor: mode,
+    location: { place: null, known: false, aml: UNKNOWN_LOCATION_AML },
+  }) }]);
+  expect(geocodeFetch).toHaveBeenCalledTimes(1);
+  expect(new URL(String(geocodeFetch.mock.calls[0][0])).searchParams.get("q")).toMatch(/^calle santa marina 3$/i);
+});
+
 it.each(["rules", "llm"] as const)("envía solo la dirección extraída (%s)", async (mode) => {
   const geocodeFetch = vi.fn<typeof fetch>(async () => Response.json([{ lat: 36.72, lon: -4.42, type: "suburb" }]));
   const r = await boot({ geocoderUrl: `http://${mode}.invalid`, geocodeFetch,

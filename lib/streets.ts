@@ -13,7 +13,13 @@ const TYPES = new Map(Object.entries({
   autovia: "autovia", autopista: "autopista", carril: "carril", cuesta: "cuesta",
   puente: "puente", via: "via", tramo: "tramo", sendero: "sendero",
 }));
-const PARTICLES = /\b(?:de|del|la|las|los|el)\b/g;
+const PARTICLES = new Set(["de", "del", "la", "las", "los", "el"]);
+const GENERIC = new Set([...PARTICLES, ...(
+  "al a y e san santa santo padre madre fray sor doctor doctora maestro maestra profesor profesora " +
+  "conde condesa duque duquesa marques marquesa general capitan coronel alcalde alcaldesa pintor poeta " +
+  "escritor musico compositor ingeniero arquitecto obispo cardenal virgen nuestra senora don dona hermano hermanos"
+).split(" ")]);
+const isDistinctive = (word: string) => /[a-z]/.test(word) && !GENERIC.has(word);
 const LOCATION_SUFFIX = /(?:(?:^| )(?:(?:provincia de )?malaga|andalucia|espana|spain))+$/;
 const INTRO = /^(?:(?:estamos|estoy|estaba|ocurrio|ha sido) )?(?:en|desde|cerca de|junto a) (?:la |el )?/;
 const END_OF_STREET = /\b(?:esquina con|cruce con|interseccion con|donde|(?:y )?(?:hay|ha ocurrido))\b/;
@@ -37,13 +43,22 @@ function phonetic(name: string): string {
 
 function keys(name: string) {
   const literal = name.replace(/ /g, "");
-  const contentWords = name.replace(PARTICLES, "").trim();
-  const core = contentWords.replace(/ +/g, "");
-  return { literal, core, sound: phonetic(literal), coreSound: phonetic(core), compound: contentWords.includes(" ") };
+  const all = name.split(" ").filter(Boolean);
+  const tokens = all.filter((word) => !PARTICLES.has(word));
+  const core = tokens.join("");
+  const distinctive = tokens.filter(isDistinctive);
+  // El sonido se calcula palabra a palabra: la doble letra no cruza fronteras
+  // (Manuela Alvar no suena como Manuel Alvar).
+  const sounds = tokens.map(phonetic);
+  const distinctiveLength = tokens.reduce((sum, word, i) => sum + (isDistinctive(word) ? sounds[i].length : 0), 0);
+  return { literal, core, sound: all.map(phonetic).join(""), coreSound: sounds.join(""), tokens, sounds, distinctive, distinctiveLength };
 }
 
+const vocabulary = new Set<string>();
 const INDEX = STREET_NAMES.map(([name, lat, lng, acc, extent = acc]) => {
-  const parsed = splitType(words(name));
+  const normalized = words(name);
+  for (const word of normalized.split(" ")) vocabulary.add(word);
+  const parsed = splitType(normalized);
   return { name, lat, lng, acc, extent, type: parsed.type, keys: keys(parsed.name),
     // Nombre habitual; el resultado conserva la denominación de OpenStreetMap.
     alias: name === "Calle Marqués de Larios" ? "larios" : undefined };
@@ -74,15 +89,25 @@ function matchCost(query: ReturnType<typeof keys>, street: ReturnType<typeof key
   if (query.core === street.core) return 0.125;
   if (query.sound.length >= 5 && query.sound === street.sound) return 0.25;
   if (query.coreSound.length >= 5 && query.coreSound === street.coreSound) return 0.375;
-  // Una errata libre puede convertir una palabra en otra (Escuelas/Espuelas).
-  // Solo en nombres compuestos queda contexto suficiente: conservamos al menos
-  // 9 caracteres sin editar para una errata y 12 para dos. No quitamos la -s.
-  if (!street.compound) return Infinity;
-  const length = Math.min(query.coreSound.length, street.coreSound.length);
+  // Las equivalencias de transcripción de arriba no son erratas libres. Para
+  // una errata libre exigimos palabras alineadas y al menos dos distintivas:
+  // los títulos y las partículas no aportan longitud ni admiten erratas libres.
+  // Si la palabra dicha ya existe en el callejero, no se sustituye por otra
+  // (Marina no es María). Solo cuentan las longitudes distintivas: 10 para
+  // una edición, 14 para dos. No quitamos la -s.
+  if (street.distinctive.length < 2 || query.distinctive.length < 2 || query.tokens.length !== street.tokens.length) return Infinity;
+  const length = Math.min(query.distinctiveLength, street.distinctiveLength);
   const limit = length >= 14 ? 2 : length >= 10 ? 1 : 0;
   if (!limit) return Infinity;
-  const edits = editDistance(query.coreSound, street.coreSound, limit);
-  return edits <= limit ? edits : Infinity;
+  let edits = 0;
+  for (let i = 0; i < query.tokens.length; i++) {
+    if (query.sounds[i] === street.sounds[i]) continue;
+    const said = query.tokens[i];
+    if (!isDistinctive(said) || !isDistinctive(street.tokens[i]) || vocabulary.has(said)) return Infinity;
+    edits += editDistance(query.sounds[i], street.sounds[i], limit - edits);
+    if (edits > limit) return Infinity;
+  }
+  return edits || Infinity;
 }
 
 /** Coincide con una vía, no con el portal: nunca consulta la red. */
@@ -94,11 +119,10 @@ export function matchStreet(text: string): { location: PublicLocation; address: 
   const fragment = name.replace(LOCATION_SUFFIX, "").trim();
   const number = /(?:^| )(?:(?:numero|num|n|no) )?(\d{1,4})$/.exec(fragment);
   const streetName = fragment.slice(0, number?.index ?? fragment.length).trim().replace(/\b(?:numero|num)$/, "").trim();
-  // Una palabra aislada no basta. Conserva «Demóstenes, Málaga»: la localidad
-  // explícita, igual que una introducción locativa, indica que es una dirección.
-  if (!type && !streetName.includes(" ") && !INTRO.test(spoken) && !LOCATION_SUFFIX.test(name)) return null;
+  // Una introducción locativa o la ciudad no bastan: sin tipo de vía hacen
+  // falta dos palabras distintivas, además de una coincidencia literal.
   const query = keys(streetName);
-  if (query.core.length < 4) return null;
+  if (query.core.length < 4 || (!type && query.distinctive.length < 2)) return null;
 
   let best: (typeof INDEX)[number] | undefined;
   let bestCost = Infinity;
