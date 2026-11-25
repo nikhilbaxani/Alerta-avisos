@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { markDeckReturn } from "@/components/DeckReturn";
 import Icon from "@/components/Icon";
 import { STATIC_EXPORT } from "@/lib/config";
-import logo from "@/docs/marca/logo-agente-112.svg";
+import { Mark } from "./bits";
 import { SLIDES } from "./slides";
 
 const W = 1600;
@@ -16,7 +16,7 @@ const HOME = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`;
 /**
  * Presentación interactiva anexa a la consola (/presentacion). Flechas, espacio o los botones para avanzar;
  * F pantalla completa; N notas del orador. La dirección guarda la diapositiva (#3). Al pasar de la última
- * (la del QR) se vuelve a la página principal.
+ * (logo y eslogan) se vuelve a la página principal.
  */
 export default function Deck() {
   const router = useRouter();
@@ -122,7 +122,7 @@ export default function Deck() {
 
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
-    touch.current = (e.target as HTMLElement).closest("[data-noswipe], .map, .frame-body") ? null : { x: t.clientX, y: t.clientY };
+    touch.current = (e.target as HTMLElement).closest("[data-noswipe], .map, .screen") ? null : { x: t.clientX, y: t.clientY };
   };
   const onTouchEnd = (e: React.TouchEvent) => {
     const s = touch.current;
@@ -142,10 +142,10 @@ export default function Deck() {
 
   return (
     <div className="deck" data-ready={k > 0 ? "1" : "0"} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      <div className={`deck-stage ${cur.theme === "light" ? "is-light" : ""}`} style={{ "--k": k || 1 } as React.CSSProperties}>
+      <div className="deck-stage" data-slide={cur.id} style={{ "--k": k || 1 } as React.CSSProperties}>
         {SLIDES.map((S, idx) => {
           const active = idx === i;
-          const cls = ["slide", S.theme, S.tone ?? "", S.className ?? "", active ? "is-active" : "", idx < i ? "is-before" : ""].filter(Boolean).join(" ");
+          const cls = ["slide", S.className ?? "", active ? "is-active" : "", idx < i ? "is-before" : ""].filter(Boolean).join(" ");
           return (
             <section key={S.id} className={cls} aria-roledescription="diapositiva" aria-label={`${idx + 1} de ${n}: ${S.title}`} aria-hidden={!active} inert={!active}>
               {mounted.has(idx) && <S.Body active={active} />}
@@ -155,15 +155,15 @@ export default function Deck() {
 
         <header className="chrome">
           <a href={HOME} className="brandmark" aria-label="Agente 112: ir a la consola" onClick={() => markDeckReturn(iRef.current + 1)}>
-            <img src={logo.src} width={153} height={34} alt="Agente 112. Coordina, actúa y escala. Decide el operador." />
+            <Mark size={34} />
+            <span>Agente <b>112</b></span>
           </a>
           <span className="section">{cur.section}</span>
-          <span className="count" aria-live="polite">{String(i + 1).padStart(2, "0")} / {String(n).padStart(2, "0")}</span>
+          <span className="count" aria-live="polite">{i + 1} de {n}</span>
           <a href={HOME} className="exit" aria-label="Salir a la consola" title="Salir a la consola" onClick={() => markDeckReturn(iRef.current + 1)}><Icon name="close" size={18} /></a>
         </header>
 
         <footer className="foot">
-          <span className="keys" aria-hidden="true"><kbd>←</kbd><kbd>→</kbd> avanzar · <kbd>F</kbd> pantalla completa · <kbd>N</kbd> notas</span>
           <nav className="prog" aria-label="Diapositivas">
             {SLIDES.map((S, idx) => (
               <button

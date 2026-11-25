@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { audioUrl } from "@/components/useCallAudio";
-import Icon from "@/components/Icon";
+import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 
 /** Miles con punto, como en castellano escrito («4.770», no «4770»). */
 export const fmt = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -50,66 +48,7 @@ export function useElapsed(active: boolean) {
   return s;
 }
 
-/** Ventana de la consola: piezas reales de la interfaz dentro de la presentación. */
-export function Frame({ title, tag, className = "", style, children }: { title: string; tag?: string; className?: string; style?: CSSProperties; children: ReactNode }) {
-  return (
-    <div className={`frame ${className}`} style={style}>
-      <div className="frame-bar" aria-hidden="true">
-        <span className="dots"><i /><i /><i /></span>
-        {title}
-        {tag && <span className="tag">{tag}</span>}
-      </div>
-      <div className="frame-body">{children}</div>
-    </div>
-  );
-}
-
-// Un solo audio para toda la presentación: al empezar uno, se para el anterior.
-let current: { el: HTMLAudioElement; stop: () => void } | null = null;
-
-/** Botón para escuchar una llamada del escenario (public/audio/<id>.mp3, sin red). Se calla al salir de la diapositiva. */
-export function ListenButton({ id, label, active }: { id: string; label: string; active: boolean }) {
-  const [on, setOn] = useState(false);
-  const mine = useRef<HTMLAudioElement | null>(null);
-
-  const stop = () => {
-    const a = mine.current;
-    mine.current = null;
-    setOn(false);
-    if (a) {
-      a.pause();
-      a.src = "";
-    }
-    if (current?.el === a) current = null;
-  };
-
-  useEffect(() => {
-    if (!active && mine.current) stop();
-  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => () => stop(), []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const toggle = () => {
-    if (on) return stop();
-    current?.stop();
-    const a = new Audio(audioUrl(id));
-    mine.current = a;
-    current = { el: a, stop };
-    a.onended = stop;
-    a.onerror = stop;
-    setOn(true);
-    a.play().catch(stop);
-  };
-
-  return (
-    <button type="button" className={`dbtn ${on ? "playing" : ""}`} onClick={toggle} aria-pressed={on}>
-      {on ? <span className="eq" aria-hidden="true"><i /><i /><i /></span> : <Icon name="play" size={16} />}
-      {on ? "Sonando…" : label}
-    </button>
-  );
-}
-
-/** Símbolo de Avance 112 (tres llamadas que convergen; arco ámbar: decisión humana; centro rojo: la persona). */
+/** Símbolo de Agente 112 (tres llamadas que convergen; arco ámbar: decisión humana; centro rojo: la persona). */
 export function Mark({ size = 30, ink = "currentColor" }: { size?: number; ink?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
@@ -125,31 +64,30 @@ export function Mark({ size = 30, ink = "currentColor" }: { size?: number; ink?:
 }
 
 /**
- * Logo animado que vuelve a hacer su entrada cada vez que se activa la diapositiva. Un SVG dentro de
- * <img> no reinicia su animación si el navegador ya lo tiene en memoria, así que se sirve como blob nuevo.
+ * Logo de Agente 112: el símbolo y el nombre en texto (la fuente de la web, sin recursos externos).
+ * La entrada (llamadas que llegan, anillo, arco ámbar y la persona) se repite cada vez que la diapositiva
+ * se activa, porque las animaciones cuelgan de `.slide.is-active` (deck.css).
  */
-export function ReplayLogo({ src, active, alt, className }: { src: string; active: boolean; alt: string; className?: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const text = useRef<string | null>(null);
-  useEffect(() => {
-    if (!active) return;
-    let gone = false;
-    let made: string | null = null;
-    (async () => {
-      try {
-        if (text.current === null) text.current = await (await fetch(src)).text();
-        if (gone) return;
-        made = URL.createObjectURL(new Blob([text.current], { type: "image/svg+xml" }));
-        setUrl(made);
-      } catch {
-        if (!gone) setUrl(src);
-      }
-    })();
-    return () => {
-      gone = true;
-      if (made) setTimeout(() => URL.revokeObjectURL(made!), 1000);
-    };
-  }, [active, src]);
-  // eslint-disable-next-line @next/next/no-img-element
-  return url ? <img className={className} src={url} alt={alt} width={1100} height={300} /> : <div className={className} role="img" aria-label={alt} />;
+export function LogoLockup({ className = "" }: { className?: string }) {
+  const nodes = [
+    { cy: 14, cx: 6, o: 0.45, link: "M10 16 L22 25" },
+    { cy: 32, cx: 4, o: 0.7, link: "M9 32 L20 32" },
+    { cy: 50, cx: 6, o: 0.45, link: "M10 48 L22 39" },
+  ];
+  return (
+    <div className={`lockup ${className}`} role="img" aria-label="Agente 112">
+      <svg className="lockup-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+        {nodes.map((n, i) => (
+          <g key={n.cy} style={{ "--d": `${(i * 0.12).toFixed(2)}s` } as CSSProperties}>
+            <circle className="lk-dot" cx={n.cx} cy={n.cy} r="3.2" fillOpacity={n.o} />
+            <path className="lk-link" d={n.link} pathLength={1} />
+          </g>
+        ))}
+        <circle className="lk-ring" cx="38" cy="32" r="16" pathLength={1} transform="rotate(-90 38 32)" />
+        <path className="lk-arc" d="M38 16 A16 16 0 0 1 54 32" pathLength={1} />
+        <circle className="lk-person" cx="38" cy="32" r="4.5" />
+      </svg>
+      <span className="lockup-name" aria-hidden="true">Agente <b>112</b></span>
+    </div>
+  );
 }
