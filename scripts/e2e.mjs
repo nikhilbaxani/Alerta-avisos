@@ -114,6 +114,28 @@ if ((await es.count()) !== 1) fail("falta la tarjeta del ES-Alert en el coche de
 if (await es.getByRole("button", { name: /Aprobar y enviar/ }).count()) fail("el operador no debe poder aprobar un ES-Alert");
 if (!(await es.innerText()).includes("La aprueba un coordinador")) fail("el ES-Alert no avisa de que lo aprueba un coordinador");
 
+// Aviso de duplicado (X14): al aprobar los bomberos del coche de A (INC-01), el agente prepara el lote para
+// quien volvió a llamar; «Aprobar todos» lo envía. A4 (trajo «menor») queda aparte y EC1 (eCall) no recibe nada.
+const acts = page.locator("#box-actions");
+await acts.getByRole("button", { name: "Todas", exact: true }).click().catch(() => {});
+const bomA = acts.locator('.act[data-tool="proponer_recursos"][data-incident="INC-01"]', { hasText: "Enviar Bomberos" });
+await bomA.getByRole("button", { name: /Aprobar y enviar/ }).click();
+const lote = acts.locator('[data-batch="INC-01"]');
+await lote.waitFor({ timeout: 5000 }).catch(() => fail("no aparece el lote de avisos de duplicado de INC-01"));
+const loteText = await lote.innerText();
+if (loteText.includes("EC1") || loteText.includes("A4")) fail(`el lote incluye a quien no debe: ${loteText}`);
+for (const id of ["A2", "A3", "A5"]) if (!loteText.includes(id)) fail(`al lote de INC-01 le falta ${id}`);
+const a4 = acts.locator('.act[data-tool="sms_duplicado"][data-incident="INC-01"][data-status="propuesta"]', { hasText: "+34 6•• ••• 519" });
+if (!(await a4.count()) || !(await a4.innerText()).includes("información nueva")) fail("A4 (información nueva) no sale aparte y marcada");
+await lote.getByRole("button", { name: /Aprobar todos/ }).click();
+await page.waitForTimeout(300);
+if (await lote.count()) fail("el lote sigue pendiente tras «Aprobar todos»");
+await acts.getByRole("button", { name: /Enviadas/ }).click();
+const sentDup = acts.locator('.act[data-tool="sms_duplicado"][data-incident="INC-01"][data-status="enviada"]');
+if ((await sentDup.count()) !== 3) fail(`el lote no pasa a enviada (${await sentDup.count()} de 3)`);
+if (!(await sentDup.first().innerText()).match(/Aprobado en lote y enviado · acuse DUP-[0-9A-F]{6}/)) fail("el aviso enviado no dice que se aprobó en lote");
+await acts.getByRole("button", { name: /Por aprobar/ }).click();
+
 // Separar una llamada del coche de A (6 llamadas y la eCall EC1; F es el otro vehículo, con 2).
 await prio(/Vehículo atrapado por agua[\s\S]*7 llamadas/).click();
 // La tarjeta de la eCall enseña sus datos y no ofrece «Escuchar»: es un mensaje de datos, sin voz.
@@ -132,6 +154,7 @@ const log = JSON.parse(await (await import("node:fs/promises")).readFile(await d
 const kinds = new Set(log.eventos.map((e) => e.kind));
 if (log.llamadas.length !== 27 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
 if (!kinds.has("accion_auto") || !kinds.has("accion_aprobada") || !log.accionesAgente?.length) fail("el registro no incluye las acciones del agente");
+if (log.accionesAgente.filter((a) => a.herramienta.nombre === "sms_duplicado" && a.aprobacion?.lote && a.resultado.estado === "enviada").length !== 3) fail("el registro no incluye el lote de avisos de duplicado");
 
 // Incidencia solucionada → archivo → reabrir. Con confirmación en dos pasos.
 const before = await kpi(page, "incidents");
@@ -180,4 +203,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, agente de espera, falta saber, audio, Separar, sin errores de consola");
+console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, lote de duplicados, agente de espera, falta saber, audio, Separar, sin errores de consola");

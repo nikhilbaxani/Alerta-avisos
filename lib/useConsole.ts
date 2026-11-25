@@ -17,7 +17,8 @@ import {
 import type { EngineCall, EngineState, Incident } from "@/lib/engine";
 import type { Aml, CallChannel, Decision, ECallData, ProcessResult } from "@/lib/types";
 import { isEcall } from "@/lib/ecall";
-import { actionIncidents, addProposals, approve, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
+import { actionIncidents, addProposals, approve, approveBatch, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
+import { proposalsFor } from "@/lib/consoleActions";
 import type { AgentAction, Proposal } from "@/lib/actions";
 import { heardOf } from "@/lib/waitingConsole";
 import type { Heard } from "@/lib/waitingConsole";
@@ -50,6 +51,21 @@ export interface CallMeta {
 
 export const callMeta = (s: ConsoleState, id: string): CallMeta | undefined =>
   s.live[id] ?? sortedCalls(s.scenarioId).find((c) => c.id === id);
+
+/**
+ * Propuestas del agente para el estado actual de la consola: reglas por incidente, zona (ES-Alert) y
+ * avisos de duplicado (X14, dependen del registro de acciones). La usan la consola, la presentación y `replay`.
+ */
+export function consoleProposals(s: ConsoleState): Proposal[] {
+  const phones: Record<string, string> = {};
+  const channels: Record<string, CallChannel | undefined> = {};
+  for (const id of s.arrived) {
+    const m = callMeta(s, id);
+    phones[id] = m?.phone ?? "";
+    channels[id] = m?.channel;
+  }
+  return proposalsFor(s.engine.incidents, s.calls, phones, { channels, actions: s.actions });
+}
 
 export interface Fx {
   key: string;
@@ -161,6 +177,8 @@ export type ConsoleAction =
   | { type: "reply"; reply: Reply }
   | { type: "plan"; proposals: Proposal[] }
   | { type: "actionApprove"; key: string }
+  /** «Aprobar todos» (X14): los avisos de duplicado del lote de un incidente. */
+  | { type: "actionApproveBatch"; incidentId: string }
   | { type: "actionDiscard"; key: string };
 
 function applyResult(s: ConsoleState, src: CallMeta, result: ProcessResult): ConsoleState {
@@ -345,6 +363,24 @@ export function reducer(s: ConsoleState, a: ConsoleAction): ConsoleState {
         actions: sent.actions,
         audit: [...s.audit, { t: s.clock, kind: "accion_aprobada", incidentId: sent.action.incidentId, detail: `El operador aprueba y se envía a ${toolTarget(sent.action)} (acuse ${sent.action.receipt?.reference}). ${sent.action.reason}` }],
       };
+    }
+    case "actionApproveBatch": {
+      const ok = approveBatch(s.actions, a.incidentId, "operador", s.clock);
+      if (!ok.ok) return s;
+      let actions = ok.actions;
+      const audit: AuditEntry[] = [];
+      for (const x of ok.approved) {
+        const sent = dispatch(actions, x.key, s.clock);
+        if (!sent.ok) continue;
+        actions = sent.actions;
+        audit.push({
+          t: s.clock,
+          kind: "accion_aprobada",
+          incidentId: x.incidentId,
+          detail: `El operador aprueba en lote («Aprobar todos», ${ok.approved.length} avisos de duplicado de ${a.incidentId}) y se envía a ${toolTarget(sent.action)} (acuse ${sent.action.receipt?.reference}). ${sent.action.reason}`,
+        });
+      }
+      return { ...s, actions, audit: [...s.audit, ...audit] };
     }
     case "actionDiscard": {
       const r = discard(s.actions, a.key, "operador", s.clock);

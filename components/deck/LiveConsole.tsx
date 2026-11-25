@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { actionIncidents, canApprove } from "@/lib/actions";
 import { buildAuditLog } from "@/lib/audit";
-import { proposalsFor } from "@/lib/consoleActions";
-import { callMeta, scenarioEnd, useConsole } from "@/lib/useConsole";
+import { callMeta, consoleProposals, scenarioEnd, useConsole } from "@/lib/useConsole";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import AgentFeed from "@/components/AgentFeed";
 import DecisionBanner from "@/components/DecisionBanner";
@@ -46,10 +45,7 @@ export default function LiveConsole({ active }: { active: boolean }) {
     if (s.running) dispatch({ type: "pause" });
   }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const proposals = useMemo(() => {
-    const phones = Object.fromEntries(s.arrived.map((id) => [id, callMeta(s, id)?.phone ?? ""]));
-    return proposalsFor(s.engine.incidents, s.calls, phones);
-  }, [s.engine, s.calls, s.arrived, s.live, s.scenarioId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const proposals = useMemo(() => consoleProposals(s), [s.engine, s.calls, s.arrived, s.live, s.scenarioId, s.actions]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     dispatch({ type: "plan", proposals });
   }, [proposals, dispatch]);

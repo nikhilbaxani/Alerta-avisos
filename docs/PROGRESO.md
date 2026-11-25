@@ -161,3 +161,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Decisiones: ver DECISIONES (X13: canal eCall, transcripción generada, fuera de la sala de voz del agente de espera, tipo fijado en el escenario). Recuentos 26→27 ajustados solo en el número.
 - Pendiente menor: EC1 sale como «Repetida» en la cola; «±10 m» se parte en dos líneas en la tarjeta; README/PITCH dicen 26 llamadas (para X08). En X14 decidir si EC1 recibe SMS de duplicado.
 - Siguiente: X14.
+
+## 2026-11-25T02:56:16+01:00 · X14 · hecha
+- Qué se hizo: herramienta `sms_duplicado` en `lib/actions.ts` (política «operador», fuera de las que puede proponer el LLM), frase nueva `DUPLICATE_PHRASES` en `lib/phrases.ts` (es/en/de/fr/ar/it). Se propone solo si el incidente tiene recursos aprobados o enviados; una vez por teléfono (también entre incidentes); EC1 excluida. Lote por incidente con «Aprobar todos (n)» en la caja de acciones (`actionApproveBatch`); los repetidos que traen información nueva (A4, C3, G2, B3/B4, G3/G4) van aparte y marcados. Traza de `npm run agente` y registro con `batch: true`.
+- Verificación (qa-verificador APTO): lint OK, build OK, 388 tests (nuevo `tests/duplicate.test.ts`), eval 7/0/2 y eval:apagon 6/0/1 sin cambios, `e2e.mjs` OK (aprueba el lote de INC-01), exportación de GitHub Pages OK, capturas `docs/capturas/X14-*` revisadas (escritorio/móvil, oscuro/claro), 0 errores de consola, sin scroll horizontal en móvil. `data/` sin cambios.
+- Decisiones: ver DECISIONES (X14).
+- Pendiente menor: en escritorio la caja de Acciones es baja (~250 px) y hay que desplazarse para llegar a «Aprobar todos».
+- Siguiente: X15.

@@ -4,15 +4,13 @@
  * (/presentacion) lo usa para enseñar estados reales del escenario sin esperar al reloj.
  */
 import { getScenario } from "@/data/scenarios";
-import { proposalsFor } from "@/lib/consoleActions";
 import { snapshot } from "@/lib/engine";
-import { callMeta, init, reducer, scenarioEnd, simulatedResult } from "@/lib/useConsole";
+import { consoleProposals, init, reducer, scenarioEnd, simulatedResult } from "@/lib/useConsole";
 import type { ConsoleState } from "@/lib/useConsole";
 
 /** Lo que hace la consola tras cada cambio: las reglas proponen y las acciones automáticas se envían. */
 export function planActions(s: ConsoleState): ConsoleState {
-  const phones = Object.fromEntries(s.arrived.map((id) => [id, callMeta(s, id)?.phone ?? ""]));
-  return reducer(s, { type: "plan", proposals: proposalsFor(s.engine.incidents, s.calls, phones) });
+  return reducer(s, { type: "plan", proposals: consoleProposals(s) });
 }
 
 /**

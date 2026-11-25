@@ -69,6 +69,7 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
       }
       expect(a.status).toBe("enviada");
       if (a.policy === "automatica") expect(a.approval).toEqual({ by: "automatica", at: a.proposedAt });
+      else if (a.tool === "sms_duplicado" && a.args.revisar.length === 0) expect(a.approval).toEqual({ by: "operador", at: a.proposedAt + APPROVAL_DELAY_S, batch: true });
       else expect(a.approval).toEqual({ by: "operador", at: a.proposedAt + APPROVAL_DELAY_S });
     }
     const s = summarize(run);

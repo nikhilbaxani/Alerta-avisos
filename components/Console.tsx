@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { callMeta, useConsole } from "@/lib/useConsole";
+import { callMeta, consoleProposals, useConsole } from "@/lib/useConsole";
 import { actionIncidents, canApprove } from "@/lib/actions";
-import { proposalsFor } from "@/lib/consoleActions";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import { buildAuditLog } from "@/lib/audit";
 import { STATIC_EXPORT } from "@/lib/config";
@@ -104,15 +103,13 @@ export default function Console() {
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
 
   // Agente de acciones (X05): las reglas proponen a partir del estado de los incidentes; las automáticas se envían al añadirse.
-  const proposals = useMemo(() => {
-    const phones = Object.fromEntries(s.arrived.map((id) => [id, callMeta(s, id)?.phone ?? ""]));
-    return proposalsFor(s.engine.incidents, s.calls, phones);
-  }, [s.engine, s.calls, s.arrived, s.live, s.scenarioId]);
+  const proposals = useMemo(() => consoleProposals(s), [s.engine, s.calls, s.arrived, s.live, s.scenarioId, s.actions]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     dispatch({ type: "plan", proposals });
   }, [proposals, dispatch]);
   const approve = useCallback((key: string) => dispatch({ type: "actionApprove", key }), [dispatch]);
   const discard = useCallback((key: string) => dispatch({ type: "actionDiscard", key }), [dispatch]);
+  const approveBatch = useCallback((incidentId: string) => dispatch({ type: "actionApproveBatch", incidentId }), [dispatch]);
   const toApprove = s.actions.filter((a) => a.status === "propuesta" && canApprove(a.policy, "operador"));
   const pendingByIncident: Record<string, number> = {};
   for (const a of toApprove) for (const id of actionIncidents(a)) pendingByIncident[id] = (pendingByIncident[id] ?? 0) + 1;
@@ -175,7 +172,7 @@ export default function Console() {
             )}
           </MapView>
           <div className="pair">
-            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onIncident={selectIncident} />
+            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} />
             <TranslateBox s={s} ask={ask} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
           </div>
         </div>

@@ -602,6 +602,7 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 .act-target { font-size: 13px; color: var(--ink-3); }
 .act-sms { display: grid; gap: 2px; margin: 4px 0 2px; padding: 7px 10px; background: var(--accent-bg); border-radius: var(--radius); font-size: 14px; }
 .act-sms small { font-size: 12px; color: var(--ink-3); }
+.act-batch { display: grid; gap: 1px; margin: 0 0 2px; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
 .act-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .act-who { font-size: 12.5px; font-weight: 600; color: var(--amber-ink); }
 .act-status { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--ink-3); margin-top: 2px; }

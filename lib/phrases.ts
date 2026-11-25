@@ -202,6 +202,29 @@ export const MISSING_PHRASES: readonly (Phrase & { id: MissingPhraseId })[] = [
   },
 ];
 
+/** Frase del aviso a quien llama otra vez por una emergencia que ya tiene recursos en camino (X14). */
+export const DUPLICATE_PHRASE_IDS = ["duplicado_en_camino"] as const;
+export type DuplicatePhraseId = (typeof DUPLICATE_PHRASE_IDS)[number];
+
+/**
+ * SMS de duplicado (`sms_duplicado`, X14). Exportación aparte a propósito: la consola pinta un botón por
+ * cada elemento de `PHRASES`. Solo es verdad cuando hay recursos aprobados o enviados (lo comprueba el
+ * planificador). Traducciones escritas para el proyecto y anotadas en DECISIONES (X14).
+ */
+export const DUPLICATE_PHRASES: readonly (Phrase & { id: DuplicatePhraseId })[] = [
+  {
+    id: "duplicado_en_camino",
+    es: "Ya hemos recibido su aviso; la ayuda está en camino. Si hay algo nuevo, vuelva a llamar.",
+    tr: {
+      en: "We have already received your report; help is on the way. If anything changes, call again.",
+      de: "Ihre Meldung ist bei uns eingegangen; Hilfe ist unterwegs. Wenn sich etwas Neues ergibt, rufen Sie erneut an.",
+      fr: "Nous avons bien reçu votre signalement ; les secours arrivent. S'il y a du nouveau, rappelez-nous.",
+      ar: "لقد تلقّينا بلاغك، والمساعدة في الطريق. إذا استجدّ أي أمر، اتصل بنا مرة أخرى.",
+      it: "Abbiamo già ricevuto la sua segnalazione; i soccorsi stanno arrivando. Se c'è qualcosa di nuovo, richiami.",
+    },
+  },
+];
+
 export const SPEECH_LOCALE: Record<string, string> = {
   es: "es-ES",
   en: "en-GB",

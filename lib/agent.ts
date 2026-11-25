@@ -12,8 +12,10 @@ import {
   ACTION_TOOLS,
   addProposals,
   approve,
+  approveBatch,
   discardOrphans,
   dispatch,
+  planDuplicateSms,
   planInputFrom,
   planRules,
   planZoneAlerts,
@@ -106,12 +108,14 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
     byId[c.id] = { id: c.id, t: c.t, aml: c.aml, extraction: c.mock };
     gold[c.id] = c.gold;
     facts[c.id] = { lang: c.mock.language, phone: c.phone, risks: c.mock.risks };
+    if (c.channel) facts[c.id].channel = c.channel;
   }
 
   let state = initialState();
   let actions: AgentAction[] = [];
   /** Aprobaciones simuladas por hacer, en orden de hora (y de propuesta a igual hora). */
-  const queue: { key: string; due: number; role: Role }[] = [];
+  /** `batch`: «Aprobar todos» los avisos de duplicado de ese incidente (X14). */
+  const queue: { key: string; due: number; role: Role; batch?: string }[] = [];
   const steps: AgentStep[] = [];
   /** Lo que sabe el sistema de cada llamada al entrar, antes de que decida nadie (para el asistente de espera). */
   const heard: Record<string, Heard> = {};
@@ -119,12 +123,38 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
   /** El operador (o el coordinador) simulado aprueba, y el conector envía, lo que toca hasta `until`. */
   const approveUntil = (until: number) => {
     while (queue.length && queue[0].due <= until) {
-      const { key, due, role } = queue.shift()!;
+      const { key, due, role, batch } = queue.shift()!;
+      if (batch) {
+        const b = approveBatch(actions, batch, role, due);
+        if (!b.ok) continue;
+        actions = b.actions;
+        for (const x of b.approved) {
+          const sent = dispatch(actions, x.key, due);
+          if (sent.ok) actions = sent.actions;
+        }
+        continue;
+      }
       const ok = approve(actions, key, role, due);
       if (!ok.ok) continue;
       const sent = dispatch(ok.actions, key, due);
       actions = sent.ok ? sent.actions : ok.actions;
     }
+  };
+
+  /** Avisos de duplicado (X14): salen cuando un incidente ya tiene recursos aprobados o enviados. */
+  const planDuplicates = (at: number): AgentAction[] => {
+    const proposals = state.incidents.flatMap((i) => planDuplicateSms(planInputFrom(i, facts), actions));
+    const res = addProposals(actions, proposals, at);
+    actions = res.actions;
+    return res.added;
+  };
+  /** El operador simulado aprueba con «Aprobar todos» el lote de cada incidente; lo que trae información nueva, uno a uno. */
+  const queueDuplicates = (added: AgentAction[], at: number) => {
+    for (const id of new Set(added.filter((a) => a.tool === "sms_duplicado" && a.args.revisar.length === 0).map((a) => a.incidentId))) {
+      queue.push({ key: `lote|${id}`, due: at + delay, role: "operador", batch: id });
+    }
+    for (const a of added) if (a.tool === "sms_duplicado" && a.args.revisar.length > 0) queue.push({ key: a.key, due: at + delay, role: "operador" });
+    queue.sort((x, y) => x.due - y.due);
   };
 
   for (const c of calls) {
@@ -155,14 +185,15 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
     // Zona (ES-Alert): sobre todos los incidentes, con reglas deterministas; la clave es la zona, así que no se repite.
     const zone = addProposals(actions, planZoneAlerts(state.incidents.map((i) => planInputFrom(i, facts))), c.t);
     actions = zone.actions;
-    const added = [...res.added, ...zone.added];
-    for (const a of added) {
+    const dups = planDuplicates(c.t);
+    const added = [...res.added, ...zone.added, ...dups];
+    for (const a of [...res.added, ...zone.added]) {
       if (a.status !== "propuesta") continue;
       // El operador simulado no aprueba lo del coordinador: se queda pendiente salvo que se simule un coordinador.
       if (a.policy === "operador") queue.push({ key: a.key, due: c.t + delay, role: "operador" });
       else if (a.policy === "coordinador" && coordinatorDelay !== null) queue.push({ key: a.key, due: c.t + coordinatorDelay, role: "coordinador" });
     }
-    queue.sort((x, y) => x.due - y.due);
+    queueDuplicates(dups, c.t);
 
     steps.push({
       t: c.t,
@@ -181,6 +212,14 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
     });
   }
   approveUntil(Infinity);
+  // Recursos aprobados después de la última llamada: sus avisos de duplicado salen al final, a la hora de esa aprobación.
+  const lastApproval = Math.max(calls.at(-1)?.t ?? 0, ...actions.map((a) => (a.approval && a.approval.by !== "automatica" ? a.approval.at : 0)));
+  const late = planDuplicates(lastApproval);
+  if (late.length) {
+    queueDuplicates(late, lastApproval);
+    approveUntil(Infinity);
+    steps.at(-1)?.added.push(...late.map((a) => a.key));
+  }
 
   // Sala simulada: «primera de su incidente» con el estado final, como la franja de sala de la consola.
   // Las eCall no tienen voz: no ocupan la cola de voz ni a un operador al teléfono (DECISIONES X13).
@@ -271,7 +310,7 @@ function approvalText(a: AgentAction): string {
     return `pendiente (la aprueba un ${a.policy})`;
   }
   if (a.approval.by === "automatica") return `automática, sin espera y con registro, a ${clock(a.approval.at)}`;
-  return `${a.approval.by} (simulado) a ${clock(a.approval.at)}`;
+  return `${a.approval.by} (simulado) a ${clock(a.approval.at)}${a.approval.batch ? ` · en lote («Aprobar todos» de ${a.incidentId})` : ""}`;
 }
 
 function resultText(a: AgentAction): string {

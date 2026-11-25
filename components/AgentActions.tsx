@@ -1,4 +1,5 @@
-import { CITY_LABELS, RESOURCE_LABELS, canApprove, toolService, toolTarget } from "@/lib/actions";
+import { CITY_LABELS, RESOURCE_LABELS, canApprove, joinEs, toolService, toolTarget } from "@/lib/actions";
+import { RISK_LABELS } from "@/lib/labels";
 import type { ActionTool, AgentAction } from "@/lib/actions";
 import Icon from "./Icon";
 import type { IconName } from "./Icon";
@@ -11,6 +12,7 @@ export const TOOL_ICON: Record<ActionTool, IconName> = {
   aviso_ayuntamiento: "building",
   devolver_llamada: "callback",
   proponer_es_alert: "alert",
+  sms_duplicado: "message",
 };
 
 /** Título corto de la acción, en lenguaje de sala. */
@@ -28,6 +30,8 @@ export function actionTitle(a: AgentAction): string {
       return `Devolver la llamada a ${a.args.telefono ?? a.args.llamada}`;
     case "proponer_es_alert":
       return `ES-Alert a la población de la zona de ${a.args.zona.nombre}`;
+    case "sms_duplicado":
+      return `Aviso de duplicado en ${langName(a.args.idioma).toLowerCase()} a ${a.args.telefono}`;
   }
 }
 
@@ -36,7 +40,8 @@ const whoText = (a: AgentAction) => {
     if (a.discarded?.reason.endsWith("solucionado por el operador")) return "Sin enviar: la incidencia se solucionó";
     return a.discarded?.by === "sistema" ? "Descartada por el sistema" : "Descartada por el operador";
   }
-  return a.approval?.by === "automatica" ? "Enviado automáticamente" : "Aprobado y enviado";
+  if (a.approval?.by === "automatica") return "Enviado automáticamente";
+  return a.approval?.batch ? "Aprobado en lote y enviado" : "Aprobado y enviado";
 };
 
 interface CardProps {
@@ -53,7 +58,7 @@ export function ActionCard({ a, tokens, onApprove, onDiscard }: CardProps) {
   const mine = canApprove(a.policy, "operador");
   const title = actionTitle(a);
   return (
-    <li className={`act st-${state === "pending" && !mine ? "coord" : state}`}>
+    <li className={`act st-${state === "pending" && !mine ? "coord" : state}`} data-tool={a.tool} data-status={a.status} data-incident={a.incidentId}>
       <span className="act-icon" aria-hidden="true"><Icon name={TOOL_ICON[a.tool]} size={18} /></span>
       <div className="act-body">
         {tokens && <span className="act-incs">{tokens}</span>}
@@ -64,6 +69,17 @@ export function ActionCard({ a, tokens, onApprove, onDiscard }: CardProps) {
             <span lang={a.args.idioma} dir={a.args.idioma === "ar" ? "rtl" : "ltr"}>{a.args.texto}</span>
             <small>«{a.args.texto_es}»</small>
           </p>
+        )}
+        {a.tool === "sms_duplicado" && (
+          <p className="act-sms">
+            <span lang={a.args.idioma} dir={a.args.idioma === "ar" ? "rtl" : "ltr"}>{a.args.texto}</span>
+            {a.args.idioma !== "es" && <small>«{a.args.texto_es}»</small>}
+          </p>
+        )}
+        {a.tool === "sms_duplicado" && a.args.revisar.length > 0 && state === "pending" && (
+          <span className="act-who" data-review="true">
+            <Icon name="alert" size={14} />Trajo información nueva ({joinEs(a.args.revisar.map((r) => RISK_LABELS[r].toLowerCase()))}): revísala antes; no entra en «Aprobar todos».
+          </span>
         )}
         {a.tool === "proponer_es_alert" && (
           <p className="act-sms">
