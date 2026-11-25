@@ -8,8 +8,6 @@ import { replayTo } from "@/lib/replay";
 import Icon from "@/components/Icon";
 import type { IconName } from "@/components/Icon";
 import { langName, mmss } from "@/components/format";
-import LiveConsole from "./LiveConsole";
-import QrCode from "./QrCode";
 import { CountUp, LogoLockup, Mark, at } from "./bits";
 
 export interface SlideProps {
@@ -28,23 +26,14 @@ export interface SlideDef {
 
 const DANA = "dana-malaga";
 
+/** Raíz de la web (subruta incluida, p. ej. en GitHub Pages). */
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 /**
- * Dirección de la grabadora del público (/llamar, rama feature/llamadas-publico). NEXT_PUBLIC_CALL_URL la fija;
- * si no, se forma con NEXT_PUBLIC_DEMO_URL (para presentar desde localhost) o con esta misma web.
+ * Consola a la que salta la presentación al llegar a la demo: la del VPS, donde también entran las llamadas
+ * del público. NEXT_PUBLIC_DEMO_CONSOLE_URL la cambia. Necesita red; sin ella queda la consola local.
  */
-function useCallUrl() {
-  const [url, setUrl] = useState("");
-  useEffect(() => {
-    const fixed = process.env.NEXT_PUBLIC_CALL_URL?.trim();
-    if (fixed) {
-      setUrl(fixed);
-      return;
-    }
-    const site = process.env.NEXT_PUBLIC_DEMO_URL?.trim() || new URL(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`, window.location.origin).href;
-    setUrl(new URL("llamar", site.endsWith("/") ? site : `${site}/`).href);
-  }, []);
-  return url;
-}
+export const DEMO_CONSOLE_URL = process.env.NEXT_PUBLIC_DEMO_CONSOLE_URL?.trim() || "https://oracle-exit.tail0093c8.ts.net/";
 
 const v = (o: Record<string, string | number>) => o as CSSProperties;
 
@@ -416,16 +405,15 @@ function AgentFlow() {
 
 // ═════════════════════════════ 5 · La consola en directo
 
-function Live({ active }: SlideProps) {
+function Live() {
   return (
     <>
-      <div className="live-title">
-        <Chapter n="05">Demo</Chapter>
-        <h2 className="h3 rise" style={at(1)}>Así lo ve el operador.</h2>
-        <p className="live-sub rise" style={at(2)}>Junta las llamadas repetidas, sube lo urgente y prepara los avisos. El operador decide.</p>
-      </div>
-      <div className="screen rise" style={at(2)}>
-        <LiveConsole active={active} />
+      <Chapter n="05">Demo</Chapter>
+      <h2 className="h1 rise" style={at(1)}>Así lo ve <em>el operador.</em></h2>
+      <p className="lead rise" style={at(2)}>Junta las llamadas repetidas, sube lo urgente y prepara los avisos. El operador decide.</p>
+      <div className="open-row rise" style={at(3)}>
+        <a className="open-console" href={DEMO_CONSOLE_URL}>Abrir la consola<Icon name="chevron" size={18} /></a>
+        <a className="open-local" href={`${BASE}/`}>Sin red: consola local</a>
       </div>
     </>
   );
@@ -534,7 +522,6 @@ function Roadmap() {
 // ═════════════════════════════ 9 · Cierre: logo, eslogan y QR
 
 function Closing() {
-  const url = useCallUrl();
   return (
     <>
       <div className="brand-block">
@@ -542,8 +529,8 @@ function Closing() {
         <p className="slogan rise" style={at(6)}>Para que nadie se quede esperando al otro lado.</p>
       </div>
       <aside className="call-qr rise" style={at(8)}>
-        {url ? <QrCode text={url} label="Código QR a la simulación de llamada al 112" /> : <div className="qr-skeleton" />}
-        <p className="q-title">Llama tú</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`${BASE}/qr-llamar-tarjeta.png`} width={1080} height={1350} alt="Tarjeta con el código QR para grabar una llamada de prueba al 112" />
         <p>Este QR lleva a una simulación de llamada al 112.</p>
       </aside>
     </>
@@ -574,8 +561,8 @@ export const SLIDES: SlideDef[] = [
     notes: "(0:50–1:05) Cómo lo conseguimos: el agente escucha cada llamada y la pasa a texto en el ordenador de la sala (Whisper), un modelo de lenguaje local saca qué pasa, dónde y quién corre peligro, y unas reglas en código la juntan con su emergencia. Si llega un dato nuevo sube la prioridad; si duda, pregunta. Después propone acciones según el tipo: robo, Policía Nacional; incendio, Bomberos; herido, SAMU 061. Lo que solo informa sale solo; lo demás lo aprueba una persona.",
   },
   {
-    id: "demo", section: "Demo", title: "Así lo ve el operador", className: "s-live", Body: Live,
-    notes: "(1:05–2:15) Arranca sola a ×4 con sonido: suben las líneas liberadas. A4 trae información nueva y sube la prioridad. F1 se pone en ámbar: pulsar D, es otro coche. B2: pulsar M, misma dirección. A la derecha, las acciones que propone el agente según cada emergencia: bomberos para el coche atrapado, aviso a la compañía eléctrica por los cables (sale solo), SAMU para la emergencia médica. Aprobar una con el botón.",
+    id: "demo", section: "Demo", title: "Así lo ve el operador", className: "s-center", Body: Live,
+    notes: "(1:05–2:15) Al llegar a esta diapositiva la presentación salta a la consola del VPS (al volver, sigue en Clientes). En la consola: Iniciar a ×4 con sonido; suben las líneas liberadas. A4 trae información nueva y sube la prioridad. F1 se pone en ámbar: pulsar D, es otro coche. B2: pulsar M, misma dirección. A la derecha, las acciones que propone el agente según cada emergencia: bomberos para el coche atrapado, aviso a la compañía eléctrica por los cables (sale solo), SAMU para la emergencia médica. Aprobar una con el botón.",
   },
   {
     id: "clientes", section: "Clientes", title: "Vendemos a las empresas que ya operan el 112", className: "s-split", Body: Clients,

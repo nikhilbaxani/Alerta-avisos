@@ -6,12 +6,13 @@ import { markDeckReturn } from "@/components/DeckReturn";
 import Icon from "@/components/Icon";
 import { STATIC_EXPORT } from "@/lib/config";
 import { Mark } from "./bits";
-import { SLIDES } from "./slides";
+import { DEMO_CONSOLE_URL, SLIDES } from "./slides";
 
 const W = 1600;
 const H = 900;
 /** Página principal. Enlace normal, sin prefetch: en la exportación estática con subruta, Next pide «/<subruta>.txt», que no existe. */
 const HOME = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`;
+const DEMO = SLIDES.findIndex((S) => S.id === "demo");
 
 /**
  * Presentación interactiva anexa a la consola (/presentacion). Flechas, espacio o los botones para avanzar;
@@ -37,6 +38,13 @@ export default function Deck() {
         return;
       }
       const t = Math.max(0, Math.min(n - 1, to));
+      // Al avanzar a la demo se abre la consola del VPS; si es la misma web, «Volver a la presentación» sigue
+      // en la diapositiva siguiente. Hacia atrás se queda en la diapositiva, que tiene el botón.
+      if (t === DEMO && t > iRef.current) {
+        markDeckReturn(DEMO + 2);
+        window.location.assign(DEMO_CONSOLE_URL);
+        return;
+      }
       iRef.current = t;
       setI(t);
     },
