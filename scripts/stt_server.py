@@ -46,6 +46,43 @@ def parse_multipart(content_type: str, body: bytes) -> dict[str, tuple[bytes, st
     return fields
 
 
+SAMPLE_RATE = 16000
+
+
+class AudioTooLong(Exception):
+    pass
+
+
+def decode_bounded(source: io.BytesIO, max_seconds: float):
+    import av
+    import numpy as np
+
+    resampler = av.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
+    samples = 0
+    raw = bytearray()
+
+    def append(frames):
+        nonlocal samples
+        for frame in frames:
+            samples += frame.samples
+            if samples > max_seconds * SAMPLE_RATE:
+                raise AudioTooLong(samples / SAMPLE_RATE)
+            raw.extend(frame.to_ndarray().tobytes())
+
+    with av.open(source, mode="r", metadata_errors="ignore") as container:
+        decoded = iter(container.decode(audio=0))
+        while True:
+            try:
+                frame = next(decoded)
+            except StopIteration:
+                break
+            except av.error.InvalidDataError:
+                continue  # igual que faster-whisper: omite tramas inválidas
+            append(resampler.resample(frame))
+        append(resampler.resample(None))
+    return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=os.environ.get("STT_MODEL", "Systran/faster-whisper-small"))
@@ -63,7 +100,7 @@ def main() -> None:
 
     if args.device == "cuda":
         preload_cuda_libs()
-    from faster_whisper import WhisperModel, decode_audio  # import tardío: después de precargar CUDA
+    from faster_whisper import WhisperModel  # import tardío: después de precargar CUDA
 
     compute = args.compute_type or ("float16" if args.device == "cuda" else "int8")
     t0 = time.time()
@@ -106,23 +143,29 @@ def main() -> None:
                 return
             t = time.time()
             try:
-                # Se decodifica primero (rápido) para rechazar audios largos sin gastar CPU en transcribirlos.
-                audio = decode_audio(io.BytesIO(fields["file"][0]), sampling_rate=16000)
-            except Exception as e:  # audio corrupto o formato no soportado
-                self._json(400, {"error": f"no se pudo decodificar el audio: {e}"})
-                return
-            seconds = len(audio) / 16000
-            if seconds > args.max_seconds + 5:
+                audio = decode_bounded(io.BytesIO(fields["file"][0]), args.max_seconds + 5)
+            except AudioTooLong as e:
+                seconds = e.args[0]
                 print(f"[stt] rechazado: {seconds:.0f}s > {args.max_seconds:.0f}s + 5", flush=True)
                 self._json(413, {"error": f"el audio dura {seconds:.0f} s y el máximo es {args.max_seconds:.0f} s"})
                 return
-            try:
-                with lock:
+            except Exception as e:  # audio corrupto o formato no soportado
+                self._json(400, {"error": f"no se pudo decodificar el audio: {e}"})
+                return
+            with lock:
+                try:
                     segments, info = model.transcribe(audio, language=lang, task=task, beam_size=args.beam_size)
                     text = " ".join(s.text.strip() for s in segments).strip()
-            except Exception as e:  # audio corrupto o formato no soportado
-                self._json(500, {"error": f"no se pudo transcribir: {e}"})
-                return
+                except Exception as e:
+                    try:
+                        self._json(500, {"error": f"no se pudo transcribir: {e}"})
+                    finally:
+                        if "cuda" in str(e).lower():
+                            try:
+                                print("[stt] fallo de CUDA; reiniciando el proceso", file=sys.stderr, flush=True)
+                            finally:
+                                os._exit(1)
+                    return
             print(f"[stt] {fields['file'][1] or 'audio'} lang={lang or info.language} task={task} {time.time() - t:.2f}s", flush=True)
             self._json(200, {"text": text, "language": info.language, "duration": info.duration})
 

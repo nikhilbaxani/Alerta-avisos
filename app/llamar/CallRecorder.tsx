@@ -62,6 +62,11 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 export default function CallRecorder() {
   const [consent, setConsent] = useState(false);
+  const consentInput = useRef<HTMLInputElement>(null);
+  const [permissionPending, setPermissionPending] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
+  const activeRequest = useRef<AbortController | null>(null);
+  const deleteRequests = useRef(new Set<AbortController>());
   const [phase, setPhase] = useState<Phase>("idle");
   const [secs, setSecs] = useState(0);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -79,11 +84,13 @@ export default function CallRecorder() {
 
   useEffect(() => () => {
     run.current++;
+    activeRequest.current?.abort();
+    for (const request of deleteRequests.current) request.abort();
     if (timer.current) clearInterval(timer.current);
-    if (rec.current && rec.current.state !== "inactive") {
+    if (rec.current) {
       rec.current.ondataavailable = null;
       rec.current.onstop = null;
-      rec.current.stop();
+      if (rec.current.state !== "inactive") rec.current.stop();
       rec.current.stream.getTracks().forEach((t) => t.stop());
     }
   }, []);
@@ -126,6 +133,25 @@ export default function CallRecorder() {
     setMsg(text ? { ok: false, text } : null);
   };
 
+  // El plazo cubre tanto las cabeceras como la lectura del cuerpo.
+  const request = async <T,>(url: string, init: RequestInit, ms: number, read: (res: Response) => Promise<T>, deleting = false) => {
+    const controller = new AbortController();
+    if (deleting) deleteRequests.current.add(controller);
+    else activeRequest.current = controller;
+    const deadline = setTimeout(() => controller.abort(), ms);
+    try {
+      const result = await read(await fetch(url, { ...init, signal: controller.signal }));
+      controller.signal.throwIfAborted();
+      return result;
+    } finally {
+      clearTimeout(deadline);
+      if (deleting) deleteRequests.current.delete(controller);
+      else if (activeRequest.current === controller) activeRequest.current = null;
+    }
+  };
+
+  const readStatus = async (res: Response) => ({ res, body: res.ok ? await res.json() : null });
+
   /** Sondea el estado de la llamada hasta que haya texto (o falle). */
   const watch = async (id: string, token: number) => {
     let fails = 0;
@@ -134,11 +160,10 @@ export default function CallRecorder() {
       await sleep(pollDelay(n));
       if (run.current !== token) return;
       try {
-        const res = await fetch(`${RELAY}/llamar/${id}`, { cache: "no-store" });
+        const { res, body } = await request(`${RELAY}/llamar/${id}`, { cache: "no-store" }, 15_000, readStatus);
         if (run.current !== token) return;
         if (res.status === 404) return backToIdle(GONE);
         if (!res.ok) throw new Error(String(res.status));
-        const body = await res.json();
         fails = 0;
         if (body.status === "ready" && typeof body.transcript === "string") {
           setTranscript(body.transcript);
@@ -155,12 +180,13 @@ export default function CallRecorder() {
         }
         if (body.status === "transcribing") setAhead(Number.isInteger(body.ahead) && body.ahead > 0 ? body.ahead : 0);
       } catch {
+        if (run.current !== token) return;
         if (++fails >= POLL_MAX_FAILS) return backToIdle("Se perdió la conexión con el servidor mientras se transcribía. Vuelve a grabar.");
       }
     }
   };
 
-  const upload = async (audio: Blob) => {
+  const upload = async (audio: Blob, token: number) => {
     if (audio.size === 0) {
       setPhase("idle");
       setMsg({ ok: false, text: "No se grabó nada de audio. Inténtalo de nuevo." });
@@ -171,22 +197,16 @@ export default function CallRecorder() {
       const form = new FormData();
       form.append("consent", "1");
       form.append("file", audio, "llamada.webm");
-      const res = await fetch(`${RELAY}/llamar`, { method: "POST", body: form });
-      if (res.status === 202) {
-        const body = await res.json().catch(() => null);
-        if (typeof body?.id === "string") {
-          const token = ++run.current;
-          setCallId(body.id);
-          setPhase("transcribing");
-          void watch(body.id, token);
-          return;
-        }
+      const { res, body } = await request(`${RELAY}/llamar`, { method: "POST", body: form }, 60_000,
+        async (res) => ({ res, body: await res.json().catch(() => null) }));
+      if (run.current !== token) return;
+      if (res.status === 202 && typeof body?.id === "string") {
+        setCallId(body.id);
+        setPhase("transcribing");
+        void watch(body.id, token);
+        return;
       }
-      let detail = "";
-      try {
-        const body = await res.json();
-        if (typeof body?.error === "string") detail = body.error;
-      } catch { /* sin cuerpo JSON */ }
+      const detail = res.status !== 202 && typeof body?.error === "string" ? body.error : "";
       const fallback: Record<number, string> = {
         413: "El audio es demasiado grande.",
         429: "Has hecho demasiadas llamadas seguidas. Espera unos minutos.",
@@ -194,6 +214,7 @@ export default function CallRecorder() {
       };
       setMsg({ ok: false, text: detail || fallback[res.status] || "No se pudo enviar el audio. Inténtalo de nuevo." });
     } catch {
+      if (run.current !== token) return;
       setMsg({ ok: false, text: "No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo." });
     }
     setPhase("idle");
@@ -207,12 +228,10 @@ export default function CallRecorder() {
       await sleep(Math.min(pollDelay(n), deadline - Date.now()));
       if (!active()) return;
       try {
-        const res = await fetch(`${RELAY}/llamar/${id}`, { cache: "no-store" });
+        const { res, body } = await request(`${RELAY}/llamar/${id}`, { cache: "no-store" }, 15_000, readStatus);
         if (!active()) return;
         if (res.status === 404) return setDeliveryFailed(true);
         if (!res.ok) continue;
-        const body = await res.json();
-        if (!active()) return;
         if (body?.status === "sent") return;
         if (body?.status === "failed" || body?.status === "expired") return setDeliveryFailed(true);
       } catch { /* El recibo no cambia si falla la conexión. */ }
@@ -226,8 +245,8 @@ export default function CallRecorder() {
     setMsg(null);
     const token = ++run.current;
     try {
-      const res = await fetch(`${RELAY}/llamar/${callId}/enviar`, { method: "POST" });
-      const body = await res.json().catch(() => null);
+      const { res, body } = await request(`${RELAY}/llamar/${callId}/enviar`, { method: "POST" }, 20_000,
+        async (res) => ({ res, body: await res.json().catch(() => null) }));
       if (run.current !== token) return;
       if (res.ok && (body?.status === "publishing" || body?.status === "sent")) {
         setPhase("done");
@@ -248,26 +267,47 @@ export default function CallRecorder() {
   /** «Volver a grabar»: se descarta la llamada pendiente (si falla el aviso, el servidor la borra al caducar). */
   const discard = () => {
     const id = callId;
-    if (id) void fetch(`${RELAY}/llamar/${id}`, { method: "DELETE" }).catch(() => undefined);
     backToIdle();
+    activeRequest.current?.abort();
+    if (id) void request(`${RELAY}/llamar/${id}`, { method: "DELETE" }, 10_000,
+      async (res) => res.body?.cancel(), true).catch(() => undefined);
+  };
+
+  const cancel = () => {
+    discard();
+    setPermissionPending(false);
+    setCancelled(true);
   };
 
   const start = async () => {
-    run.current++;
-    setDeliveryFailed(false);
+    const hasConsent = () => consentInput.current?.checked ?? consent;
+    if (!hasConsent() || permissionPending) return;
+    const token = ++run.current;
+    activeRequest.current?.abort();
+    setCallId(null);
+    setPermissionPending(true);
+    setCancelled(false);
     setMsg(null);
+    let tracks: MediaStreamTrack[] = [];
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tracks = stream.getTracks();
+      if (run.current !== token || !hasConsent()) {
+        tracks.forEach((t) => t.stop());
+        if (run.current === token) setConsent(false);
+        return;
+      }
       // 64 kbps: 2 min ≈ 1 MB en Opus o AAC (iOS), muy por debajo del límite de 3 MB del relay.
       const mr = new MediaRecorder(stream, { audioBitsPerSecond: 64_000 });
       chunks.current = [];
       mr.ondataavailable = (e) => e.data.size && chunks.current.push(e.data);
       mr.onstop = () => {
         stopTimer();
-        stream.getTracks().forEach((t) => t.stop());
-        void upload(new Blob(chunks.current, { type: mr.mimeType || "audio/webm" }));
+        tracks.forEach((t) => t.stop());
+        if (run.current === token) void upload(new Blob(chunks.current, { type: mr.mimeType || "audio/webm" }), token);
       };
       mr.start();
+      setDeliveryFailed(false);
       rec.current = mr;
       setSecs(0);
       setPhase("recording");
@@ -278,12 +318,17 @@ export default function CallRecorder() {
         if (n >= MAX && mr.state !== "inactive") mr.stop(); // corte automático y envío
       }, 250);
     } catch {
-      setMsg({ ok: false, text: "No se pudo acceder al micrófono. Revisa los permisos del navegador." });
+      tracks.forEach((t) => t.stop());
+      if (run.current === token) setMsg({ ok: false, text: "No se pudo acceder al micrófono. Revisa los permisos del navegador." });
+    } finally {
+      if (run.current === token) setPermissionPending(false);
     }
   };
 
   const status =
-    phase === "recording" ? "Grabando… habla cerca del micrófono."
+    permissionPending ? "Esperando permiso del micrófono…"
+    : cancelled ? "Llamada cancelada."
+    : phase === "recording" ? "Grabando… habla cerca del micrófono."
     : phase === "uploading" ? "Enviando el audio para transcribirlo…"
     : phase === "transcribing" ? "Transcribiendo tu llamada…"
     : phase === "review" ? "Transcripción lista. Revísala y pulsa Enviar si es correcta."
@@ -314,16 +359,16 @@ export default function CallRecorder() {
 
       {!busy && !recording && phase !== "done" && (
       <label className={s.consent}>
-        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+        <input ref={consentInput} type="checkbox" checked={consent} disabled={permissionPending} onChange={(e) => setConsent(e.target.checked)} />
         <span>Acepto que mi audio se envíe por HTTPS a los servidores del equipo (el VPS y el ordenador del equipo) para transcribirlo, y que el texto resultante lo procese la IA del equipo para extraer los datos, aunque no llegue a pulsar «Enviar». Ni el audio ni el texto se guardan en disco, y no se recoge mi teléfono ni mi nombre. La llamada solo llega al operador si pulso «Enviar».</span>
       </label>
       )}
 
       {phase === "idle" && (
         <div className={s.rec}>
-          <button className={s.recBtn} onClick={start} disabled={!consent} aria-describedby="rec-hint">
+          <button className={s.recBtn} onClick={start} disabled={!consent || permissionPending} aria-describedby="rec-hint">
             <Icon><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>
-            Grabar
+            {permissionPending ? "Esperando…" : "Grabar"}
           </button>
           <p className={s.hint} id="rec-hint">{consent ? "Listo: pulsa para empezar." : "Marca la casilla para poder grabar."}</p>
         </div>
@@ -350,6 +395,10 @@ export default function CallRecorder() {
         {status}
       </p>
 
+      {permissionPending && (
+        <button className={`${s.btn} ${s.secondary}`} onClick={cancel}>Cancelar</button>
+      )}
+
       {(phase === "uploading" || phase === "transcribing") && (
         <section className={s.card} aria-label="Transcripción en curso">
           <div className={s.bar} aria-hidden="true"><i /></div>
@@ -362,6 +411,7 @@ export default function CallRecorder() {
             {phase === "transcribing" && ahead > 0 ? (ahead === 1 ? "Hay 1 llamada por delante de la tuya." : `Hay ${ahead} llamadas por delante de la tuya.`) : null}
           </p>
           <p className={s.note}>Suele tardar unos segundos, según lo larga que sea la llamada. Todavía no se ha enviado nada al operador.</p>
+          <button className={`${s.btn} ${s.secondary}`} onClick={cancel}>Cancelar</button>
         </section>
       )}
 
@@ -376,7 +426,7 @@ export default function CallRecorder() {
           </p>
           <div className={s.actions}>
             <button className={`${s.btn} ${s.primary}`} onClick={submit} disabled={phase === "submitting"}>{phase === "submitting" ? "Enviando…" : "Enviar"}</button>
-            <button className={`${s.btn} ${s.secondary}`} onClick={discard} disabled={phase === "submitting"}>Volver a grabar</button>
+            <button className={`${s.btn} ${s.secondary}`} onClick={phase === "submitting" ? cancel : discard}>{phase === "submitting" ? "Cancelar" : "Volver a grabar"}</button>
           </div>
         </section>
       )}
@@ -390,7 +440,7 @@ export default function CallRecorder() {
 
       {phase === "done" && (
         <div className={s.actions}>
-          <button className={`${s.btn} ${s.primary}`} onClick={start} disabled={!consent}>Grabar otra</button>
+          <button className={`${s.btn} ${s.primary}`} onClick={start} disabled={!consent || permissionPending}>{permissionPending ? "Esperando…" : "Grabar otra"}</button>
         </div>
       )}
     </Shell>
