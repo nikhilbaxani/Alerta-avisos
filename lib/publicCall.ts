@@ -35,8 +35,8 @@ export interface PublicLocation {
 
 /** Duración máxima de una llamada del público, en segundos (S4). */
 export const DEFAULT_MAX_CALL_SECONDS = 120;
-/** Ubicación por defecto si no se reconoce ningún lugar (S5). */
-export const UNKNOWN_LOCATION_AML: Aml = { lat: 36.7213, lng: -4.4214, acc: 1500 };
+/** Sin ubicación reconocida o con duda: Palacio de Ferias y Congresos de Málaga (sede de la demo), con radio amplio. */
+export const UNKNOWN_LOCATION_AML: Aml = { lat: 36.70605, lng: -4.45983, acc: 1500 };
 export const KNOWN_LOCATION_ACC = 150;
 /** Tope de caracteres de transcripción y traducción (texto no confiable, S9). */
 export const MAX_TRANSCRIPT_CHARS = 4000;
