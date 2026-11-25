@@ -22,10 +22,11 @@ const EXTRACTION: Extraction = {
   people_at_risk: 0,
   severity: 3,
 };
-const extract: RelayOptions["extract"] = () => ({
+const extractResult = {
   extraction: EXTRACTION,
   location: { place: "Calle Larios", known: true, aml: { lat: 36.72, lng: -4.42, acc: 150 } },
-});
+};
+const extract: RelayOptions["extract"] = () => extractResult;
 
 interface Stt {
   calls: { task: string; model: string; hasFile: boolean }[];
@@ -1002,37 +1003,127 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
     await tick();
     expect(started).toBe(1);
     expect(await readEvents(base, 1)).toHaveLength(0);
-    await enviar(base, id);
+    const sent = await enviar(base, id);
+    expect([sent.status, await sent.json()]).toEqual([200, { status: "sent" }]);
+    expect(await status(base, id)).toEqual({ status: "sent" });
     await enviar(base, id);
     expect(started).toBe(1);
     const [ev] = await readEvents(base, 1);
     expect(ev.extractor).toBe("llm");
   });
 
-  it("la transcripción se muestra sin esperar al LLM; «Enviar» espera a la extracción y publica al terminar", async () => {
-    let finish!: () => void;
-    const slow = new Promise<void>((r) => (finish = r));
-    const llmExtract = async (): Promise<Extraction> => {
-      await slow;
-      return EXTRACTION;
-    };
-    const { relay, base } = await boot(fakeStt(), { llmExtract });
-    const id = await accept(base);
-    await relay.idle();
-    expect((await status(base, id)).status).toBe("ready"); // LLM aún sin terminar
-    let answered = false;
-    const pending = enviar(base, id).then((r) => {
-      answered = true;
-      return r;
+  describe("S18 · confirmación y publicación independientes", () => {
+    const receipt = { status: "sent" };
+    async function gatedPublication(over: Partial<RelayOptions> = {}) {
+      const llm = Promise.withResolvers<Extraction>();
+      const { relay, base } = await boot(fakeStt(), { llmExtract: () => llm.promise, ...over });
+      const id = await accept(base);
+      await relay.idle();
+      return { base, id, llm };
+    }
+    async function confirm(base: string, id: string) {
+      const res = await fetch(url(base, id, "/enviar"), { method: "POST", signal: AbortSignal.timeout(300) });
+      return [res.status, await res.json()];
+    }
+
+    it("responde antes del LLM y el SSE solo recibe la extracción al terminar", async () => {
+      const { base, id, llm } = await gatedPublication();
+      try {
+        expect((await status(base, id)).status).toBe("ready");
+        expect(await confirm(base, id)).toEqual([200, receipt]);
+        expect(await status(base, id)).toEqual(receipt);
+        expect(await readEvents(base, 1)).toEqual([]);
+        const events = readEvents(base, 1);
+        llm.resolve({ ...EXTRACTION, summary_es: "Resumen del LLM" });
+        expect(await events).toEqual([expect.objectContaining({ id: "P1", extractor: "llm", extraction: expect.objectContaining({ summary_es: "Resumen del LLM" }) })]);
+      } finally {
+        llm.resolve(EXTRACTION);
+      }
     });
-    await tick(60);
-    expect(answered).toBe(false);
-    expect(await readEvents(base, 1)).toHaveLength(0);
-    finish();
-    const r = await pending;
-    expect(r.status).toBe(200);
-    const [ev] = await readEvents(base, 1);
-    expect(ev.extractor).toBe("llm");
+
+    it("si el LLM falla después del recibo, publica con reglas", async () => {
+      const { base, id, llm } = await gatedPublication();
+      try {
+        expect(await confirm(base, id)).toEqual([200, receipt]);
+        const events = readEvents(base, 1);
+        llm.reject(new Error("LLM 503"));
+        expect(await events).toEqual([expect.objectContaining({ extractor: "rules", extraction: EXTRACTION })]);
+      } finally {
+        llm.resolve(EXTRACTION);
+      }
+    });
+
+    it("repetir «Enviar» antes y después de publicar mantiene el recibo y no duplica el evento", async () => {
+      const { base, id, llm } = await gatedPublication();
+      try {
+        expect(await Promise.all([confirm(base, id), confirm(base, id)])).toEqual([[200, receipt], [200, receipt]]);
+        llm.resolve(EXTRACTION);
+        expect(await readEvents(base, 1)).toHaveLength(1);
+        expect(await confirm(base, id)).toEqual([200, receipt]);
+        expect(await readEvents(base, 2)).toHaveLength(1);
+      } finally {
+        llm.resolve(EXTRACTION);
+      }
+    });
+
+    it("conserva las aceptadas más allá del TTL y bajo presión de ambos topes", async () => {
+      const { base, id, llm } = await gatedPublication({ maxPending: 1, pendingPerIp: 1, pendingTtlMs: 200, trustProxy: true, rateLimit: { max: 2, windowMs: 60_000 } });
+      try {
+        const second = await accept(base, { xff: "203.0.113.1" });
+        expect(await Promise.all([confirm(base, id), confirm(base, second)])).toEqual([[200, receipt], [200, receipt]]);
+        await tick(450);
+        expect(await status(base, id)).toEqual(receipt);
+        expect(await status(base, second)).toEqual(receipt);
+        const perIp = await call(base);
+        expect([perIp.status, await perIp.json()]).toEqual([429, { error: "Ya tienes llamadas esperando a que pulses «Enviar». Envía o descarta la anterior antes de grabar otra." }]);
+        const global = await call(base, { xff: "203.0.113.2" });
+        expect([global.status, await global.json()]).toEqual([503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." }]);
+        llm.resolve(EXTRACTION);
+        expect((await readEvents(base, 2)).map((ev) => ev.id)).toEqual(["P1", "P2"]);
+        const third = await accept(base);
+        await enviar(base, third);
+        const quota = await call(base);
+        expect([quota.status, await quota.json()]).toEqual([429, { error: "Demasiadas llamadas desde tu conexión. Espera unos minutos." }]);
+      } finally {
+        llm.resolve(EXTRACTION);
+      }
+    });
+
+    it("DELETE después del recibo devuelve 409 y no cancela la publicación", async () => {
+      const { base, id, llm } = await gatedPublication({ pendingPerIp: 1 });
+      try {
+        expect(await confirm(base, id)).toEqual([200, receipt]);
+        const discard = () => fetch(url(base, id), { method: "DELETE" });
+        const denied = [409, { ...receipt, error: "La llamada ya se envió al operador." }];
+        const before = await discard();
+        expect([before.status, await before.json()]).toEqual(denied);
+        expect((await call(base)).status).toBe(429);
+        llm.resolve(EXTRACTION);
+        expect(await readEvents(base, 1)).toHaveLength(1);
+        const after = await discard();
+        expect([after.status, await after.json()]).toEqual(denied);
+      } finally {
+        llm.resolve(EXTRACTION);
+      }
+    });
+
+    it("un error inesperado al publicar se registra una vez, sin rechazo no gestionado ni evento", async () => {
+      const lines: string[] = [];
+      const { base, id, llm } = await gatedPublication({
+        log: (line) => lines.push(line),
+        extract: () => ({ ...extractResult, extraction: { ...EXTRACTION, toJSON() { throw new Error("fallo de serialización"); } } }),
+      });
+      try {
+        expect(await confirm(base, id)).toEqual([200, receipt]);
+        llm.reject(new Error("LLM 503"));
+        expect(await readEvents(base, 1)).toEqual([]);
+        expect(await status(base, id)).toEqual({ status: "failed", error: "No se pudo procesar la llamada. Vuelve a grabar." });
+        expect(await confirm(base, id)).toEqual([200, receipt]);
+        expect(lines.filter((line) => line.includes("error al publicar"))).toEqual(["[relay] P1 error al publicar: fallo de serialización"]);
+      } finally {
+        llm.resolve(EXTRACTION);
+      }
+    });
   });
 
   it("si el LLM falla, «Enviar» publica igualmente con el extractor de reglas", async () => {

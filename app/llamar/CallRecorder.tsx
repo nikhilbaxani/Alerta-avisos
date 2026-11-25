@@ -196,7 +196,7 @@ export default function CallRecorder() {
     setPhase("idle");
   };
 
-  /** «Enviar»: solo ahora la llamada llega a la bandeja del operador. */
+  /** «Enviar»: confirma la llamada; el relay la publica al terminar de procesarla. */
   const submit = async () => {
     if (!callId) return;
     setPhase("submitting");
@@ -356,7 +356,7 @@ export default function CallRecorder() {
       )}
 
       {phase === "done" && (
-        <p className={s.ok}>Tu llamada de prueba está en la bandeja del operador; quien la atienda decide qué hacer con ella. Gracias por probar el Agente 112.</p>
+        <p className={s.ok}>Tu llamada de prueba va a la bandeja del operador en unos instantes; quien la atienda decide qué hacer con ella. Gracias por probar el Agente 112.</p>
       )}
 
 

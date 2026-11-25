@@ -3,8 +3,8 @@
  *   POST /llamar   multipart (file + consent=1) → 202 {id}; el id es secreto (128 bits). Procesa en cola: Whisper.
  *                  La llamada queda PENDIENTE en memoria: no se publica hasta que la persona la confirma (S14).
  *   GET  /llamar/:id          → {status: transcribing|ready|failed|expired|sent, transcript?, language?, error?}
- *   POST /llamar/:id/enviar   → publica el evento exactamente una vez (idempotente)
- *   DELETE /llamar/:id        → «Volver a grabar»: descarta la llamada
+ *   POST /llamar/:id/enviar   → confirma al instante; publica el evento una sola vez al terminar la extracción (S18)
+ *   DELETE /llamar/:id        → «Volver a grabar»: descarta la llamada si aún no se ha confirmado
  *   GET  /events   SSE (token obligatorio): últimos 50 eventos + en vivo
  *   GET  /health   {ok, queue, maxCallSeconds}
  * Uso: npx tsx server/relay.ts   (variables de entorno: ver server/README.md)
@@ -365,9 +365,9 @@ export function createRelay(opts: RelayOptions) {
   let reserving = 0;
 
   function publish(ev: PublicCallEvent) {
+    const frame = `event: call\ndata: ${JSON.stringify(ev)}\n\n`;
     history.push(ev);
     if (history.length > replayN) history.shift();
-    const frame = `event: call\ndata: ${JSON.stringify(ev)}\n\n`;
     for (const c of clients) c.write(frame);
   }
 
@@ -615,7 +615,6 @@ export function createRelay(opts: RelayOptions) {
   /** Publica la llamada confirmada: espera a la extracción (si sigue en curso) y emite el evento una sola vez. */
   async function publishPending(p: Pending) {
     const built = await p.built;
-    if (p.status !== "ready") return; // descartada o caducada mientras se esperaba
     const id = p.label;
     if (!built) return fail(p, "No se pudo procesar la llamada. Vuelve a grabar.");
     const sttMs = p.sttMs ?? 0;
@@ -638,6 +637,7 @@ export function createRelay(opts: RelayOptions) {
     publish(ev);
     p.status = "sent";
     release(p);
+    arm(p); // conserva el recibo para reintentos después de publicar
     log(`[relay] ${id} publicada (${built.language}, ${Math.round(ev.durationS)} s, stt ${sttMs} ms, ${built.extractor})`);
   }
 
@@ -674,7 +674,7 @@ export function createRelay(opts: RelayOptions) {
     p.timers = [t1, t2];
   }
 
-  /** Cuántas llamadas de esta IP esperan «Enviar» (más las que aún están subiendo el cuerpo). */
+  /** Cuántas llamadas de esta IP aún no se han publicado (más las que están subiendo el cuerpo). */
   function waitingOf(ip: string): number {
     let n = reservingByIp.get(ip) ?? 0;
     for (const p of pending.values()) if (p.ip === ip && (p.status === "transcribing" || p.status === "ready")) n++;
@@ -785,7 +785,9 @@ export function createRelay(opts: RelayOptions) {
     if (!p) return json(req, res, 404, { error: "No encontramos esa llamada. Puede que haya caducado: vuelve a grabar." });
 
     if (action === "status") {
-      if (p.status === "ready") return json(req, res, 200, { status: "ready", transcript: p.transcript, language: p.language });
+      if (p.status === "ready") {
+        return json(req, res, 200, p.sending ? { status: "sent" } : { status: "ready", transcript: p.transcript, language: p.language });
+      }
       if (p.status === "failed" || p.status === "expired") return json(req, res, 200, { status: p.status, error: p.error });
       if (p.status === "transcribing") {
         // Cuántas se transcribirán antes que esta (0 = es la que está en proceso). Solo un número: nada de otras llamadas.
@@ -800,7 +802,7 @@ export function createRelay(opts: RelayOptions) {
     }
 
     if (action === "discard") {
-      if (p.status === "sent") return json(req, res, 409, { status: "sent", error: "La llamada ya se envió al operador." });
+      if (p.sending) return json(req, res, 409, { status: "sent", error: "La llamada ya se envió al operador." });
       p.timers.forEach(clearTimeout);
       refundQuota(p);
       p.status = "discarded";
@@ -811,23 +813,23 @@ export function createRelay(opts: RelayOptions) {
     }
 
     // send
+    if (p.sending) return json(req, res, 200, { status: "sent" });
     if (p.status === "expired") return json(req, res, 410, { status: "expired", error: p.error });
     if (p.status === "transcribing") return json(req, res, 409, { status: "transcribing", error: "Todavía se está transcribiendo la llamada." });
     if (p.status === "failed") return json(req, res, 409, { status: "failed", error: p.error });
-    if (p.status === "ready") {
-      // Un solo publicador por llamada: las peticiones simultáneas esperan a la misma promesa.
-      p.sending ??= publishPending(p).catch((e) => {
+    if (p.status !== "ready") return json(req, res, 404, { error: "No encontramos esa llamada. Puede que haya caducado: vuelve a grabar." });
+
+    // Conserva «ready» internamente para contar el hueco y dar prioridad en la espera del LLM.
+    p.timers.forEach(clearTimeout);
+    p.timers = [];
+    p.sending = publishPending(p).catch((e) => {
+      if (p.status !== "sent") fail(p, "No se pudo procesar la llamada. Vuelve a grabar.");
+      try {
         log(`[relay] ${p.label} error al publicar: ${e instanceof Error ? e.message : "desconocido"}`);
-        fail(p, "No se pudo procesar la llamada. Vuelve a grabar.");
-      });
-      llmNext(); // «Enviar» pulsado: la extracción aplazada de esta llamada ya es elegible
-      await p.sending;
-    }
-    const st = p.status as PendingStatus;
-    if (st === "sent") return json(req, res, 200, { status: "sent" });
-    if (st === "failed") return json(req, res, 502, { status: "failed", error: p.error });
-    if (st === "expired") return json(req, res, 410, { status: "expired", error: p.error });
-    return json(req, res, 404, { error: "No encontramos esa llamada. Puede que haya caducado: vuelve a grabar." });
+      } catch { /* Un fallo del propio logger tampoco puede rechazar la tarea en segundo plano. */ }
+    });
+    json(req, res, 200, { status: "sent" });
+    llmNext(); // «Enviar» pulsado: la extracción aplazada de esta llamada ya es elegible
   }
 
   function handleEvents(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {

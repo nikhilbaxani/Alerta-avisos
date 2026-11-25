@@ -108,8 +108,6 @@ describe("S17 · LLM_CONCURRENCY", () => {
     await relay.idle();
     const sent = await Promise.all(ids.map((id) => send(base, id)));
     expect(sent.map((r) => r.status)).toEqual(Array(10).fill(200));
-    expect(llm.st.total).toBe(10);
-    expect(llm.st.max).toBe(2);
     const res = await fetch(`${base}/events?token=t`);
     const reader = res.body!.getReader();
     let buf = "";
@@ -117,6 +115,8 @@ describe("S17 · LLM_CONCURRENCY", () => {
     while ((buf.match(/event: call/g) ?? []).length < 10) buf += dec.decode((await reader.read()).value);
     void reader.cancel();
     expect((buf.match(/"extractor":"llm"/g) ?? []).length).toBe(10);
+    expect(llm.st.total).toBe(10);
+    expect(llm.st.max).toBe(2);
   });
 
   it("(b) por defecto son 2; 0, -1, «abc», 1.5 y vacío vuelven al valor por defecto", async () => {
@@ -134,7 +134,7 @@ describe("S17 · LLM_CONCURRENCY", () => {
       for (let i = 0; i < 6; i++) ids.push((await upload(base)).id);
       await relay.idle();
       await Promise.all(ids.map((id) => send(base, id)));
-      expect(llm.st.total).toBe(6);
+      await expect.poll(() => llm.st.total).toBe(6);
       expect(llm.st.max).toBe(2);
     }
   });
@@ -160,7 +160,7 @@ describe("S17 · LLM_CONCURRENCY", () => {
     await relay.idle();
     const again = await Promise.all(more.map((id) => send(base, id)));
     expect(again.map((r) => r.status)).toEqual(Array(6).fill(200));
-    expect(llm.started.length).toBe(9);
+    await expect.poll(() => llm.started.length).toBe(9);
     expect(llm.st.max).toBe(2);
   });
 

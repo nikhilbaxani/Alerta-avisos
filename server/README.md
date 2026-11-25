@@ -23,10 +23,10 @@ móvil / operador ──HTTPS──▶ Tailscale Funnel ──▶ web (Caddy, 12
 | `ready` | Hay `transcript` (texto plano, solo lectura) y `language`. La extracción ya corre en segundo plano. |
 | `failed` | STT fallido, audio demasiado largo, sin voz o idioma no reconocido; `error` en castellano sin texto de la llamada. |
 | `expired` | Pasó `PENDING_TTL_SECONDS` desde que la transcripción estuvo lista sin «Enviar», o el relay la retiró para dejar sitio a otra (ver «Límites»); el texto y el audio ya se liberaron. |
-| `sent` | Ya publicada (sin texto). |
+| `sent` | «Enviar» confirmado (sin texto), aunque la publicación siga en curso. |
 
-3. «Enviar» → `POST /llamar/:id/enviar` publica el evento **una sola vez** (idempotente: repetirlo devuelve `200 {"status":"sent"}` sin volver a publicar; si la extracción sigue en curso, espera a que acabe; si el LLM falló, se publica con reglas). Respuestas: `409` si aún transcribe o falló, `410` si caducó, `502` si no se pudo componer el evento.
-4. «Volver a grabar» → `DELETE /llamar/:id` descarta la llamada (`200`; después `404`).
+3. «Enviar» → `POST /llamar/:id/enviar` responde de inmediato con `200 {"status":"sent"}`; repetirlo con el mismo id devuelve el mismo recibo sin volver a publicar. El relay publica el evento **una sola vez** al terminar la extracción, con reglas si el LLM falla o agota su plazo. La llamada confirmada no caduca mientras espera la publicación. Antes de aceptar: `409` si aún transcribe o falló, `410` si caducó. Si hay un error inesperado al publicar, el relay lo registra y `GET` indica `failed`.
+4. «Volver a grabar» → `DELETE /llamar/:id` descarta la llamada (`200`; después `404`). Tras confirmar «Enviar», devuelve `409` sin cancelar la publicación.
 5. Un id desconocido, mal formado o ya olvidado → `404` con mensaje en castellano. Las rutas nuevas aplican la misma regla de `Origin` que `POST /llamar` (no permitido → `403`), no necesitan token del operador y no gastan cuota; solo conocer el id da acceso, así que no se puede enumerar la transcripción de otros. Respuestas con `Cache-Control: no-store`.
 
 Las llamadas pendientes cuentan contra la cola y el tope por IP (ver «Límites del endpoint público»). Recargar la página a mitad pierde la llamada pendiente (se borra sola al caducar).
@@ -124,8 +124,8 @@ Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/rel
 | `MAX_CALL_SECONDS` | 120 | Máximo de duración; `stt` responde 413 (sin transcribir) si supera máximo + 5 s. También se usa al construir la web. |
 | `RATE_LIMIT` / `RATE_WINDOW_MIN` | 3 / 10 | Cuota por IP y ventana: llamadas **enviadas o aún pendientes**. Una descartada o caducada sin enviar devuelve su unidad (una sola vez). |
 | `UPLOAD_LIMIT` | 3 × `RATE_LIMIT` (9) | Audios aceptados por IP y ventana; **no se devuelve** al descartar (evita gastar tiempo de STT grabando y descartando). Vacío = por defecto. Si cambias `RATE_LIMIT`, el valor por defecto sigue a `RATE_LIMIT`. |
-| `PENDING_PER_IP` | 2 | Llamadas de una misma IP (/64 en IPv6) esperando «Enviar» (`transcribing` o `ready`). La siguiente → 429 «envía o descarta la anterior». |
-| `MAX_PENDING` | 20 | Llamadas retenidas sin enviar en todo el relay (más una en proceso). Para unas 50 personas a la vez: `MAX_PENDING=50`. |
+| `PENDING_PER_IP` | 2 | Llamadas de una misma IP (/64 en IPv6) en transcripción, esperando «Enviar» o confirmadas pendientes de publicar. La siguiente → 429 «envía o descarta la anterior». |
+| `MAX_PENDING` | 20 | Llamadas retenidas en todo el relay, incluidas las confirmadas pendientes de publicar (más una en proceso). Para unas 50 personas a la vez: `MAX_PENDING=50`. |
 | `PENDING_TTL_SECONDS` | 300 | Tiempo que una llamada **ya transcrita** espera a «Enviar» antes de caducar y liberar su memoria (cuenta desde que el texto está listo, no desde la subida; el id responde `expired` hasta el doble y luego `404`). |
 | `STT_MODEL` | `Systran/faster-whisper-small` | Modelo de Whisper. |
 | `LLM_BASE_URL` | — | URL base (compatible OpenAI) del LLM opcional del equipo. Vacío → solo reglas. |
@@ -179,8 +179,8 @@ STT_MODEL=whisper
 
 - **Cuota por IP** (`RATE_LIMIT` por `RATE_WINDOW_MIN`, 3 / 10 min): cuentan las llamadas **enviadas o aún pendientes**. «Volver a grabar» (DELETE antes de «Enviar»), caducar sin enviar o ser retirada por falta de sitio devuelven la unidad, una sola vez. Una llamada enviada conserva la suya.
 - **Tope de subidas por IP** (`UPLOAD_LIMIT`, por defecto 3 × `RATE_LIMIT`, misma ventana): cuenta los audios aceptados y **nunca se devuelve**; así grabar y descartar no es una forma gratuita de gastar STT (429 «has subido demasiados audios»).
-- **Pendientes por IP** (`PENDING_PER_IP`, 2): llamadas transcribiéndose o esperando «Enviar». La tercera → 429 pidiendo enviar o descartar la anterior. Enviar, descartar o caducar liberan hueco.
-- **Cola global** (`MAX_PENDING`, 20 retenidas más una en proceso; las enviadas no cuentan). Si está llena, la subida nueva **retira a la llamada `ready` más antigua** (esperando «Enviar»; nunca una que se transcribe ni una que ya se envía): su dueño ve el mensaje de caducada, se libera su memoria y se le devuelve la cuota. Solo si no hay ninguna retirable → 503. Así llamadas abandonadas no bloquean a nadie.
+- **Pendientes por IP** (`PENDING_PER_IP`, 2): llamadas transcribiéndose, esperando «Enviar» o pendientes de publicar. La tercera → 429. Publicar, descartar o caducar liberan hueco.
+- **Cola global** (`MAX_PENDING`, 20 retenidas más una en proceso; las publicadas no cuentan). Si está llena, la subida nueva **retira a la llamada `ready` más antigua** (esperando «Enviar»; nunca una que se transcribe ni una que ya se envía): su dueño ve el mensaje de caducada, se libera su memoria y se le devuelve la cuota. Solo si no hay ninguna retirable → 503. Así llamadas abandonadas no bloquean a nadie.
 - **Mucha gente a la vez.** El STT va en serie (≈9 s por llamada): 50 personas a la vez esperan hasta ≈8 min la última. La página muestra los segundos y «Hay N llamadas por delante de la tuya» y sigue esperando mientras el relay conteste `transcribing`; solo se rinde si el relay dice `failed`/`expired`/404 o fallan 8 consultas seguidas. Ni el TTL ni el olvido (2×TTL) corren mientras la llamada espera turno, y el tiempo máximo del STT (`STT_TIMEOUT_MS`) cuenta desde el turno de cada llamada. Con `MAX_PENDING=50` y las IP distintas de un grupo, caben las 50; desde una misma IP (p. ej. wifi compartida con NAT) solo 2 a la vez y 3 por ventana: si pasa, sube `RATE_LIMIT` y `PENDING_PER_IP`.
 
 ## Latencia esperada (CPU)
@@ -189,7 +189,7 @@ Con el Whisper del sobremesa (6 hilos): 8,9 s para 14,5 s de castellano, 9,1–9
 
 ## Privacidad
 
-- El audio solo vive en memoria del relay y de quien lo transcribe: no se escribe en disco en ninguno y se descarta al terminar la transcripción. El texto de una llamada pendiente solo está en memoria hasta «Enviar», «Volver a grabar» o la caducidad.
+- El audio solo vive en memoria del relay y de quien lo transcribe: no se escribe en disco en ninguno y se descarta al terminar la transcripción. El texto de una llamada pendiente solo está en memoria hasta la publicación, «Volver a grabar» o la caducidad.
 - **Texto al LLM antes de «Enviar»:** la extracción empieza cuando la transcripción está lista. Con LLM configurado, el texto de una llamada que luego se descarta ya se envió al LLM del equipo.
 - Los registros no contienen texto de las llamadas, el id secreto ni IPs completas (solo un hash corto).
 - Se conserva en memoria el último medio centenar de eventos (texto y extracción) para reenviarlos al conectar; se pierden al reiniciar.
