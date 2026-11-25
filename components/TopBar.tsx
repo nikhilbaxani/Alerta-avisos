@@ -4,7 +4,8 @@ import { PUBLIC_RELAY_URL } from "@/lib/consoleMode";
 import { scenarioEnd } from "@/lib/useConsole";
 import type { ConsoleMode, ConsoleState, EngineStatus, Speed } from "@/lib/useConsole";
 import { SCENARIOS, getScenario } from "@/data/scenarios";
-import logo from "@/docs/marca/logo-agente-112.svg";
+import logoLight from "@/docs/marca/agente-112/agente-112.svg";
+import logoDark from "@/docs/marca/agente-112/agente-112-oscuro.svg";
 import Icon from "./Icon";
 import { mmss } from "./format";
 
@@ -56,9 +57,8 @@ export default function TopBar(p: Props) {
   };
   return (
     <header className={`topbar${onMode ? " topbar-modes" : ""}`}>
-      <span className="brand">
-        <img className="brand-logo" src={logo.src} width={360} height={80} alt="Agente 112. Coordina, actúa y escala. Decide el operador." />
-      </span>
+      <img className="brand brand-light" src={logoLight.src} width={150} height={34} alt="Agente 112. Coordina, actúa y escala. Decide el operador." />
+      <img className="brand brand-dark" src={logoDark.src} width={150} height={34} alt="Agente 112. Coordina, actúa y escala. Decide el operador." />
 
       {onMode && <div className="mode-picker">
         <div className="mode-tabs" role="tablist" aria-label="Modo de la consola">

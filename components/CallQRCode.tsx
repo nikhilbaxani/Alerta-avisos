@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import QRCode from "qrcode";
 
 /** URL pública de /llamar respetando la subruta (GitHub Pages). */
@@ -29,7 +29,11 @@ export default function CallQRCode() {
   return (
     <div className="qr">
       {svg && <div className="qr-img" role="img" aria-label={`Código QR que abre ${url}`} dangerouslySetInnerHTML={{ __html: svg }} />}
-      <p className="note">Escanea para llamar desde el móvil:<br /><span className="qr-url">{url}</span></p>
+      <p className="note">Escanea para llamar desde el móvil:<br /><span className="qr-url">
+        {url.split(/(?<=[./])(?=[^/])/).map((part, i) => (
+          <Fragment key={i}>{i > 0 && <wbr />}{part}</Fragment>
+        ))}
+      </span></p>
     </div>
   );
 }
