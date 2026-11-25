@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { actionIncidents, canApprove } from "@/lib/actions";
 import { buildAuditLog } from "@/lib/audit";
 import { getScenario } from "@/data/scenarios";
-import { callMeta, consoleHazards, consoleHazardWarnings, consoleProposals, consoleUnits, scenarioEnd, useConsole } from "@/lib/useConsole";
+import { actionUnit, callMeta, consoleHazards, consoleHazardWarnings, consoleProposals, consoleUnits, scenarioEnd, useConsole } from "@/lib/useConsole";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import AgentFeed from "@/components/AgentFeed";
 import DecisionBanner from "@/components/DecisionBanner";
@@ -13,7 +13,8 @@ import HelpDialog from "@/components/HelpDialog";
 import MapView from "@/components/MapView";
 import PriorityList from "@/components/PriorityList";
 import TopBar from "@/components/TopBar";
-import TranslateBox from "@/components/TranslateBox";
+import ActionsBox from "@/components/ActionsBox";
+import { ranksOf } from "@/components/IncToken";
 import { useCallAudio } from "@/components/useCallAudio";
 
 const STATUS: EngineStatus = { mode: "simulated", label: "Modo simulado" };
@@ -59,6 +60,10 @@ export default function LiveConsole({ active }: { active: boolean }) {
   }, [proposals, dispatch]);
 
   const select = useCallback((id: string) => dispatch({ type: "select", incidentId: id }), [dispatch]);
+  const [actionsFilter, setActionsFilter] = useState<string | null>(null);
+  const approve = useCallback((key: string) => dispatch({ type: "actionApprove", key }), [dispatch]);
+  const discard = useCallback((key: string) => dispatch({ type: "actionDiscard", key }), [dispatch]);
+  const approveBatch = useCallback((incidentId: string) => dispatch({ type: "actionApproveBatch", incidentId }), [dispatch]);
   const decide = useCallback((incidentId: string, same: boolean) => dispatch({ type: "decide", incidentId, same }), [dispatch]);
   const exportLog = useCallback(() => {
     const blob = new Blob([JSON.stringify(buildAuditLog(s, STATUS.label), null, 2)], { type: "application/json" });
@@ -87,7 +92,7 @@ export default function LiveConsole({ active }: { active: boolean }) {
         pending={pending}
         actionsSent={sent}
         actionsToApprove={toApprove.length}
-        theme="dark"
+        theme="light"
         onPlay={() => dispatch({ type: "play" })}
         onPause={() => dispatch({ type: "pause" })}
         onSpeed={(speed: Speed) => dispatch({ type: "speed", speed })}
@@ -103,10 +108,10 @@ export default function LiveConsole({ active }: { active: boolean }) {
           <MapView s={s} onSelect={select} onFxDone={fxDone} pendingActions={pendingByIncident} units={units} hazards={hazards} hazardWarnings={hazardWarnings} />
           <AgentFeed actions={s.actions} epoch={s.epoch} />
         </section>
-        {/* Prioridad y traducción: la respuesta en árabe a E1 se enseña sin salir de la diapositiva. */}
+        {/* Prioridad y acciones que propone el agente según el tipo de emergencia (robo → policía, incendio → bomberos…). */}
         <div className="embed-side">
           <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
-          <TranslateBox s={s} localAI={false} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
+          <ActionsBox actions={s.actions} archived={s.archived} onArchived={() => undefined} selected={s.selected} incidents={s.engine.incidents} ranks={ranksOf(s)} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={select} onLost={() => undefined} unitOf={(a) => actionUnit(s, a)} hazardWarnings={hazardWarnings} />
         </div>
       </div>
       {finished && <span className="sr-only" role="status">Escenario terminado</span>}
