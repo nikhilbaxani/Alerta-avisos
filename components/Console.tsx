@@ -12,6 +12,7 @@ import ActionsBox from "./ActionsBox";
 import ArchiveDialog from "./ArchiveDialog";
 import AgentFeed from "./AgentFeed";
 import { useCallAudio } from "./useCallAudio";
+import { RelayEpochContext } from "./CallQueue";
 import CallsBox from "./CallsBox";
 import type { CallsTab } from "./CallsBox";
 import DecisionBanner from "./DecisionBanner";
@@ -173,6 +174,7 @@ export default function Console() {
       {/* Una sola pantalla: cada apartado en su caja, todos a la vista a la vez. */}
       <main className="board" id="console-panel" role="tabpanel" aria-labelledby={isSim ? "tab-sim" : "tab-live"}>
         <div className="col col-left">
+          <RelayEpochContext.Provider value={(epoch) => dispatch({ type: "relayEpoch", epoch })}>
           <CallsBox
             s={s}
             ranks={ranks}
@@ -191,6 +193,7 @@ export default function Console() {
             onApprove={approve}
             onDiscard={discard}
           />
+          </RelayEpochContext.Provider>
         </div>
 
         <div className="col col-center">
@@ -213,7 +216,7 @@ export default function Console() {
             {emptyLive && (
               <div className="welcome welcome-live">
                 <h2>En directo: esperando llamadas del público</h2>
-                <p>Escanea el QR de la bandeja para enviar una llamada desde el móvil. Cada llamada entra primero en la bandeja y solo pasa al mapa cuando pulsas Aceptar.</p>
+                <p>Escanea el QR de la imagen compartida para enviar una llamada desde el móvil. Cada llamada entra primero en la bandeja y solo pasa al mapa cuando pulsas Aceptar.</p>
               </div>
             )}
           </MapView>

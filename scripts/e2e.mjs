@@ -332,7 +332,9 @@ if (await liveTab(empty).isDisabled()) {
     await simTab(pg).focus();
     await pg.keyboard.press("ArrowRight");
     if ((await liveTab(pg).getAttribute("aria-selected")) !== "true") fail("no se puede abrir En directo con el teclado");
-    await pg.getByRole("img", { name: /Código QR que abre .*\/llamar/ }).waitFor();
+    await pg.locator(".inbox").getByRole("heading", { name: "Llamadas del público" }).waitFor();
+    if (await pg.getByRole("img", { name: /Código QR que abre .*\/llamar/ }).count() ||
+        await pg.getByText(/Escanea para llamar desde el móvil/).count()) fail("el QR o su dirección se muestran en la consola");
     const accept = pg.getByRole("button", { name: "Aceptar llamada P1" });
     await accept.waitFor();
     if (await scenario.count() || await pg.locator(".playback, .clock").count()) fail("controles de simulación visibles en En directo");

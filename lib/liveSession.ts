@@ -1,7 +1,7 @@
 import { consoleReducer, initialConsoleState, type AuditEntry, type ConsoleState, type Reply } from "@/lib/consoleMode";
 import type { Aml, Decision, ProcessResult } from "@/lib/types";
 import { INCIDENT_TYPES, RISK_TAGS } from "@/lib/types";
-import { isPublicCallEvent } from "@/lib/publicCall";
+import { isPublicCallEvent, isRelayEpoch } from "@/lib/publicCall";
 import type { Incident } from "@/lib/engine";
 
 const VERSION = 1;
@@ -14,7 +14,7 @@ export const liveSessionKey = (relayUrl: string) => `copiloto112.liveSession.v${
 // sin estado de simulación, efectos, propuestas ni copias redundantes del resultado por llamada.
 export function serializeLiveSession(state: ConsoleState): string {
   const s = state.mode === "live" ? state : state.saved.live;
-  const empty = { version: VERSION, mode: state.mode };
+  const empty = { version: VERSION, mode: state.mode, relayEpoch: s?.relayEpoch };
   if (!s?.arrived.length) return JSON.stringify(empty);
   const solved = new Set(s.archived.flatMap(({ incident }) => incident.callIds));
   const excess = Math.max(0, s.arrived.length - CALL_CAP);
@@ -92,8 +92,9 @@ export function restoreLiveSession(raw: string | null): ConsoleState {
   try {
     const v: unknown = JSON.parse(raw ?? "null");
     if (!object(v) || v.version !== VERSION || (v.mode !== "sim" && v.mode !== "live")) return sim;
-    const live = consoleReducer(sim, { type: "mode", mode: "live" });
-    if (Object.keys(v).length === 2) return v.mode === "sim" ? sim : live;
+    const base = isRelayEpoch(v.relayEpoch) ? consoleReducer(sim, { type: "relayEpoch", epoch: v.relayEpoch }) : sim;
+    const live = consoleReducer(base, { type: "mode", mode: "live" });
+    if (Object.keys(v).every((key) => key === "version" || key === "mode" || key === "relayEpoch")) return v.mode === "sim" ? base : live;
     if (!num(v.clock) || v.clock < 0 || !num(v.nextId) || !Number.isSafeInteger(v.nextId) || v.nextId < 1 ||
       !list(v.calls, storedCall, CALL_CAP) || !list(v.incidents, incident, CALL_CAP * 2) ||
       !list(v.archived, (a) => object(a) && incident(a.incident) && num(a.at), CALL_CAP) ||

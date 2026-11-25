@@ -138,10 +138,10 @@ export function useConsole({ offline = false, persistLive = false }: { offline?:
   }, [relay]);
   const currentLive = s.mode === "live" ? s : s.saved.live;
   // No reserializamos las transcripciones en cada tic; pagehide guarda también el último reloj.
-  const { arrived, engine, archived, audit, selected } = currentLive ?? {};
+  const { arrived, engine, archived, audit, selected, relayEpoch } = currentLive ?? {};
   useEffect(() => {
     if (relay && restored) persist();
-  }, [relay, restored, persist, s.mode, arrived, engine, archived, audit, selected]);
+  }, [relay, restored, persist, s.mode, arrived, engine, archived, audit, selected, relayEpoch]);
   useEffect(() => {
     if (!relay || !restored) return;
     const flushClock = () => persist(true);

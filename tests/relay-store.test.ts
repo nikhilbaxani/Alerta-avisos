@@ -48,7 +48,7 @@ async function publish(r: Relay) {
   expect((await r.req(`${path}/enviar`, { method: "POST" })).status).toBe(200);
   await vi.waitFor(async () => expect(await (await r.req(path)).json()).toEqual({ status: "sent" }));
 }
-async function frames(r: Relay) {
+async function frames(r: Relay, includeHello = false) {
   const response = await r.req(`/events?token=${TOKEN}`);
   expect(response.status).toBe(200);
   const reader = response.body!.getReader();
@@ -60,11 +60,32 @@ async function frames(r: Relay) {
       if (done) break;
       text += decoder.decode(value, { stream: true });
     }
-    return [...text.matchAll(/event: (\w+)\ndata: (.+)\n\n/g)].map(([, type, json]) => ({ type, data: JSON.parse(json) }));
+    return [...text.matchAll(/event: (\w+)\ndata: (.+)\n\n/g)].map(([, type, json]) => ({ type, data: JSON.parse(json) })).filter(({ type }) => includeHello || type !== "hello");
   } finally { await reader.cancel(); }
 }
 const ack = (r: Relay, id: string, outcome: string) => r.req("/events/ack", { method: "POST", headers: AUTH, body: JSON.stringify({ id, outcome }) });
 const wipe = (r: Relay, headers?: HeadersInit) => r.req("/events/store", { method: "DELETE", headers });
+
+it.each([undefined, "bad epoch\n"])("S31: persiste la época al abrir un almacén (%s) y la anuncia antes del replay", async (epoch) => {
+  const file = join(dir, "calls.json");
+  if (epoch !== undefined) await writeFile(file, JSON.stringify({ version: 1, counter: 8, calls: [], epoch }));
+  const r = await boot();
+  const [hello] = await frames(r, true);
+  expect(hello).toEqual({ type: "hello", data: { epoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) } });
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ version: 1, counter: epoch === undefined ? 0 : 8, calls: [], epoch: hello.data.epoch });
+  await publish(r);
+  await close(r.server);
+  expect(await frames(await boot(), true)).toEqual([hello, expect.objectContaining({ type: "call" })]);
+});
+
+it("S31: migra un archivo antiguo sin epoch", async () => {
+  await writeFile(join(dir, "calls.json"), JSON.stringify({ version: 1, counter: 8, calls: [] }));
+  const r = await boot();
+  const [hello] = await frames(r, true);
+  expect(hello).toMatchObject({ type: "hello", data: { epoch: expect.any(String) } });
+  await publish(r);
+  expect((await frames(r))[0].data.id).toBe("PTEST9");
+});
 
 it("conserva eventos y contador sin audio ni token, con modo 0600", async () => {
   const r = await boot();
@@ -132,15 +153,22 @@ it("requiere token y origen permitido para borrar; notifica y conserva solo el c
   expect((await wipe(r, { ...AUTH, Origin: "https://otro.invalid" })).status).toBe(403);
   const reader = (await r.req(`/events?token=${TOKEN}`)).body!.getReader();
   await reader.read();
+  const [oldHello] = await frames(r, true);
   const res = await wipe(r, AUTH);
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({ removed: 1 });
-  expect(new TextDecoder().decode((await reader.read()).value)).toContain("event: cleared\ndata: {\"removed\":1}");
+  const before = oldHello?.data.epoch;
+  const [next] = await frames(r, true);
+  expect(next).toEqual({ type: "hello", data: { epoch: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/) } });
+  expect(next.data.epoch).not.toBe(before);
+  let text = "";
+  while (!text.includes("event: cleared")) text += new TextDecoder().decode((await reader.read()).value);
+  expect(text).toContain(`event: cleared\ndata: ${JSON.stringify({ removed: 1, epoch: next.data.epoch })}\n\n`);
   await reader.cancel();
   expect(await frames(r)).toEqual([]);
   expect(await readdir(dir)).toEqual(["calls.json"]);
   const file = join(dir, "calls.json");
-  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ version: 1, counter: 1, calls: [] });
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ version: 1, counter: 1, calls: [], epoch: next.data.epoch });
   expect((await stat(file)).mode & 0o777).toBe(0o600);
 });
 
@@ -202,7 +230,7 @@ it.skipIf(root)(`S27: publica y acusa con DATA_DIR de solo lectura${root ? " (om
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
     expect(await frames(r)).toEqual([]);
-    expect(await readdir(dir)).toEqual([]);
+    expect(JSON.parse(await readFile(join(dir, "calls.json"), "utf8"))).toMatchObject({ counter: 0, calls: [] });
     expect(log.mock.calls.map(([line]) => line).filter((line) => line.includes("EACCES"))).toEqual(["EACCES", "EACCES"]);
     await chmod(dir, 0o700);
     await publish(r);
@@ -220,7 +248,7 @@ it("aparta un archivo corrupto y arranca vacío", async () => {
   await writeFile(join(dir, "calls.json"), "private corrupt contents");
   const r = await boot({ log });
   expect(await frames(r)).toEqual([]);
-  expect(await readdir(dir)).toEqual([expect.stringMatching(/^calls\.json\.corrupt-\d+$/)]);
+  expect(await readdir(dir)).toEqual(["calls.json", expect.stringMatching(/^calls\.json\.corrupt-\d+$/)]);
   expect(log).toHaveBeenCalledTimes(1);
   expect(log.mock.calls[0][0]).not.toContain("private corrupt contents");
 });
@@ -228,7 +256,7 @@ it("aparta un archivo corrupto y arranca vacío", async () => {
 it("sin DATA_DIR funciona en memoria y no crea archivo", async () => {
   const r = await boot({ dataDir: undefined });
   await publish(r);
-  expect(await frames(r)).toHaveLength(1);
+  expect(await frames(r, true)).toEqual([expect.objectContaining({ type: "call" })]);
   expect(await readdir(dir)).toEqual([]);
   await close(r.server);
   expect(await frames(await boot({ dataDir: undefined }))).toEqual([]);

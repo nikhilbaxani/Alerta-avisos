@@ -5,6 +5,27 @@ import { publicEventToCall } from "@/lib/inbox";
 import { snapshot } from "@/lib/engine";
 import type { ConsoleState } from "@/lib/consoleMode";
 
+import { restoreLiveSession, serializeLiveSession } from "@/lib/liveSession";
+
+it("S31: adopta y guarda la primera época aun sin llamadas", () => {
+  const state = consoleReducer(live(), { type: "relayEpoch", epoch: "first" });
+  expect(state.arrived).toEqual([]);
+  expect(restoreLiveSession(serializeLiveSession(state)).relayEpoch).toBe("first");
+});
+
+it.each([undefined, "old"])("S31: cambia de época (%s) solo en directo y conserva el replay", (epoch) => {
+  const before = accept(epoch ? consoleReducer(live(), { type: "relayEpoch", epoch }) : live(), "P1");
+  const restored = restoreLiveSession(serializeLiveSession(before));
+  const sim = consoleReducer(consoleReducer(restored, { type: "mode", mode: "sim" }), { type: "tick", dt: 30 });
+  const reset = consoleReducer(sim, { type: "relayEpoch", epoch: "new" });
+  expect({ ...reset, saved: sim.saved }).toEqual(sim);
+  const empty = consoleReducer(reset, { type: "mode", mode: "live" });
+  expect(empty).toMatchObject({ relayEpoch: "new", arrived: [], calls: {}, audit: [], engine: { incidents: [], decisions: {} } });
+  const replay = accept(empty, "P2");
+  expect(replay.arrived).toEqual(["P2"]);
+  expect(consoleReducer(replay, { type: "relayEpoch", epoch: "new" })).toBe(replay);
+});
+
 const relay = "https://relay.test";
 const live = () => consoleReducer(initialConsoleState(), { type: "mode", mode: "live" });
 function accept(s: ConsoleState, id: string, target?: string) {

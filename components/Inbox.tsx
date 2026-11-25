@@ -3,23 +3,23 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { consoleReducer, PUBLIC_RELAY_URL } from "@/lib/consoleMode";
 import { snapshot } from "@/lib/engine";
-import { acceptEvent, addEvent, clearInbox, discardEvent, emptyInbox, handleAckEvent, loadHandled, markLoaded, prepareAcceptedCall, receiveAccepted, saveHandled } from "@/lib/inbox";
+import { acceptEvent, addEvent, clearInbox, discardEvent, emptyInbox, handleAckEvent, isLegacyClear, loadHandled, markLoaded, prepareAcceptedCall, readRelayEpoch, receiveAccepted, saveHandled } from "@/lib/inbox";
 import type { PublicCallEvent } from "@/lib/publicCall";
 import type { InboxState } from "@/lib/inbox";
 import { RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import type { ProcessResult } from "@/lib/types";
 import type { CallMeta, ConsoleState } from "@/lib/useConsole";
-import CallQRCode from "./CallQRCode";
 import Icon from "./Icon";
 import { langName } from "./format";
 
 const TOKEN_KEY = "copiloto112.operatorToken";
 
 type Conn = "connecting" | "open" | "down";
-type Act = { type: "event" | "handled" | "accepted"; raw: unknown } | { type: "cleared" } | { type: "accept" | "discard"; id: string } | { type: "load"; ids: string[] };
+type Act = { type: "event" | "handled" | "accepted"; raw: unknown } | { type: "cleared" } | { type: "epoch"; epoch: string; ids: string[] } | { type: "accept" | "discard"; id: string } | { type: "load"; ids: string[] };
 
 function reducer(s: InboxState, a: Act): InboxState {
   if (a.type === "cleared") return clearInbox(s);
+  if (a.type === "epoch") return a.epoch === s.epoch ? s : markLoaded({ ...emptyInbox, epoch: a.epoch }, a.ids);
   if (a.type === "accepted") return receiveAccepted(s, a.raw).state;
   if (a.type === "event") return addEvent(s, a.raw);
   if (a.type === "handled") return handleAckEvent(s, a.raw);
@@ -34,17 +34,18 @@ interface Props {
   s: ConsoleState;
   visible?: boolean;
   onLive: (c: CallMeta, r: ProcessResult) => void;
+  onRelayEpoch?: (epoch: string) => void;
 }
 
 /** Bandeja de llamadas del público: nada entra en el motor hasta que el operador pulsa «Aceptar» (S6). */
-export default function Inbox({ s, visible = true, onLive }: Props) {
+export default function Inbox({ s, visible = true, onLive, onRelayEpoch }: Props) {
   const [inbox, dispatch] = useReducer(reducer, emptyInbox);
   const [token, setToken] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
   const [conn, setConn] = useState<Conn>("connecting");
-  const ref = useRef({ s, inbox, onLive });
-  ref.current = { s, inbox, onLive };
+  const ref = useRef({ s, inbox, onLive, onRelayEpoch });
+  ref.current = { s, inbox, onLive, onRelayEpoch };
   const integrate = useCallback((ev: PublicCallEvent) => {
     const current = ref.current;
     const live = current.s.mode === "live" ? current.s : current.s.saved.live;
@@ -67,13 +68,13 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!PUBLIC_RELAY_URL || inbox.seen.length === 0) return;
+    if (!PUBLIC_RELAY_URL || (inbox.epoch === undefined && inbox.seen.length === 0)) return;
     try {
-      saveHandled(localStorage, PUBLIC_RELAY_URL, inbox.seen);
+      saveHandled(localStorage, PUBLIC_RELAY_URL, inbox.seen, inbox.epoch);
     } catch {
       /* sin almacenamiento */
     }
-  }, [inbox.seen]);
+  }, [inbox.seen, inbox.epoch]);
 
   // Token: #op=<token> (el fragmento no llega a los registros de Vercel). Se acepta también ?op= por compatibilidad.
   // Se guarda en localStorage y se quita de la URL.
@@ -143,7 +144,33 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
         dispatch({ type: "accepted", raw });
         integrate(accepted);
       });
-      src.addEventListener("cleared", () => dispatch({ type: "cleared" }));
+      let announcedEpoch = false;
+      const receiveEpoch = (cleared: boolean) => (e: Event) => {
+        let raw: unknown;
+        try { raw = JSON.parse((e as MessageEvent<string>).data); } catch { return; }
+        const current = ref.current;
+        const epoch = readRelayEpoch(raw);
+        if (!epoch) {
+          if (cleared && !announcedEpoch && isLegacyClear(raw)) dispatch({ type: "cleared" });
+          return;
+        }
+        announcedEpoch = true;
+        if (!current.onRelayEpoch) {
+          if (cleared) dispatch({ type: "cleared" });
+          return;
+        }
+        const next = consoleReducer(current.s, { type: "relayEpoch", epoch });
+        if (next !== current.s) {
+          // También actualiza la referencia síncrona que usa el replay de aceptadas.
+          current.s = next;
+          current.onRelayEpoch(epoch);
+        }
+        let ids: string[] = [];
+        try { ids = loadHandled(localStorage, PUBLIC_RELAY_URL, epoch); } catch { /* sin almacenamiento */ }
+        dispatch({ type: "epoch", epoch, ids });
+      };
+      src.addEventListener("hello", receiveEpoch(false));
+      src.addEventListener("cleared", receiveEpoch(true));
     };
     connect();
     return () => {
@@ -186,7 +213,6 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
         <h3 id="inbox-h"><Icon name="phone" size={16} />Llamadas del público</h3>
         <span className={`conn conn-${conn}`} role="status">{token ? CONN_TEXT[conn] : "Sin token"}</span>
       </div>
-      <CallQRCode />
       {token && (
         <button type="button" className="btn btn-sm" onClick={() => { setDraft(""); setEditing((v) => !v); }} aria-expanded={editing}>
           Cambiar token
@@ -212,7 +238,7 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
         </form>
       )}
       {inbox.pending.length === 0 ? (
-        <p className="note inbox-empty">Sin llamadas pendientes. Las que llegan por el QR esperan aquí a que las aceptes.</p>
+        <p className="note inbox-empty">Sin llamadas pendientes. Las que llegan del público esperan aquí a que las aceptes.</p>
       ) : (
         <ul className="inbox-list">
           {[...inbox.pending].reverse().map((ev) => {

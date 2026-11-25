@@ -1,5 +1,5 @@
 import { decide } from "@/lib/cluster";
-import { isPublicCallEvent, PUBLIC_CALL_ID } from "@/lib/publicCall";
+import { isPublicCallEvent, isRelayEpoch, PUBLIC_CALL_ID } from "@/lib/publicCall";
 import type { PublicCallEvent } from "@/lib/publicCall";
 import type { IncidentSnapshot, ProcessResult } from "@/lib/types";
 import type { CallMeta } from "@/lib/useConsole";
@@ -44,7 +44,18 @@ export function publicEventToCall(
   return { meta, result };
 }
 
+export function readRelayEpoch(raw: unknown): string | undefined {
+  if (!raw || typeof raw !== "object" || !("epoch" in raw)) return;
+  return isRelayEpoch(raw.epoch) ? raw.epoch : undefined;
+}
+
+export function isLegacyClear(raw: unknown): boolean {
+  return !!raw && typeof raw === "object" && !("epoch" in raw) && "removed" in raw &&
+    typeof raw.removed === "number" && Number.isSafeInteger(raw.removed) && raw.removed >= 0;
+}
+
 export interface InboxState {
+  epoch?: string;
   pending: PublicCallEvent[];
   /** Ids tratados que no se deben volver a ofrecer. */
   seen: string[];
@@ -63,6 +74,7 @@ export function addEvent(s: InboxState, raw: unknown): InboxState {
 export const HANDLED_CAP = 500;
 
 const drop = (s: InboxState, id: string): InboxState => ({
+  ...s,
   pending: s.pending.filter((e) => e.id !== id),
   seen: s.seen.includes(id) ? s.seen : [...s.seen, id].slice(-HANDLED_CAP),
 });
@@ -96,20 +108,21 @@ type WriteStore = ReadStore & Pick<Storage, "setItem">;
 export const handledKey = (relayUrl: string) => `copiloto112.handled:${relayUrl}`;
 
 /** Lee las ids tratadas de este relay; ignora lo corrupto y los fallos del almacenamiento. */
-export function loadHandled(store: ReadStore, relayUrl: string): string[] {
+export function loadHandled(store: ReadStore, relayUrl: string, epoch?: string): string[] {
   try {
     const v: unknown = JSON.parse(store.getItem(handledKey(relayUrl)) ?? "[]");
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(-HANDLED_CAP) : [];
+    const ids = epoch === undefined ? v : readRelayEpoch(v) === epoch ? (v as { ids?: unknown }).ids : undefined;
+    return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string").slice(-HANDLED_CAP) : [];
   } catch {
     return [];
   }
 }
 
 /** Guarda las ids tratadas mezcladas con las ya guardadas (otra pestaña), sin duplicar y acotadas. */
-export function saveHandled(store: WriteStore, relayUrl: string, ids: string[]): void {
+export function saveHandled(store: WriteStore, relayUrl: string, ids: string[], epoch?: string): void {
   try {
-    const merged = [...new Set([...loadHandled(store, relayUrl), ...ids])].slice(-HANDLED_CAP);
-    store.setItem(handledKey(relayUrl), JSON.stringify(merged));
+    const merged = [...new Set([...loadHandled(store, relayUrl, epoch), ...ids])].slice(-HANDLED_CAP);
+    store.setItem(handledKey(relayUrl), JSON.stringify(epoch === undefined ? merged : { epoch, ids: merged }));
   } catch {
     /* sin almacenamiento: la bandeja sigue funcionando, solo no recuerda tras recargar */
   }
@@ -120,6 +133,7 @@ export function markLoaded(s: InboxState, ids: string[]): InboxState {
   if (!ids.length) return s;
   const known = new Set(ids);
   return {
+    ...s,
     pending: s.pending.filter((e) => !known.has(e.id)),
     seen: [...new Set([...ids, ...s.seen])].slice(-HANDLED_CAP),
   };

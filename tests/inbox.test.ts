@@ -4,9 +4,15 @@ import { scenario } from "@/data/scenario-dana-malaga";
 import { initialState, processCall, snapshot } from "@/lib/engine";
 import type { EngineCall } from "@/lib/engine";
 import { HANDLED_CAP, PENDING_CAP, acceptEvent, addEvent, discardEvent, emptyInbox, handledKey, loadHandled, markLoaded, publicEventToCall, saveHandled, handleAckEvent } from "@/lib/inbox";
-import { clearInbox, receiveAccepted, prepareAcceptedCall } from "@/lib/inbox";
+import { readRelayEpoch, clearInbox, receiveAccepted, prepareAcceptedCall } from "@/lib/inbox";
 import { MAX_TRANSCRIPT_CHARS, isPublicCallEvent } from "@/lib/publicCall";
 import type { PublicCallEvent } from "@/lib/publicCall";
+
+it("S31: lee épocas válidas e ignora anuncios mal formados", () => {
+  expect(readRelayEpoch({ epoch: "Ab_9-" })).toBe("Ab_9-");
+  expect(readRelayEpoch({ epoch: "x".repeat(64) })).toBe("x".repeat(64));
+  for (const epoch of [null, 2, "", "a b", "a\n", "x".repeat(65)]) expect(readRelayEpoch({ epoch })).toBeUndefined();
+});
 
 const first = [...scenario.calls].sort((a, b) => a.t - b.t)[0];
 const baseCall: EngineCall = { id: first.id, t: first.t, aml: first.aml, extraction: first.mock };
@@ -176,6 +182,19 @@ describe("llamadas ya tratadas tras recargar la consola", () => {
     for (let i = 1; i <= HANDLED_CAP + 5; i++) s = discardEvent(addEvent(s, event({ id: `Q${i}` })), `Q${i}`);
     expect(s.seen).toHaveLength(HANDLED_CAP);
     expect(s.seen[0]).toBe("Q6");
+  });
+
+  it("S31: no mezcla ids tratadas de épocas diferentes", () => {
+    const st = fakeStorage();
+    saveHandled(st, URL_A, ["P1"]);
+    expect(loadHandled(st, URL_A, "old")).toEqual([]);
+    saveHandled(st, URL_A, ["P1"], "old");
+    expect(loadHandled(st, URL_A, "old")).toEqual(["P1"]);
+    expect(loadHandled(st, URL_A, "new")).toEqual([]);
+    saveHandled(st, URL_A, [], "new");
+    saveHandled(st, URL_A, ["P2"], "new");
+    expect(loadHandled(st, URL_A, "new")).toEqual(["P2"]);
+    expect(loadHandled(st, URL_A, "old")).toEqual([]);
   });
 
   it("cada relay tiene su propia lista", () => {

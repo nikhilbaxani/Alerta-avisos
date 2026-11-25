@@ -544,7 +544,7 @@ describe("relay /llamar + /events", () => {
         expect(transcript).toBe("حريق في شارع لاريوس، شخص محاصر");
         expect(language).toBe("ar");
         return {
-          language: "es", // aunque el LLM ponga otro idioma, manda Whisper
+          language: "ar",
           translation_es: "Hay un incendio en la calle Larios, una persona atrapada",
           summary_es: "Incendio en calle Larios con una persona atrapada",
           incident_type: "incendio",
@@ -812,12 +812,29 @@ describe("relay /llamar + /events", () => {
       expect(bodies[0].messages[0].content).toContain("translation_es");
     });
 
-    it("idioma conocido: manda el del STT, como antes", async () => {
+    it.each([
+      ["is", "es", "es"], ["ar", "ar", "ar"], ["is", undefined, "und"], ["en", "es", "es"],
+      ["ar", "is", "ar"], ["is", "ru", "und"],
+    ])("S32 por HTTP: Whisper %s y LLM %s → %s", async (sttLanguage, llmLanguage, expected) => {
+      const stt = fakeStt({ text: "Hay un incendio", language: sttLanguage });
+      if (llmLanguage) {
+        const realFetch = globalThis.fetch;
+        const llmAnswer = answer({ ...base, language: llmLanguage });
+        vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) =>
+          String(input).startsWith("http://llm.test/") ? llmAnswer(String(input), init!) : realFetch(input, init));
+      }
+      const { relay, base: url } = await boot(stt, { llmExtract: llmLanguage ? createLlmExtractor(cfg, 1000) : undefined });
+      await deliver(url, relay);
+      const [ev] = await readEvents(url, 1);
+      expect(ev).toMatchObject({ language: expected, extraction: { language: expected }, extractor: llmLanguage ? "llm" : "rules" });
+    });
+
+    it("si discrepan, manda la detección del LLM sobre la transcripción", async () => {
       bodies.length = 0;
       vi.stubGlobal("fetch", answer({ ...base, language: "es", translation_es: "x" }));
       const ex = await createLlmExtractor(cfg, 1000)("حريق", "ar");
-      expect(ex.language).toBe("ar");
-      expect(ex.translation_es).toBe("x");
+      expect(ex.language).toBe("es");
+      expect(ex.translation_es).toBeNull();
     });
   });
 });

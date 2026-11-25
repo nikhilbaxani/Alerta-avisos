@@ -1,11 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { isPublicCallEvent, type PublicCallEvent } from "../lib/publicCall";
+import { isPublicCallEvent, isRelayEpoch, type PublicCallEvent } from "../lib/publicCall";
 
 export type Outcome = "pending" | "accepted" | "discarded";
 interface Entry { call: PublicCallEvent; outcome: Outcome }
-interface Stored { version: 1; counter: number; calls: Entry[] }
+interface Stored { version: 1; counter: number; calls: Entry[]; epoch: string }
+const newEpoch = () => randomBytes(6).toString("hex");
 const errorCode = (e: unknown) => (e as NodeJS.ErrnoException)?.code;
 const missing = (e: unknown) => errorCode(e) === "ENOENT";
 const isCounter = (value: unknown): value is number =>
@@ -14,7 +15,8 @@ const isCounter = (value: unknown): value is number =>
 /** Un único escritor por volumen. Las operaciones síncronas se serializan en el bucle del relay. */
 export function openStore(dir: string, log: (message: string) => void, cap = 500) {
   const file = join(dir, "calls.json");
-  let state: Stored = { version: 1, counter: 0, calls: [] };
+  let state: Stored = { version: 1, counter: 0, calls: [], epoch: newEpoch() };
+  let needsSave = true;
   let health: "ok" | "failing" = "ok";
   let text = "";
   let loadedCounter: unknown;
@@ -30,7 +32,9 @@ export function openStore(dir: string, log: (message: string) => void, cap = 500
       ids.add(entry.call.id);
       return true;
     });
-    state = { version: 1, counter: raw.counter, calls };
+    const epoch = isRelayEpoch(raw.epoch) ? raw.epoch : undefined;
+    needsSave = epoch === undefined;
+    state = { ...state, counter: raw.counter, calls, epoch: epoch ?? state.epoch };
   } catch (e) {
     if (!missing(e)) {
       // Solo se rescata la cabecera, no un campo que aparezca dentro de una llamada truncada.
@@ -58,7 +62,10 @@ export function openStore(dir: string, log: (message: string) => void, cap = 500
     state = next;
   }
 
+  if (needsSave) save(state, true);
+
   return {
+    get epoch() { return state.epoch; },
     get health() { return health; },
     get counter() { return state.counter; },
     get calls() { return state.calls; },
@@ -71,7 +78,7 @@ export function openStore(dir: string, log: (message: string) => void, cap = 500
         if (index < 0) throw new Error("Store full");
         calls.splice(index, 1);
       }
-      save({ version: 1, counter, calls }, true);
+      save({ ...state, counter, calls }, true);
     },
     acknowledge(id: string, outcome: Exclude<Outcome, "pending">) {
       const entry = state.calls.find((stored) => stored.call.id === id);
@@ -88,7 +95,7 @@ export function openStore(dir: string, log: (message: string) => void, cap = 500
         if (/^(?:calls\.json\.corrupt-\d+|\.calls-[0-9a-f]{24}\.tmp)$/.test(name)) unlinkSync(join(dir, name));
       }
       const removed = state.calls.length;
-      save({ ...state, calls: [] });
+      save({ ...state, calls: [], epoch: newEpoch() });
       return removed;
     },
   };

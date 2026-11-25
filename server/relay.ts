@@ -34,6 +34,7 @@ import { extractAddressFragment } from "../lib/rules";
 import { openStore } from "./store";
 import { EXTRACTION_SYSTEM, extractionUser } from "../lib/prompts";
 import { sanitizeExtraction } from "../lib/sanitize";
+import { LANG_NAMES } from "../lib/labels";
 import type { Extraction } from "../lib/types";
 
 export type Extractor = (input: {
@@ -48,6 +49,18 @@ const DEFAULT_LLM_TIMEOUT_MS = 20_000;
 const INBOX_FULL = "La bandeja de la sala está llena. Vuelve a intentarlo más tarde.";
 const RELAY_EXTRACTION_SYSTEM = `${EXTRACTION_SYSTEM}\nIncluye también la clave "translation_es": traducción fiel al castellano si la llamada no está en castellano, o null si ya está en castellano.`;
 
+function supportedLanguage(value: unknown): string | undefined {
+  const code = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return Object.hasOwn(LANG_NAMES, code) ? code : undefined;
+}
+
+// El LLM identifica el idioma a partir de la transcripción; si discrepan, prima su código
+// admitido. Sin ese código (o sin LLM), se conserva el de Whisper si se admite; si no, «und».
+function relayExtraction(raw: Record<string, unknown>, whisper: string): Extraction {
+  const language = supportedLanguage(raw.language) ?? supportedLanguage(whisper) ?? "und";
+  return { ...sanitizeExtraction({ ...raw, language }, language), language };
+}
+
 export function createLlmExtractor(cfg: AppConfig, timeoutMs = DEFAULT_LLM_TIMEOUT_MS): LlmExtractor {
   return async (transcript: string, language: string, signal = AbortSignal.timeout(timeoutMs)) => {
     const raw = await chatJSON(
@@ -60,8 +73,7 @@ export function createLlmExtractor(cfg: AppConfig, timeoutMs = DEFAULT_LLM_TIMEO
       signal,
     );
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
-    // Con idioma conocido manda el del STT; con "" se queda el que detecta el LLM en esta misma petición.
-    return sanitizeExtraction(language ? { ...(raw as Record<string, unknown>), language } : raw, language);
+    return relayExtraction(raw as Record<string, unknown>, language);
   };
 }
 
@@ -570,8 +582,7 @@ export function createRelay(opts: RelayOptions) {
           const request = Promise.resolve().then(() => opts.llmExtract!(transcript, language, controller.signal));
           const raw = await withTimeout(request.finally(slot), llmTimeoutMs, controller);
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
-          const sanitized = sanitizeExtraction(language ? { ...raw, language } : raw, language);
-          if (!/^[a-z]{2}$/.test(sanitized.language)) throw new Error("idioma no detectado");
+          const sanitized = relayExtraction({ ...raw }, language);
           if (sanitized.translation_es) sanitized.translation_es = sanitized.translation_es.slice(0, MAX_TRANSCRIPT_CHARS);
           const hit = (sanitized.location_text ? locate(sanitized.location_text) : null) ?? locate(transcript);
           if (hit) {
@@ -600,9 +611,9 @@ export function createRelay(opts: RelayOptions) {
             log(`[relay] ${id} sin traducción: ${e instanceof Error ? e.message : "desconocido"}`);
           }
         }
-        language ||= "und";
+        language = supportedLanguage(language) ?? "und";
         const res = await extract({ transcript, language, translation_en: translation });
-        extraction = language === "und" ? { ...res.extraction, language } : res.extraction;
+        extraction = { ...res.extraction, language };
         location = res.location;
         extractor = "rules";
       }
@@ -923,7 +934,7 @@ export function createRelay(opts: RelayOptions) {
     const removed = store?.clear() ?? published.size;
     published.clear();
     history.length = 0;
-    broadcast("cleared", { removed });
+    broadcast("cleared", { removed, epoch: store?.epoch });
     return json(req, res, 200, { removed });
   }
 
@@ -975,6 +986,7 @@ export function createRelay(opts: RelayOptions) {
     });
     res.write(": conectado\n\n");
     if (store) {
+      res.write(`event: hello\ndata: ${JSON.stringify({ epoch: store.epoch })}\n\n`);
       const accepted = store.calls.filter((entry) => entry.outcome === "accepted")
         .sort((a, b) => Date.parse(a.call.receivedAt) - Date.parse(b.call.receivedAt));
       for (const { call } of accepted) res.write(`event: accepted\ndata: ${JSON.stringify(call)}\n\n`);

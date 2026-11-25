@@ -73,6 +73,7 @@ export interface AuditEntry {
 /** Estado completo de un modo (simulación o directo), conservado al cambiar de pestaña. */
 export interface ConsoleModeSnapshot {
   epoch: number;
+  relayEpoch?: string;
   scenarioId: string;
   /** En simulación: segundos del escenario. En directo: segundos reales desde la primera llamada aceptada (para prioridad por espera). */
   clock: number;
@@ -119,6 +120,7 @@ export interface ConsoleState extends ConsoleModeSnapshot {
 
 export type ConsoleAction =
   | { type: "restoreLiveSession"; state: ConsoleState }
+  | { type: "relayEpoch"; epoch: string }
   | { type: "mode"; mode: ConsoleMode }
   | { type: "tick"; dt: number }
   | { type: "liveTick"; dt: number }
@@ -262,6 +264,12 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
   switch (a.type) {
     case "restoreLiveSession":
       return a.state;
+    case "relayEpoch": {
+      const live = s.mode === "live" ? s : s.saved.live;
+      if (live?.relayEpoch === a.epoch) return s;
+      const fresh = { ...(live && !live.arrived.length ? live : initSnapshot(nextEpoch(s), "live")), relayEpoch: a.epoch };
+      return s.mode === "live" ? { ...s, ...fresh } : { ...s, saved: { ...s.saved, live: fresh } };
+    }
     case "mode": {
       if (a.mode === s.mode) return s;
       // El reloj solo avanza con Simulación visible; se conserva si estaba reproduciendo.
@@ -308,6 +316,7 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
       const fresh = initSnapshot(nextEpoch(s), s.mode === "live" ? "live" : s.scenarioId);
       return {
         ...fresh,
+        ...(s.relayEpoch === undefined ? {} : { relayEpoch: s.relayEpoch }),
         speed: s.mode === "sim" ? s.speed : fresh.speed,
         mode: s.mode,
         saved: s.saved,

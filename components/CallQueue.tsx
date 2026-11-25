@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { isEcall } from "@/lib/ecall";
 import { TYPE_LABELS } from "@/lib/labels";
 import { callMeta } from "@/lib/useConsole";
@@ -27,9 +27,13 @@ interface Props {
   onMicrophone: (epoch: number, c: CallMeta, r: ProcessResult) => void;
 }
 
+// CallsBox no necesita reenviar este callback: solo lo consume la bandeja.
+export const RelayEpochContext = createContext<((epoch: string) => void) | undefined>(undefined);
+
 type Mode = "recent" | "group" | "ask";
 
 export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect, onArchived, onLive, onMicrophone }: Props) {
+  const onRelayEpoch = useContext(RelayEpochContext);
   const [simMode, setSimMode] = useState<Mode>("recent");
   const [liveMode, setLiveMode] = useState<Mode>("recent");
   const isSim = s.mode === "sim";
@@ -151,7 +155,7 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
           <button aria-pressed={mode === "ask"} onClick={() => setMode("ask")}>Por decidir{asks ? ` · ${asks}` : ""}</button>
         </div>
       </div>
-      <Inbox s={s} visible={!isSim} onLive={onLive} />
+      <Inbox s={s} visible={!isSim} onLive={onLive} onRelayEpoch={onRelayEpoch} />
       <div hidden={!isSim}>
         <ManualCall s={s} localAI={localAI} onCall={(call, result) => onMicrophone(s.epoch, call, result)} />
         <LivePanel s={s} sttUp={sttUp} onCall={onMicrophone} />

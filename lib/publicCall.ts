@@ -2,6 +2,10 @@ import { INCIDENT_TYPES, RISK_TAGS } from "@/lib/types";
 import type { Aml, Extraction } from "@/lib/types";
 
 /** Llamada grabada por el público (QR → /llamar → relay del VPS → SSE → bandeja de la consola). */
+export function isRelayEpoch(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 1 && value.length <= 64 && !/[^A-Za-z0-9_-]/.test(value);
+}
+
 export interface PublicCallEvent {
   /** Id opaco asignado por el relay: prefijo P, etiqueta de arranque y contador. */
   id: string;
