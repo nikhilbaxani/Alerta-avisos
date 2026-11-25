@@ -45,6 +45,17 @@ export default function Deck() {
   const next = useCallback(() => go(iRef.current + 1), [go]);
   const prev = useCallback(() => go(iRef.current - 1), [go]);
 
+  // La consola incrustada usa su tema claro mientras la presentación está abierta (mismo papel que las
+  // diapositivas); al salir se deja el tema que hubiera.
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.dataset.theme;
+    root.dataset.theme = "light";
+    return () => {
+      root.dataset.theme = before ?? "dark";
+    };
+  }, []);
+
   // Diapositiva inicial desde la dirección (#3) y escala del lienzo.
   useEffect(() => {
     const h = parseInt(window.location.hash.slice(1), 10);
