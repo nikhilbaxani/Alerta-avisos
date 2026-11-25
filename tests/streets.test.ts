@@ -43,7 +43,6 @@ describe("callejero local de Málaga", () => {
     ["calle Padre Hidalhgo", "Calle Padre Hidalgo"],
     ["calle San Bizente Ferrer", "Calle San Vicente Ferrer"],
     ["calle Alcalde Ronquiyo", "Calle Alcalde Ronquillo"],
-    ["calle Manuel Bnítez el Cordbés", "Calle Manuel Benítez El Cordobés"],
   ])("resuelve %s como %s", async (input, place) => {
     const location = await resolveLocation(input);
     expect(location).toEqual({ place, known: true, aml: { lat: expect.any(Number), lng: expect.any(Number), acc: expect.any(Number) } });
@@ -169,5 +168,11 @@ describe("callejero local de Málaga", () => {
     const start = performance.now();
     expect((await resolveLocation("Calle de Móstenes 29")).known).toBe(true);
     expect(performance.now() - start).toBeLessThan(200);
+  });
+  it.each(["Calle Antonia Soler 3", "Avenida Julia Cortázar 2", "Calle Francisca Ferrer 1", "Calle Eduarda Marquina 4",
+    "Calle Federico Garcés Lorca 5", "Calle Andrés Peret 2", "Avenida Juan Lopera Peñalver 1", "Calle Alcalde Romera Raggio 3",
+    "Calle Conejito de Málaga", "calle Manuel Bnítez el Cordbés"])("S32: no adivina otra calle (%s)", (q) => {
+    const m = matchStreet(q);
+    expect(m === null || m.location.place?.startsWith(q.replace(/ \d+$/, ""))).toBe(true);
   });
 });
