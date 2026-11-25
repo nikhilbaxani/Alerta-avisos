@@ -335,7 +335,7 @@ export interface WaitingReport {
 
 export const WAITING_ASSUMPTIONS: readonly string[] = [
   `Simulación con supuestos declarados, no datos reales: ${NEW_CALL_SECONDS} s de operador por llamada nueva y ${DUPLICATE_SECONDS} s por repetida, los mismos de la franja de sala de la consola (lib/metrics.ts).`,
-  "Sin agente de espera la cola es la del copiloto: primero las emergencias nuevas, por gravedad.",
+  "Sin agente de espera, se mantiene la cola del Agente 112: primero las emergencias nuevas, por gravedad.",
   "El asistente solo atiende llamadas que llegan con todos los operadores ocupados, y puede atender varias a la vez.",
   "Con agente de espera escalan con prioridad en la cola humana todas las llamadas con riesgo vital o gravedad 5, incluidos los duplicados; los duplicados que cierra no ocupan a ningún operador y el resto cuesta lo mismo que sin asistente.",
 ];

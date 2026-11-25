@@ -69,6 +69,8 @@ describe("npm run agente: escenario DANA (operador simulado)", async () => {
       }
       expect(a.status).toBe("enviada");
       if (a.policy === "automatica") expect(a.approval).toEqual({ by: "automatica", at: a.proposedAt });
+      // Lote de X14; el SMS a una llamada perdida asociada solo por la posición (X15) se aprueba uno a uno.
+      else if (a.tool === "sms_duplicado" && a.args.revisar.length === 0 && a.args.perdida !== "posicion") expect(a.approval).toEqual({ by: "operador", at: a.proposedAt + APPROVAL_DELAY_S, batch: true });
       else expect(a.approval).toEqual({ by: "operador", at: a.proposedAt + APPROVAL_DELAY_S });
     }
     const s = summarize(run);

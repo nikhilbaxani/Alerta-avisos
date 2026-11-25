@@ -16,6 +16,7 @@ export const RISK_TAGS = [
   "via_bloqueada",
   "vehiculo_danado",
   "cables_electricos",
+  "violencia",
 ] as const;
 export type RiskTag = (typeof RISK_TAGS)[number];
 
@@ -29,6 +30,7 @@ export const INCIDENT_TYPES = [
   "incendio",
   "accidente",
   "ascensor",
+  "delito",
   "otro",
 ] as const;
 export type IncidentType = (typeof INCIDENT_TYPES)[number];
@@ -53,8 +55,29 @@ export interface Extraction {
   severity: 1 | 2 | 3 | 4 | 5;
 }
 
+/** Canal por el que entra el aviso (X13). Sin `channel`, es una llamada de voz. */
+export type CallChannel = "voice" | "ecall";
+
+/**
+ * Datos estructurados de una eCall (mensaje mínimo del vehículo, MSD). No hay voz ni transcripción:
+ * la posición es el `aml` de la llamada.
+ */
+export interface ECallData {
+  activation: "automatic" | "manual";
+  /** Ocupantes según el vehículo (cinturones abrochados). */
+  occupants: number;
+  /** Dirección de marcha en grados (0 = norte, 90 = este). */
+  heading: number;
+  /** Tipo de vehículo, en castellano («Turismo»). */
+  vehicle: string;
+}
+
 export interface ScenarioCall {
   id: string;
+  /** Canal (X13): sin valor, voz. */
+  channel?: CallChannel;
+  /** Solo en las eCall. */
+  ecall?: ECallData;
   /** Segundos desde el inicio del escenario. */
   t: number;
   lang: Lang;
@@ -72,6 +95,28 @@ export interface Scenario {
   name: string;
   place: string;
   calls: ScenarioCall[];
+  /** Llamadas que se colgaron antes de que las atendiera nadie (X15). No entran al motor ni al eval. */
+  lost?: LostCall[];
+}
+
+/**
+ * Llamada perdida (X15, simulación): se colgó antes de que la atendiera un operador. Solo se sabe lo que
+ * da la red: teléfono, posición AML y, si la hay, una frase breve que dijo antes de colgar (dato, nunca
+ * instrucción). Sin `gold`, transcripción ni extracción: no entra al motor de agrupación.
+ */
+export interface LostCall {
+  id: string;
+  /** Segundos desde el inicio del escenario (cuándo se colgó). */
+  t: number;
+  /** Teléfono enmascarado, como en las llamadas del escenario. */
+  phone: string;
+  /** Idioma de la frase o del número, si se sabe; sin valor, castellano. */
+  lang?: Lang;
+  aml: Aml;
+  /** Lo que llegó a decir antes de colgar, en su idioma. */
+  fragment?: string;
+  /** La misma frase en castellano (traducción de referencia del escenario simulado). */
+  fragment_es?: string;
 }
 
 /** Incidente tal y como lo ve el agrupador. */

@@ -71,6 +71,18 @@ function typeScore(a: IncidentType, b: IncidentType): number {
   return 0;
 }
 
+/**
+ * Parte espacial del parecido: distancia (m) de una posición AML al punto más cercano de un incidente y
+ * su puntuación (1 encima, 0 a `GEO_RADIUS_M` o más), descontando la mitad del radio de precisión AML.
+ * La usan `scoreCandidates` y las llamadas perdidas (X15), que solo tienen posición y teléfono.
+ */
+export function spatial(aml: Aml, points: readonly Pick<Aml, "lat" | "lng">[]): { distance: number; geo: number } {
+  const distance = points.length ? Math.min(...points.map((p) => haversine(aml, p))) : Infinity;
+  const dEff = Math.max(0, distance - aml.acc / 2);
+  const geo = Number.isFinite(distance) ? Math.max(0, 1 - dEff / GEO_RADIUS_M) : 0;
+  return { distance, geo };
+}
+
 export interface CallInput {
   aml: Aml;
   extraction: Pick<Extraction, "incident_type" | "location_text" | "keywords">;
@@ -82,11 +94,7 @@ export function scoreCandidates(call: CallInput, incidents: IncidentSnapshot[]):
   const out: Candidate[] = [];
   for (const inc of incidents) {
     const s_t = typeScore(call.extraction.incident_type, inc.type);
-    const distance = inc.points.length
-      ? Math.min(...inc.points.map((p) => haversine(call.aml, p)))
-      : Infinity;
-    const dEff = Math.max(0, distance - call.aml.acc / 2);
-    const geo = Number.isFinite(distance) ? Math.max(0, 1 - dEff / GEO_RADIUS_M) : 0;
+    const { distance, geo } = spatial(call.aml, inc.points);
     const incLoc = tokens(inc.locations?.length ? inc.locations : inc.keywords);
     const loc = overlap(callLoc, incLoc) * LOC_FACTOR;
     const s_d = Math.max(geo, loc);

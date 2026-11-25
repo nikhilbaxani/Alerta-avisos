@@ -1,74 +1,160 @@
-import { getScenario } from "@/data/scenarios";
+"use client";
+
+import { useState } from "react";
+import { isEcall } from "@/lib/ecall";
+import { TYPE_LABELS } from "@/lib/labels";
 import { callMeta } from "@/lib/useConsole";
 import type { CallMeta, ConsoleState } from "@/lib/useConsole";
 import type { ProcessResult } from "@/lib/types";
 import Icon from "./Icon";
 import Inbox from "./Inbox";
+import type { IconName } from "./Icon";
+import IncToken from "./IncToken";
 import LivePanel from "./LivePanel";
-import { langName, mmss } from "./format";
+import ManualCall from "./ManualCall";
+import { langName, mmss, placeOf, plural, toneOf } from "./format";
 
 interface Props {
   s: ConsoleState;
+  ranks: Map<string, number>;
   playing?: string | null;
   sttUp: boolean;
+  localAI: boolean;
   onSelect: (incidentId: string) => void;
+  /** Abre el archivo en una incidencia ya solucionada. */
+  onArchived: (incidentId: string) => void;
   onLive: (c: CallMeta, r: ProcessResult) => void;
   onMicrophone: (epoch: number, c: CallMeta, r: ProcessResult) => void;
 }
 
-export default function CallQueue({ s, playing, sttUp, onSelect, onLive, onMicrophone }: Props) {
-  const isLive = s.mode === "live";
-  const list = [...s.arrived].reverse();
-  const total = getScenario(s.scenarioId).calls.length;
-  return (
-    <section className="panel calls-col" aria-labelledby="calls-h">
-      <div className="panel-head">
-        <h2 id="calls-h">Llamadas entrantes</h2>
-        <span className="panel-count">{isLive ? s.arrived.length : `${s.arrived.length} de ${total}`}</span>
+type Mode = "recent" | "group" | "ask";
+
+export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect, onArchived, onLive, onMicrophone }: Props) {
+  const [simMode, setSimMode] = useState<Mode>("recent");
+  const [liveMode, setLiveMode] = useState<Mode>("recent");
+  const isSim = s.mode === "sim";
+  const mode = isSim ? simMode : liveMode;
+  const setMode = isSim ? setSimMode : setLiveMode;
+  const byInc = new Map(s.engine.incidents.map((i) => [i.id, i]));
+  const archivedIds = new Set(s.archived.map((x) => x.incident.id));
+  const rows = [...s.arrived].reverse().map((id) => {
+    const call = callMeta(s, id)!;
+    const rec = s.recs[id];
+    const incId = s.engine.assignment[id];
+    const inc = incId ? byInc.get(incId) : undefined;
+    const solved = !inc && !!incId && archivedIds.has(incId) ? incId : null;
+    const gray = !!inc?.provisional && inc.callIds[0] === id;
+    const first = !!inc && inc.callIds[0] === id;
+    const text = rec.result?.extraction.summary_es ?? call.transcript;
+    const foreign = call.lang !== "es";
+    let status: { cls: string; text: string; icon: IconName };
+    if (rec.status === "queued") status = { cls: "wait", text: "En espera", icon: "clock" };
+    else if (rec.status === "processing") status = { cls: "wait", text: "Analizando…", icon: "clock" };
+    else if (rec.status === "error") status = { cls: "err", text: "No se pudo analizar", icon: "alert" };
+    else if (solved) status = { cls: "done", text: `Solucionada · ${solved}`, icon: "solved" };
+    else if (gray) status = { cls: "ask", text: `¿Misma emergencia que ${inc!.linkedTo}?`, icon: "alert" };
+    else if (first) status = { cls: inc && toneOf(inc) === "critical" ? "critical" : "new", text: "Emergencia nueva", icon: "phone" };
+    else status = { cls: "dup", text: "Repetida", icon: "merge" };
+    const ecall = isEcall(call);
+    return { id, call, inc, solved, gray, text, foreign, status, ecall };
+  });
+  const asks = rows.filter((r) => r.gray).length;
+
+  const row = ({ id, call, inc, solved, gray, text, foreign, status, ecall }: (typeof rows)[number], inGroup = false) => {
+    const onAir = playing === id;
+    const rank = inc ? ranks.get(inc.id) ?? 0 : 0;
+    return (
+      <li
+        key={id}
+        data-call={id}
+        data-channel={ecall ? "ecall" : "voice"}
+        data-incident={inc?.id ?? solved ?? ""}
+        className={`call ${gray ? "is-ask" : ""} ${solved ? "is-done" : ""} ${inc && inc.id === s.selected ? "is-sel" : ""}`}
+      >
+        <button
+          disabled={!inc && !solved}
+          onClick={() => (inc ? onSelect(inc.id) : solved && onArchived(solved))}
+          aria-label={`${ecall ? `eCall ${id} (datos del vehículo, sin voz)` : `Llamada ${id}`} de las ${mmss(call.t)}${ecall ? "" : ` en ${langName(call.lang)}`}: ${text.replace(/\.$/, "")}. ${status.text}${inc ? ` · ${inc.id}` : ""}`}
+        >
+          <span className={`call-ico ${onAir ? "live" : status.cls}`} aria-hidden="true"><Icon name={ecall && status.icon !== "alert" ? "car" : status.icon} size={19} /></span>
+          <span className="call-main">
+            <span className="call-phone">{ecall ? <><span className="chan-ecall"><Icon name="car" size={13} />eCall</span> {call.phone}</> : call.phone || (id.startsWith("T") ? "Escrita a mano" : "En directo")}</span>
+            <span className="call-text">{text}</span>
+            <span className="call-meta">
+              {inc && !inGroup && <IncToken inc={inc} rank={rank} />}
+              <span className={`call-status ${status.cls === "critical" ? "new" : status.cls}`}>{status.text}</span>
+              {foreign && <span className="lang foreign"><Icon name="globe" size={13} />{langName(call.lang)}</span>}
+            </span>
+          </span>
+          <span className="call-side">
+            <span className="call-time">{mmss(call.t)}</span>
+            {onAir ? <span className="on-air" aria-label="Sonando"><i /><i /><i />En línea</span> : <span className="call-id">{id}</span>}
+          </span>
+        </button>
+      </li>
+    );
+  };
+
+  let body: React.ReactNode;
+  if (rows.length === 0) {
+    body = <p className="empty">{isSim ? "Aquí aparecerán las llamadas según entren, de la más reciente a la más antigua." : "Las llamadas del público que aceptes en la bandeja aparecerán aquí."}</p>;
+  } else if (mode === "group") {
+    // Cada emergencia con sus llamadas debajo, en orden de prioridad
+    const groups = [...s.engine.incidents].sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0));
+    const loose = rows.filter((r) => !r.inc && !r.solved);
+    const done = rows.filter((r) => r.solved);
+    body = (
+      <div className="calls">
+        {groups.map((inc) => (
+          <section key={inc.id} className={`call-group ${inc.id === s.selected ? "is-sel" : ""}`} aria-label={`${inc.id}: ${TYPE_LABELS[inc.type]}`}>
+            <button className="call-group-head" onClick={() => onSelect(inc.id)}>
+              <IncToken inc={inc} rank={ranks.get(inc.id) ?? 0} />
+              <span className="call-group-title">{TYPE_LABELS[inc.type]}<small>{placeOf(inc)}</small></span>
+              <span className="call-group-n" title={plural(inc.callIds.length, "llamada", "llamadas")}><Icon name="phone" size={13} />{inc.callIds.length}</span>
+            </button>
+            <ul>{rows.filter((r) => r.inc?.id === inc.id).reverse().map((r) => row(r, true))}</ul>
+          </section>
+        ))}
+        {done.length > 0 && (
+          <section className="call-group is-done">
+            <button className="call-group-head" onClick={() => onArchived(done[0].solved!)}>
+              <Icon name="archive" size={16} />
+              <span className="call-group-title">Solucionadas<small>En el archivo</small></span>
+              <span className="call-group-n"><Icon name="phone" size={13} />{done.length}</span>
+            </button>
+            <ul>{done.map((r) => row(r, true))}</ul>
+          </section>
+        )}
+        {loose.length > 0 && (
+          <section className="call-group">
+            <div className="call-group-head"><span className="call-group-title">Analizando</span></div>
+            <ul>{loose.map((r) => row(r, true))}</ul>
+          </section>
+        )}
       </div>
-      <Inbox s={s} visible={isLive} onLive={onLive} />
-      <LivePanel s={s} sttUp={sttUp} onCall={onMicrophone} />
-      {list.length === 0 ? (
-        <p className="empty">
-          {isLive
-            ? "Las llamadas del público que aceptes en la bandeja aparecerán aquí."
-            : "Aquí aparecerán las llamadas según entren, de la más reciente a la más antigua."}
-        </p>
-      ) : (
-        <ul className="calls">
-          {list.map((id) => {
-            const call = callMeta(s, id)!;
-            const rec = s.recs[id];
-            const incId = s.engine.assignment[id];
-            const inc = s.engine.incidents.find((i) => i.id === incId);
-            const gray = !!inc?.provisional && inc.callIds[0] === id;
-            const first = !!inc && inc.callIds[0] === id;
-            const text = rec.result?.extraction.summary_es ?? call.transcript;
-            const foreign = call.lang !== "es";
-            let status: { cls: string; text: string };
-            if (rec.status === "queued") status = { cls: "wait", text: "En espera" };
-            else if (rec.status === "processing") status = { cls: "wait", text: "Analizando…" };
-            else if (rec.status === "error") status = { cls: "err", text: "No se pudo analizar" };
-            else if (gray) status = { cls: "ask", text: `¿Misma emergencia que ${inc!.linkedTo}?` };
-            else if (first) status = { cls: "new", text: `Emergencia nueva · ${incId}` };
-            else status = { cls: "dup", text: `Repetida · agrupada en ${incId}` };
-            return (
-              <li key={id} className={`call ${gray ? "is-ask" : ""} ${incId && incId === s.selected ? "is-sel" : ""}`}>
-                <button disabled={!incId} onClick={() => incId && onSelect(incId)} aria-label={`Llamada ${id} de las ${mmss(call.t)} en ${langName(call.lang)}: ${text.replace(/\.$/, "")}. ${status.text}`}>
-                  <span className="call-top">
-                    <span className="call-time">{mmss(call.t)}</span>
-                    <span className={`lang ${foreign ? "foreign" : ""}`}>{foreign && <Icon name="globe" size={13} />}{langName(call.lang)}</span>
-                    {playing === id && <span className="on-air" aria-label="Sonando"><i /><i /><i />En línea</span>}
-                    <span className="call-id">{id}</span>
-                  </span>
-                  <span className="call-text">{text}</span>
-                  <span className={`call-status ${status.cls}`}>{status.text}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+    );
+  } else {
+    const list = mode === "ask" ? rows.filter((r) => r.gray) : rows;
+    body = list.length === 0
+      ? <p className="empty">No hay llamadas pendientes de tu decisión.</p>
+      : <ul className="calls">{list.map((r) => row(r))}</ul>;
+  }
+
+  return (
+    <>
+      <div className="calls-tools">
+        <div className="seg" role="group" aria-label="Cómo ver las llamadas">
+          <button aria-pressed={mode === "recent"} onClick={() => setMode("recent")}>Recientes</button>
+          <button aria-pressed={mode === "group"} onClick={() => setMode("group")}>Por emergencia</button>
+          <button aria-pressed={mode === "ask"} onClick={() => setMode("ask")}>Por decidir{asks ? ` · ${asks}` : ""}</button>
+        </div>
+      </div>
+      <Inbox s={s} visible={!isSim} onLive={onLive} />
+      <div hidden={!isSim}>
+        <ManualCall s={s} localAI={localAI} onCall={(call, result) => onMicrophone(s.epoch, call, result)} />
+        <LivePanel s={s} sttUp={sttUp} onCall={onMicrophone} />
+      </div>
+      {body}
+    </>
   );
 }

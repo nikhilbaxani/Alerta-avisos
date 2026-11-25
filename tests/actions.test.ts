@@ -64,6 +64,7 @@ describe("política de aprobación (tabla en código)", () => {
       aviso_ayuntamiento: "automatica",
       devolver_llamada: "operador",
       proponer_es_alert: "coordinador",
+      sms_duplicado: "operador",
     });
   });
 
@@ -186,6 +187,10 @@ describe("reglas: proponer_recursos", () => {
     ["otro", ["cables_electricos"], ["bomberos"]],
     ["semaforos", ["trafico", "sin_luz"], ["policia_local"]],
     ["accidente", ["herido"], ["samu_061", "policia_local"]],
+    ["incendio", ["herido"], ["bomberos", "samu_061"]],
+    ["delito", [], ["policia_nacional"]],
+    ["delito", ["violencia", "herido"], ["samu_061", "policia_nacional"]],
+    ["otro", ["violencia"], ["policia_nacional"]],
     ["inundacion_vivienda", ["mayor", "movilidad_reducida", "agua_subiendo"], ["bomberos"]],
     ["inundacion_vivienda", [], []],
     ["otro", [], []],

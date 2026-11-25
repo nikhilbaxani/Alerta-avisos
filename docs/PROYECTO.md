@@ -57,6 +57,8 @@ La captura con IA real en GPU (24-nov-2026, interfaz anterior) está en `captura
 
 ## Ideas para comparar
 
+Lista completa (52 ideas, con las elegidas para la Fase 7): [`IDEAS.md`](IDEAS.md).
+
 | Idea | Qué aporta | Esfuerzo | ¿La hacemos? |
 |---|---|---|---|
 | Modelo más grande o ajustado para la extracción | Menos preguntas de más y menos riesgos inventados | Medio: VRAM y disco | ? |

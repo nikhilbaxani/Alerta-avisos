@@ -20,6 +20,7 @@ const TYPE_HINTS: Record<IncidentType, string> = {
   incendio: "fuego o humo",
   accidente: "choque, salida de vía o atropello",
   ascensor: "personas encerradas dentro de un ascensor, aunque alguna se encuentre mal",
+  delito: "robo, atraco, hurto, allanamiento, pelea, agresión o amenaza a personas",
   otro: "cualquier otro caso",
 };
 
@@ -39,6 +40,7 @@ const RISK_HINTS: Record<RiskTag, string> = {
   via_bloqueada: "la calle o carretera está cortada",
   vehiculo_danado: "un vehículo ha sufrido daños",
   cables_electricos: "cables eléctricos caídos o al descubierto",
+  violencia: "hay agresión física, pelea, amenazas o alguien con un arma (cuchillo, pistola)",
 };
 
 const list = (hints: Record<string, string>, keys: readonly string[]) => keys.map((k) => `  · ${k}: ${hints[k]}`).join("\n");
@@ -55,8 +57,8 @@ ${list(RISK_HINTS, RISK_TAGS)}
 - people_at_risk: número de personas en peligro (0 si no se sabe).
 - severity: entero de 1 a 5 según esta escala:
   5 = riesgo vital inmediato: personas atrapadas en agua o fuego, dolor en el pecho o dificultad para respirar, alguien inconsciente o que no responde mientras entra el agua.
-  4 = personas en peligro sin riesgo vital inmediato: persona mayor o que no puede andar con agua entrando, cables eléctricos en el suelo, incendio sin atrapados.
-  3 = daños con riesgo pero sin personas en peligro: árbol caído, garaje inundado sin gente dentro, ascensor parado con las personas bien.
+  4 = personas en peligro sin riesgo vital inmediato: persona mayor o que no puede andar con agua entrando, cables eléctricos en el suelo, incendio sin atrapados, agresión o amenaza con arma.
+  3 = daños con riesgo pero sin personas en peligro: árbol caído, garaje inundado sin gente dentro, ascensor parado con las personas bien, robo sin violencia.
   2 = alteraciones del servicio: semáforos apagados, cortes de luz sin personas vulnerables.
   1 = consulta o aviso sin peligro.
 Usa SOLO información de la llamada: nunca añadas nombres, edades, lugares ni riesgos que no se digan.

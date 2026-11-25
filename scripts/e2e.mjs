@@ -31,8 +31,12 @@ await page.addInitScript(() => {
   };
 });
 await page.goto(url);
-await page.getByRole("button", { name: "Velocidad por 10" }).click();
+await page.getByRole("button", { name: "Velocidad por 4" }).click();
 await page.getByRole("button", { name: "Iniciar", exact: true }).click();
+// El audio nunca suena solo: solo con «Escuchar».
+await page.waitForTimeout(4000);
+if (await page.evaluate(() => window.__audios.length)) fail("una llamada ha sonado sin pulsar Escuchar");
+await page.getByRole("button", { name: "Velocidad por 10" }).click();
 
 const asked = [];
 for (let i = 0; i < 2; i++) {
@@ -50,9 +54,36 @@ for (let i = 0; i < 2; i++) {
   }
 }
 if (!asked[0].includes("F1") || !asked[1].includes("B2")) fail(`preguntas inesperadas: ${asked}`);
-await page.getByText(/26 de 26/).waitFor({ timeout: 45000 });
+await page.getByText(/27 de 27/).waitFor({ timeout: 45000 });
 await page.waitForTimeout(1500);
-if ((await kpi(page, "calls")) !== 26 || (await kpi(page, "incidents")) !== 7) fail(`contadores: ${await page.locator(".kpis").innerText()}`);
+if ((await kpi(page, "calls")) !== 27 || (await kpi(page, "incidents")) !== 7) fail(`contadores: ${await page.locator(".kpis").innerText()}`);
+
+// eCall (X13): EC1 aparece en la cola como eCall y queda en el mismo incidente que A1 (no en el de F1).
+const qCall = (id) => page.locator(`#box-incoming [data-call="${id}"]`).first();
+const ec1 = page.locator('#box-incoming [data-call="EC1"][data-channel="ecall"]');
+if ((await ec1.count()) !== 1) fail("la eCall EC1 no aparece en la cola como eCall");
+const ecInc = await ec1.getAttribute("data-incident");
+if (!ecInc || ecInc !== (await qCall("A1").getAttribute("data-incident"))) fail(`EC1 no queda en el incidente de A1 (${ecInc})`);
+if (ecInc === (await qCall("F1").getAttribute("data-incident"))) fail("EC1 se ha juntado con el coche de F1");
+if (!(await ec1.innerText()).includes("eCall")) fail("la eCall no se rotula como eCall en la cola");
+
+// Agente de espera (X11): la caja aparece, el asistente atiende llamadas en la DANA y E1 sale escalada.
+// Entrantes, En espera y Perdidas son pestañas de una misma caja (#box-calls).
+if ((await page.locator("#box-calls [role=tab]").count()) !== 3) fail("la caja de llamadas no tiene las tres pestañas");
+if (await page.locator("#box-waiting").isVisible()) fail("la pestaña En espera se ve sin elegirla");
+await page.locator("#tab-waiting").click();
+const wait = page.locator("#box-waiting");
+await wait.waitFor({ timeout: 5000 });
+if (await page.locator("#box-incoming").isVisible()) fail("al elegir En espera siguen a la vista las entrantes");
+if (!(await wait.innerText()).includes("Simulación con supuestos declarados")) fail("la caja En espera no se rotula como simulación");
+const waitNum = async (k) => Number(await wait.locator(`[data-wait=${k}]`).innerText());
+for (const ops of ["1 operador", "2 operadores"]) {
+  await wait.getByRole("button", { name: ops, exact: true }).click();
+  if ((await waitNum("attended")) < 1) fail(`con ${ops}, el asistente no atiende ninguna llamada`);
+  if ((await wait.locator('[data-call="E1"]').getAttribute("data-outcome")) !== "escalada") fail(`con ${ops}, E1 no sale escalada`);
+}
+if (!(await wait.locator('[data-call="E1"]').innerText()).includes("Escalada")) fail("E1 escalada sin aviso visible");
+await page.locator("#tab-incoming").click();
 
 // Los incidentes se buscan por contenido (tipo, motivo y nº de llamadas), no por su número INC-xx:
 // los números no se reutilizan y dependen de las decisiones del operador.
@@ -60,6 +91,18 @@ const prio = (name) => page.locator(".prio").getByRole("button", { name }).first
 
 // E1 en la cola de prioridad (la única emergencia médica, con dolor torácico): respuesta en árabe.
 await prio(/Emergencia médica[\s\S]*dolor torácico/).click();
+// «Falta saber» (X12): la guía pide si respira; el clic la prepara en árabe, sin reproducirla sola.
+const det = page.locator("#box-detail");
+const respira = det.locator('[data-missing="respira"]');
+await respira.waitFor({ timeout: 3000 }).catch(() => fail("E1 no muestra «Falta saber: si respira»"));
+if (!(await det.innerText()).includes("la IA no decide")) fail("«Falta saber» no se rotula como guía");
+const spoken = await page.evaluate(() => window.speechSynthesis?.speaking ?? false);
+await respira.click();
+const box = page.locator("#box-translate .said-box");
+if ((await box.getAttribute("data-phrase")) !== "respira") fail("el clic en «Falta saber» no prepara la frase respira");
+if (!(await box.locator(".said").innerText()).includes("هل الشخص يتنفس")) fail("la pregunta de respirar no sale en árabe");
+if ((await respira.getAttribute("aria-pressed")) !== "true") fail("«Falta saber» no marca la pregunta preparada");
+if (!spoken && (await page.evaluate(() => window.speechSynthesis?.speaking ?? false))) fail("«Falta saber» reproduce sin que lo pulse el operador");
 await page.getByRole("button", { name: "¿La persona respira? ¿Está consciente?" }).click();
 const said = await page.locator(".said").innerText();
 if (!/[؀-ۿ]/.test(said)) fail("la respuesta no está en árabe");
@@ -70,6 +113,7 @@ await capture(page, "T19-arabe");
 const sentBefore = await kpi(page, "actions");
 if (sentBefore < 2) fail(`el agente no ha enviado los avisos automáticos (${sentBefore})`);
 await page.getByRole("button", { name: /Aprobar y enviar: SMS en árabe/ }).click();
+await page.locator("#box-actions").getByRole("button", { name: /Enviadas/ }).click();
 await page.getByText(/Aprobado y enviado · acuse SMS-[0-9A-F]{6}/).first().waitFor({ timeout: 5000 });
 
 // Audio de la llamada (sin red: MP3 dentro de la app).
@@ -85,14 +129,91 @@ await page.getByRole("button", { name: "Detener la llamada E1" }).click();
 if ((await kpi(page, "actions")) !== sentBefore + 1) fail("aprobar el SMS no cuenta como acción enviada");
 
 // ES-Alert (X07): lo propone el agente para la zona de los coches atrapados, pero solo lo aprueba un coordinador.
-await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
+await page.locator("#box-actions").getByRole("button", { name: /Por aprobar/ }).click();
 const es = page.locator(".act", { hasText: "ES-Alert a la población" });
 if ((await es.count()) !== 1) fail("falta la tarjeta del ES-Alert en el coche de A");
 if (await es.getByRole("button", { name: /Aprobar y enviar/ }).count()) fail("el operador no debe poder aprobar un ES-Alert");
 if (!(await es.innerText()).includes("La aprueba un coordinador")) fail("el ES-Alert no avisa de que lo aprueba un coordinador");
 
-// Separar una llamada del coche de A (6 llamadas; F es el otro vehículo, con 2).
-await prio(/Vehículo atrapado por agua[\s\S]*6 llamadas/).click();
+// Aviso de duplicado (X14): al aprobar los bomberos del coche de A (INC-01), el agente prepara el lote para
+// quien volvió a llamar; «Aprobar todos» lo envía. A4 (trajo «menor») queda aparte y EC1 (eCall) no recibe nada.
+const acts = page.locator("#box-actions");
+await acts.getByRole("button", { name: "Todas", exact: true }).click().catch(() => {});
+const bomA = acts.locator('.act[data-tool="proponer_recursos"][data-incident="INC-01"]', { hasText: "Enviar Bomberos" });
+// Unidades simuladas (X16): antes de aprobar, la tarjeta propone la unidad libre más cercana.
+const bomUnit = bomA.locator("[data-unit]");
+if (!(await bomUnit.count()) || !(await bomUnit.innerText()).includes("Unidad libre más cercana")) fail("la tarjeta de bomberos de A no propone la unidad libre más cercana");
+const unitId = await bomUnit.getAttribute("data-unit");
+await bomA.getByRole("button", { name: /Aprobar y enviar/ }).click();
+// …y al aprobar, esa unidad sale en el mapa asignada a INC-01, con su línea hacia el incidente.
+const mapUnit = page.locator(`svg.map g[data-unit="${unitId}"][data-incident="INC-01"]`);
+await mapUnit.waitFor({ state: "attached", timeout: 3000 }).catch(() => fail(`la unidad ${unitId} no aparece asignada a INC-01 en el mapa`));
+if ((await mapUnit.getAttribute("data-status")) === "libre") fail("la unidad asignada sigue libre en el mapa");
+if (!(await page.locator(`svg.map [data-unit-line="${unitId}"]`).count())) fail("falta la línea de la unidad al incidente");
+if ((await page.locator("svg.map g[data-unit][data-status=libre][data-incident]").count())) fail("una unidad libre lleva incidente");
+// Peligros en la vía (X17, simulación): marcas propias en el mapa y aviso cruzado en la tarjeta de la unidad
+// (B-2 hacia INC-01 pasaría por la vía inundada de otro incidente). Solo aviso: sin botones que cambien rutas.
+const hazardsN = await page.locator("svg.map g[data-hazard][data-kind][data-incident]").count();
+if (!hazardsN) fail("no hay peligros en la vía en el mapa de la DANA");
+if ((await page.locator('svg.map g[data-hazard][data-kind="agua_en_via"]').count()) < 2) fail("faltan los peligros de agua en la vía (paso inferior de A y vía inundada)");
+if (!(await page.locator(`svg.map g[data-unit="${unitId}"][data-hazard-warning]`).count())) fail("la unidad afectada no se marca en el mapa");
+const lote = acts.locator('[data-batch="INC-01"]');
+await lote.waitFor({ timeout: 5000 }).catch(() => fail("no aparece el lote de avisos de duplicado de INC-01"));
+const loteText = await lote.innerText();
+if (loteText.includes("EC1") || loteText.includes("A4")) fail(`el lote incluye a quien no debe: ${loteText}`);
+for (const id of ["A2", "A3", "A5"]) if (!loteText.includes(id)) fail(`al lote de INC-01 le falta ${id}`);
+const a4 = acts.locator('.act[data-tool="sms_duplicado"][data-incident="INC-01"][data-status="propuesta"]', { hasText: "+34 6•• ••• 519" });
+if (!(await a4.count()) || !(await a4.innerText()).includes("información nueva")) fail("A4 (información nueva) no sale aparte y marcada");
+await lote.getByRole("button", { name: /Aprobar todos/ }).click();
+await page.waitForTimeout(300);
+if (await lote.count()) fail("el lote sigue pendiente tras «Aprobar todos»");
+await acts.getByRole("button", { name: /Enviadas/ }).click();
+const sentDup = acts.locator('.act[data-tool="sms_duplicado"][data-incident="INC-01"][data-status="enviada"]');
+if ((await sentDup.count()) !== 3) fail(`el lote no pasa a enviada (${await sentDup.count()} de 3)`);
+if (!(await sentDup.first().innerText()).match(/Aprobado en lote y enviado · acuse DUP-[0-9A-F]{6}/)) fail("el aviso enviado no dice que se aprobó en lote");
+const bomSent = acts.locator(`.act[data-tool="proponer_recursos"][data-incident="INC-01"][data-status="enviada"] [data-unit="${unitId}"]`);
+if (!(await bomSent.count()) || !(await bomSent.innerText()).includes(`Unidad asignada: ${unitId}`)) fail("la tarjeta enviada de bomberos no muestra la unidad asignada");
+const hzWarn = acts.locator('.act[data-tool="proponer_recursos"][data-incident="INC-01"] .act-unit [data-hazard-warning][data-hazard-incident]');
+await hzWarn.first().waitFor({ timeout: 3000 }).catch(() => fail("la tarjeta de bomberos de A no avisa del peligro en la vía"));
+const hzText = await hzWarn.first().innerText();
+if (!hzText.includes(`${unitId} pasaría por`) || !/de INC-\d+/.test(hzText) || !hzText.includes("simulación")) fail(`aviso de peligro inesperado: ${hzText}`);
+if (await hzWarn.locator("button").count()) fail("el aviso de peligro no debe llevar botones");
+const hzInc = await hzWarn.first().getAttribute("data-hazard-incident");
+if (hzInc === "INC-01") fail("el aviso cruzado es del propio incidente de destino");
+if (!(await page.locator(`svg.map g[data-hazard][data-incident="${hzInc}"][data-warned]`).count())) fail("el peligro afectado no se marca en el mapa");
+await acts.getByRole("button", { name: /Por aprobar/ }).click();
+
+// Llamadas perdidas (X15): las desconocidas (P3, P4) arriba con «devolver la llamada»; los probables
+// duplicados (P1, P2, P5) debajo. P1 (francés, junto a A) ya tiene su SMS de duplicado tras aprobar los
+// bomberos de A. Nada se envía sin clic: aprobar P3 cambia su estado.
+await page.locator("#tab-lost").click();
+const lostBox = page.locator("#box-lost");
+await lostBox.waitFor({ timeout: 5000 }).catch(() => fail("no aparece la caja Llamadas perdidas"));
+const lostText = await lostBox.innerText();
+const lostHelp = await lostBox.locator(".wait-foot").textContent();
+if (!lostText.includes("Simulación") || !lostHelp.includes("10.000") || !lostHelp.includes("fuente: 112 autonómicos / prensa")) fail("la caja de perdidas no se rotula como simulación con la cifra y su fuente");
+if (lostText.indexOf("Devolver primero") > lostText.indexOf("Probables duplicados")) fail("las desconocidas no van por delante de los duplicados");
+for (const [id, kind] of [["P3", "unknown"], ["P4", "unknown"], ["P1", "duplicate"], ["P2", "duplicate"], ["P5", "duplicate"]]) {
+  if ((await lostBox.locator(`[data-lost="${id}"][data-kind="${kind}"]`).count()) !== 1) fail(`${id} no sale como ${kind} en Llamadas perdidas`);
+}
+const p3 = lostBox.locator('[data-lost="P3"][data-kind="unknown"]');
+if ((await p3.locator('[data-state="pending"]').count()) !== 1 || !(await p3.innerText()).includes("Devolver la llamada")) fail("P3 no propone devolver la llamada pendiente del operador");
+const p1 = lostBox.locator('[data-lost="P1"][data-kind="duplicate"]');
+if ((await p1.locator('[data-state="pending"]').count()) !== 1 || !(await p1.innerText()).includes("Aviso de duplicado en francés")) fail("P1 no propone el SMS de duplicado en francés");
+if ((await acts.locator('.act[data-tool="devolver_llamada"][data-status="propuesta"]', { hasText: "Llamada perdida P3" }).count()) !== 1) fail("la devolución de P3 no aparece en Acciones");
+await p3.getByRole("button", { name: /Aprobar y enviar: .*llamada perdida P3/ }).click();
+await p3.locator('[data-state="sent"]').waitFor({ timeout: 3000 }).catch(() => fail("aprobar la devolución de P3 no cambia su estado"));
+if (!(await p3.innerText()).includes("aprobada y enviada")) fail("P3 enviada no lo dice");
+if ((await p1.locator('[data-state="pending"]').count()) !== 1) fail("aprobar P3 ha enviado también el SMS de P1");
+
+// Separar una llamada del coche de A (6 llamadas y la eCall EC1; F es el otro vehículo, con 2).
+await prio(/Vehículo atrapado por agua[\s\S]*7 llamadas/).click();
+// La tarjeta de la eCall enseña sus datos y no ofrece «Escuchar»: es un mensaje de datos, sin voz.
+const ecCard = page.locator('#box-detail [data-callcard="EC1"][data-channel="ecall"]');
+if ((await ecCard.count()) !== 1) fail("el detalle del coche de A no muestra la eCall EC1");
+const ecText = await ecCard.innerText();
+for (const k of ["Mensaje de datos (sin voz)", "Activación", "Ocupantes", "Dirección de marcha", "Posición"]) if (!ecText.includes(k)) fail(`a la tarjeta de EC1 le falta «${k}»`);
+if (await page.getByRole("button", { name: "Escuchar la llamada EC1" }).count()) fail("la eCall ofrece «Escuchar» y no tiene voz");
 await page.getByRole("button", { name: "Separar llamada A6" }).click();
 await page.waitForTimeout(300);
 if ((await kpi(page, "incidents")) !== 8) fail("Separar no creó un incidente");
@@ -101,8 +222,27 @@ if ((await kpi(page, "incidents")) !== 8) fail("Separar no creó un incidente");
 const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar registro" }).click()]);
 const log = JSON.parse(await (await import("node:fs/promises")).readFile(await dl.path(), "utf8"));
 const kinds = new Set(log.eventos.map((e) => e.kind));
-if (log.llamadas.length !== 26 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
+if (log.llamadas.length !== 27 || !kinds.has("operador_distinto") || !kinds.has("operador_mismo") || !kinds.has("separar")) fail("registro incompleto");
 if (!kinds.has("accion_auto") || !kinds.has("accion_aprobada") || !log.accionesAgente?.length) fail("el registro no incluye las acciones del agente");
+if (log.accionesAgente.filter((a) => a.herramienta.nombre === "sms_duplicado" && a.aprobacion?.lote && a.resultado.estado === "enviada").length !== 3) fail("el registro no incluye el lote de avisos de duplicado");
+
+// Incidencia solucionada → archivo → reabrir. Con confirmación en dos pasos.
+const before = await kpi(page, "incidents");
+await prio(/Árbol caído/).click();
+const resolveBtn = page.locator("#box-detail").getByRole("button", { name: /Marcar INC-\d+ como solucionada/ });
+const solvedId = (await resolveBtn.getAttribute("aria-label")).match(/INC-\d+/)[0];
+await resolveBtn.click();
+await page.locator("#box-detail").getByRole("button", { name: `Confirmar: ${solvedId} solucionada` }).click();
+await page.waitForTimeout(300);
+if ((await kpi(page, "incidents")) !== before - 1) fail("solucionar no quita el incidente de los abiertos");
+if (await page.getByRole("button", { name: new RegExp(`^${solvedId},`) }).count()) fail("el incidente solucionado sigue en el mapa");
+await page.getByRole("button", { name: /Incidencias archivadas \(1\)/ }).click();
+const drawer = page.locator("dialog.drawer");
+await drawer.getByText(solvedId).first().waitFor({ timeout: 3000 });
+if (!(await drawer.innerText()).includes("Acciones del agente")) fail("el archivo no muestra las acciones");
+await drawer.getByRole("button", { name: "Reabrir" }).click();
+await page.waitForTimeout(300);
+if ((await kpi(page, "incidents")) !== before) fail("reabrir no devuelve el incidente");
 
 // Escenario 2: apagón (una sola pregunta, M1).
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -170,6 +310,13 @@ if (await liveTab(empty).isDisabled()) {
     const fixtureUrl = new URL(url);
     fixtureUrl.hash = "op=fixture";
     await pg.goto(fixtureUrl.href);
+    if (width === 1440 && !(await pg.locator(".topbar").evaluate((bar) => {
+      const playback = bar.querySelector(".playback").getBoundingClientRect();
+      return Array.from(bar.children).every((el) => {
+        const r = el.getBoundingClientRect();
+        return r.top < playback.bottom && playback.top < r.bottom;
+      });
+    }))) fail("la barra superior ocupa más de una fila con relay");
     const scenario = pg.getByLabel("Escenario", { exact: true });
     await scenario.selectOption("apagon-malaga");
     await pg.getByRole("button", { name: "Velocidad por 10" }).click();
@@ -189,7 +336,7 @@ if (await liveTab(empty).isDisabled()) {
     const accept = pg.getByRole("button", { name: "Aceptar llamada P1" });
     await accept.waitFor();
     if (await scenario.count() || await pg.locator(".playback, .clock").count()) fail("controles de simulación visibles en En directo");
-    if (await pg.locator("[data-kpi=actions], .agent-feed").count() || await pg.getByRole("button", { name: "Sonido de las llamadas" }).count()) fail("acciones o audio del escenario visibles en En directo");
+    if (await pg.locator("#box-waiting, #box-lost, #box-actions, [data-kpi=actions], .agent-feed").count() || await pg.getByRole("button", { name: "Sonido de las llamadas" }).count()) fail("acciones o audio del escenario visibles en En directo");
     if (await kpi(pg, "calls") || await kpi(pg, "incidents") || await pg.locator(".marker").count()) fail("llamadas sin aceptar en el mapa o en los contadores");
     await pg.getByRole("button", { name: "Descartar llamada P2" }).click();
     if (await kpi(pg, "calls") || await kpi(pg, "incidents")) fail("descartar modificó la cola o los incidentes");
@@ -212,4 +359,4 @@ if (await liveTab(empty).isDisabled()) {
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: DANA 26 → 7, Apagón 16 → 6, zona gris, árabe, acciones del agente, audio, Separar, sin errores de consola");
+console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, lote de duplicados, llamadas perdidas, unidades simuladas, peligros en la vía, agente de espera, falta saber, audio, Separar, sin errores de consola");

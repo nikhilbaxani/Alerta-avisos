@@ -7,7 +7,7 @@ import type { CallMeta } from "@/lib/useConsole";
 import type { ProcessResult } from "@/lib/types";
 import Icon from "./Icon";
 
-const PLACES = [
+export const PLACES = [
   { name: "Centro de Málaga", lat: 36.7213, lng: -4.4214 },
   { name: "Campanillas", lat: 36.716, lng: -4.548 },
   { name: "Torremolinos", lat: 36.623, lng: -4.499 },
@@ -63,7 +63,7 @@ export default function LivePanel({ s, sttUp, onCall }: { s: ConsoleState; sttUp
       if (!r.ok) throw new Error(result.error);
       counter.current += 1;
       const id = `V${counter.current}`; // «V» de voz: no choca con los ids de los escenarios (A–M)
-      onCall(s.epoch, { id, t: 0, lang: result.language, phone: "En directo", aml, transcript: td.text, live: true }, { ...result, callId: id });
+      onCall(s.epoch, { id, t: 0, lang: result.language, phone: "", aml, transcript: td.text, live: true }, { ...result, callId: id });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "No se pudo procesar la llamada.");
     } finally {

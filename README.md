@@ -17,12 +17,21 @@ En la pestaña **Simulación**, el selector cambia entre dos escenarios: **DANA 
 
 ## Qué enseña la demo
 
-1. **Agrupar**: 26 llamadas → 7 incidentes. El contador de «líneas liberadas» sube.
+1. **Agrupar**: 26 llamadas → 7 incidentes. El contador de «repetidas» (líneas que quedan libres) sube; cada llamada lleva la etiqueta de su incidente (③ INC-03, el mismo número que en el mapa).
 2. **Información nueva**: una llamada duplicada no se descarta; si dice «hay un bebé» o «no contesta», se avisa y sube la prioridad.
 3. **La ubicación del llamante no es la del incidente**: quien llama desde otro barrio se agrupa por la dirección que menciona.
 4. **Zona gris visible**: un segundo coche atrapado a ~460 m del primero no se fusiona solo; decide el operador.
-5. **Simulación de sala**: espera hasta atender la llamada crítica con y sin copiloto (con 1–4 operadores). Son supuestos ilustrativos (60 s por llamada nueva, 15 s por duplicado), no datos reales.
-6. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
+5. **Respuesta traducida**: frases rápidas (o texto libre con IA local) en el idioma del llamante, con voz.
+6. **Tu propia llamada**: en «Escribir una llamada» escribes un incidente (un incendio, un robo…) y el agente propone los recursos que tocan por tipo y riesgos: Bomberos, SAMU 061, Policía local o Policía Nacional. En modo simulado se clasifica por palabras clave (`lib/keywordExtract.ts`); con IA local, con el modelo.
+
+## Presentación interactiva (`/presentacion`)
+
+Se abre con **Ver la presentación** en la bienvenida de la consola, con el icono de la barra superior o directamente en `http://localhost:3000/presentacion`. Son 12 diapositivas en HTML dentro de la propia web. Empiezan por el problema: la DANA de Valencia, el apagón y seis llamadas por el mismo coche. Siguen con piezas **reales** de la consola funcionando: la consola completa en directo, la decisión de la zona gris, las acciones del agente y la respuesta en árabe. Todas responden al ratón y a las teclas `M` y `D`. Al final hay un QR a la página principal, y al pasar de esa diapositiva se abre la consola.
+
+- Teclas: `←` `→` o espacio para avanzar, `F` pantalla completa, `N` notas del orador (el guion de `docs/PITCH.md`). La dirección guarda la diapositiva (`/presentacion#6`).
+- Si llegas a la consola desde la presentación (pasando de la última diapositiva, con el logo o con la ×), aparece abajo a la derecha **Volver a la presentación**, que te devuelve a la diapositiva de la que saliste.
+- El QR apunta a la web desde la que se abre la presentación (en GitHub Pages, la página publicada). Si presentas desde `localhost`, fija la dirección pública con `NEXT_PUBLIC_DEMO_URL=https://… npm run dev`.
+- Funciona sin red: el QR se genera en el navegador (`lib/qr.ts`) y la consola de las diapositivas calcula siempre en modo simulado (`lib/replay.ts` y `useConsole({ offline: true })`).
 
 ## Activar la IA local (GPU NVIDIA)
 
@@ -43,7 +52,7 @@ Sin Docker ni sudo (si Docker no ve la GPU): `bash scripts/ia-local.sh` arranca 
 
 Todo se configura con `.env.local` (plantilla en `.env.example`): `LLM_BASE_URL`, `LLM_MODEL`, `STT_BASE_URL`, `STT_MODEL`. Con IA local, además: texto libre traducido, opinión del modelo en la zona gris (solo opina, nunca decide) y **llamada en directo** con el micrófono.
 
-Audio de las llamadas simuladas: los MP3 ya vienen en `public/audio/` (1,3 MB) y la consola los reproduce sin red (botón **Sonido** en la barra superior; a ×10 no suenan solas, pero cada llamada tiene **Escuchar**). Para regenerarlos: `python3 -m venv .venv-audio && .venv-audio/bin/pip install edge-tts && .venv-audio/bin/python scripts/generate_audio.py` (o Piper). Crea `<id>.wav` (para Whisper, ignorado por git) y `<id>.mp3`, con filtro de teléfono y lluvia en la DANA.
+Audio de las llamadas simuladas: los MP3 ya vienen en `public/audio/` (1,3 MB) y la consola los reproduce sin red, solo cuando el operador pulsa **Escuchar** en una llamada (nunca suenan solas). Para regenerarlos: `python3 -m venv .venv-audio && .venv-audio/bin/pip install edge-tts && .venv-audio/bin/python scripts/generate_audio.py` (o Piper). Crea `<id>.wav` (para Whisper, ignorado por git) y `<id>.mp3`, con filtro de teléfono y lluvia en la DANA.
 
 ## El agente
 

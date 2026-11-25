@@ -16,6 +16,7 @@ export const RISK_LABELS: Record<RiskTag, string> = {
   via_bloqueada: "Vía cortada",
   vehiculo_danado: "Vehículo dañado",
   cables_electricos: "Cables eléctricos en el suelo",
+  violencia: "Violencia o arma",
 };
 
 export const TYPE_LABELS: Record<IncidentType, string> = {
@@ -28,6 +29,7 @@ export const TYPE_LABELS: Record<IncidentType, string> = {
   incendio: "Incendio",
   accidente: "Accidente de tráfico",
   ascensor: "Personas atrapadas en ascensor",
+  delito: "Robo o agresión",
   otro: "Otro",
 };
 

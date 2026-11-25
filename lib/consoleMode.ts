@@ -5,13 +5,18 @@ import {
   confirmDifferent,
   confirmSame,
   initialState,
+  reopenIncident,
+  resolveIncident,
   snapshot,
   splitCall,
 } from "@/lib/engine";
-import type { EngineCall, EngineState } from "@/lib/engine";
-import type { Aml, Decision, ProcessResult } from "@/lib/types";
-import { addProposals, approve, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
+import type { EngineCall, EngineState, Incident } from "@/lib/engine";
+import type { Aml, CallChannel, Decision, ECallData, ProcessResult } from "@/lib/types";
+import { RESOURCE_LABELS, actionIncidents, addProposals, approve, approveBatch, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
 import type { AgentAction, Proposal } from "@/lib/actions";
+import { isEcall } from "@/lib/ecall";
+import { heardOf, type Heard } from "@/lib/waitingConsole";
+import { SIMULATION_LABEL, assignUnit, centerOf, formatDistance, initialUnits, nearestFree, releaseIncident, unitServiceOf, type Unit } from "@/lib/units";
 
 export const PUBLIC_RELAY_URL = (process.env.NEXT_PUBLIC_RELAY_URL ?? "").trim().replace(/\/$/, "");
 
@@ -38,6 +43,8 @@ export interface CallMeta {
   aml: Aml;
   transcript: string;
   live?: boolean;
+  channel?: CallChannel;
+  ecall?: ECallData;
 }
 
 export interface Fx {
@@ -57,7 +64,7 @@ export interface Reply {
 export interface AuditEntry {
   t: number;
   kind: "fusion_auto" | "incidente_nuevo" | "consulta" | "operador_mismo" | "operador_distinto" | "separar" | "respuesta"
-    | "accion_auto" | "accion_aprobada" | "accion_descartada";
+    | "accion_auto" | "accion_aprobada" | "accion_descartada" | "solucionada" | "reabierta";
   callId?: string;
   incidentId?: string;
   detail: string;
@@ -82,9 +89,28 @@ export interface ConsoleModeSnapshot {
   replies: Reply[];
   audit: AuditEntry[];
   actions: AgentAction[];
+  archived: ArchivedIncident[];
+  heard: Record<string, Heard>;
+  units: Unit[];
+  unitAssignments: Record<string, UnitAssignment>;
   /** Llamadas en directo (público QR o micrófono), por id. */
   live: Record<string, CallMeta>;
 }
+
+export interface ArchivedIncident {
+  incident: Incident;
+  at: number;
+}
+
+export interface UnitAssignment {
+  unitId: string | null;
+  incidentId: string;
+  service: Unit["service"];
+  distance: number | null;
+  at: number;
+}
+
+export const resolvedReason = (id: string) => `${id} solucionado por el operador`;
 
 export interface ConsoleState extends ConsoleModeSnapshot {
   mode: ConsoleMode;
@@ -112,7 +138,9 @@ export type ConsoleAction =
   | { type: "reply"; reply: Reply }
   | { type: "plan"; proposals: Proposal[] }
   | { type: "actionApprove"; key: string }
-  | { type: "actionDiscard"; key: string };
+  | { type: "actionApproveBatch"; incidentId: string }
+  | { type: "actionDiscard"; key: string }
+  | { type: "resolve" | "reopen"; incidentId: string };
 
 export const callMeta = (s: ConsoleState, id: string): CallMeta | undefined =>
   s.live[id] ?? (s.mode === "sim" ? sortedCalls(s.scenarioId).find((c) => c.id === id) : undefined);
@@ -135,6 +163,10 @@ function initSnapshot(epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleModeS
     replies: [],
     audit: [],
     actions: [],
+    archived: [],
+    heard: {},
+    units: scenarioId === "live" ? [] : initialUnits(),
+    unitAssignments: {},
     live: {},
   };
 }
@@ -182,6 +214,7 @@ function applyResultToSnapshot(s: ConsoleModeSnapshot, src: CallMeta, result: Pr
     inflight: src.live ? s.inflight : null,
     engine,
     calls: { ...s.calls, [id]: call },
+    heard: s.scenarioId === "live" || isEcall(src) ? s.heard : { ...s.heard, [id]: heardOf(s.engine, engine, id, decision) },
     recs: { ...s.recs, [id]: { ...s.recs[id], status: "done", result: { ...result, decision } } },
     audit,
     fx,
@@ -198,6 +231,30 @@ function applyLiveCallToSnapshot(s: ConsoleModeSnapshot, call: CallMeta, result:
     recs: { ...s.recs, [meta.id]: { id: meta.id, t: meta.t, status: "processing" } },
   };
   return applyResultToSnapshot(withCall, meta, result);
+}
+
+export function incidentPoint(s: ConsoleState, incidentId: string) {
+  return centerOf(s.engine.incidents.find((i) => i.id === incidentId)?.points ?? []);
+}
+
+function assignOnApproval(s: ConsoleState, action: AgentAction): { units: Unit[]; assignment: UnitAssignment; note: string } | null {
+  if (action.tool !== "proponer_recursos") return null;
+  const service = unitServiceOf(action.args.servicio);
+  const point = incidentPoint(s, action.incidentId);
+  if (!point) return null;
+  const near = nearestFree(s.units, service, point);
+  if (!near) {
+    return {
+      units: s.units,
+      assignment: { unitId: null, incidentId: action.incidentId, service, distance: null, at: s.clock },
+      note: `No hay unidad libre de ${RESOURCE_LABELS[service]} ${SIMULATION_LABEL}.`,
+    };
+  }
+  return {
+    units: assignUnit(s.units, near.unit.id, action.incidentId, point, s.clock, action.key),
+    assignment: { unitId: near.unit.id, incidentId: action.incidentId, service, distance: near.distance, at: s.clock },
+    note: `Unidad asignada: ${near.unit.id} a ${formatDistance(near.distance)} ${SIMULATION_LABEL}.`,
+  };
 }
 
 export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState {
@@ -390,6 +447,39 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
     }
     case "select":
       return { ...s, selected: a.incidentId };
+    case "resolve": {
+      const inc = s.engine.incidents.find((i) => i.id === a.incidentId);
+      const engine = resolveIncident(s.engine, a.incidentId);
+      if (!inc || engine === s.engine) return s;
+      const reason = resolvedReason(inc.id);
+      const actions = s.actions.map((x): AgentAction =>
+        (x.status === "propuesta" || x.status === "aprobada") && actionIncidents(x).includes(inc.id)
+          ? { ...x, status: "descartada", discarded: { by: "sistema", at: s.clock, reason } }
+          : x,
+      );
+      return {
+        ...s, engine, actions,
+        units: releaseIncident(s.units, inc.id),
+        archived: [...s.archived, { incident: inc, at: s.clock }],
+        selected: s.selected === inc.id ? engine.incidents[0]?.id ?? null : s.selected,
+        audit: [...s.audit, { t: s.clock, kind: "solucionada", incidentId: inc.id, detail: `El operador da por solucionado ${inc.id} y pasa al archivo.` }],
+      };
+    }
+    case "reopen": {
+      const arch = s.archived.find((x) => x.incident.id === a.incidentId);
+      if (!arch) return s;
+      const reason = resolvedReason(a.incidentId);
+      const actions = s.actions.map((x): AgentAction =>
+        x.status === "descartada" && x.discarded?.reason === reason ? { ...x, status: "propuesta", discarded: null } : x,
+      );
+      return {
+        ...s, actions,
+        engine: reopenIncident(s.engine, arch.incident),
+        archived: s.archived.filter((x) => x !== arch),
+        selected: arch.incident.id,
+        audit: [...s.audit, { t: s.clock, kind: "reabierta", incidentId: arch.incident.id, detail: `El operador vuelve a abrir ${arch.incident.id}.` }],
+      };
+    }
     case "fxDone":
       return { ...s, fx: s.fx.filter((f) => f.key !== a.key) };
     case "plan": {
@@ -408,11 +498,33 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
       if (!ok.ok) return s;
       const sent = dispatch(ok.actions, a.key, s.clock);
       if (!sent.ok) return s;
+      const withUnit = assignOnApproval(s, sent.action);
+      const unitNote = withUnit ? ` ${withUnit.note}` : "";
       return {
         ...s,
+        ...(withUnit ? { units: withUnit.units, unitAssignments: { ...s.unitAssignments, [a.key]: withUnit.assignment } } : {}),
         actions: sent.actions,
-        audit: [...s.audit, { t: s.clock, kind: "accion_aprobada", incidentId: sent.action.incidentId, detail: `El operador aprueba y se envía a ${toolTarget(sent.action)} (acuse ${sent.action.receipt?.reference}). ${sent.action.reason}` }],
+        audit: [...s.audit, { t: s.clock, kind: "accion_aprobada", incidentId: sent.action.incidentId, detail: `El operador aprueba y se envía a ${toolTarget(sent.action)} (acuse ${sent.action.receipt?.reference}). ${sent.action.reason}${unitNote}` }],
       };
+    }
+    case "actionApproveBatch": {
+      if (s.mode !== "sim") return s;
+      const ok = approveBatch(s.actions, a.incidentId, "operador", s.clock);
+      if (!ok.ok) return s;
+      let actions = ok.actions;
+      const audit: AuditEntry[] = [];
+      for (const x of ok.approved) {
+        const sent = dispatch(actions, x.key, s.clock);
+        if (!sent.ok) continue;
+        actions = sent.actions;
+        audit.push({
+          t: s.clock,
+          kind: "accion_aprobada",
+          incidentId: x.incidentId,
+          detail: `El operador aprueba en lote («Aprobar todos», ${ok.approved.length} avisos de duplicado de ${a.incidentId}) y se envía a ${toolTarget(sent.action)} (acuse ${sent.action.receipt?.reference}). ${sent.action.reason}`,
+        });
+      }
+      return { ...s, actions, audit: [...s.audit, ...audit] };
     }
     case "actionDiscard": {
       if (s.mode !== "sim") return s;

@@ -148,6 +148,34 @@ export function processCall(state: EngineState, call: EngineCall): { state: Engi
   return { state: applyDecision(state, call, decision), decision };
 }
 
+/**
+ * ¿Se puede dar por solucionado? No si está en ámbar (antes hay que decidir) ni si una duda ámbar pregunta por él.
+ * Devuelve el motivo para enseñárselo al operador, o null si se puede.
+ */
+export function resolveBlocker(state: EngineState, id: string): string | null {
+  const inc = state.incidents.find((i) => i.id === id);
+  if (!inc) return "El incidente no existe";
+  if (inc.provisional) return "Decide antes si es el mismo incidente que " + inc.linkedTo;
+  const asking = state.incidents.find((i) => i.provisional && i.linkedTo === id);
+  if (asking) return `Decide antes la duda ámbar de ${asking.id}, que pregunta por este incidente`;
+  return null;
+}
+
+/**
+ * El operador da por solucionado un incidente: sale de los abiertos (deja de contar, de verse en el mapa y de
+ * agrupar llamadas nuevas). Las llamadas conservan su asignación para el historial y el número no se reutiliza.
+ */
+export function resolveIncident(state: EngineState, id: string): EngineState {
+  if (resolveBlocker(state, id)) return state;
+  return { ...state, incidents: state.incidents.filter((i) => i.id !== id) };
+}
+
+/** Vuelve a abrir un incidente archivado, tal como estaba. */
+export function reopenIncident(state: EngineState, inc: Incident): EngineState {
+  if (state.incidents.some((i) => i.id === inc.id)) return state;
+  return { ...state, incidents: [...state.incidents, inc] };
+}
+
 /** El operador confirma que el incidente provisional es el mismo que el enlazado. */
 export function confirmSame(
   state: EngineState,

@@ -67,6 +67,7 @@ const BASE_SEVERITY: Record<IncidentType, Severity> = {
   incendio: 4,
   accidente: 3,
   ascensor: 3,
+  delito: 3,
   otro: 1,
 };
 
@@ -107,6 +108,7 @@ const TYPE_KEYWORD: Record<IncidentType, string> = {
   incendio: "incendio",
   accidente: "accidente",
   ascensor: "ascensor",
+  delito: "robo o agresión",
   otro: "emergencia",
 };
 
