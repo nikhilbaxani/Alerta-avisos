@@ -120,7 +120,10 @@ Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/rel
 | Variable | Por defecto | Qué hace |
 |---|---|---|
 | `SITE_ADDRESS` | `:8080` | Dirección de Caddy. `:8080` = HTTP plano detrás de Funnel. |
-| `RELAY_TOKEN` | — | Token de `/events` y `/events/ack`. Sin él, ambos responden 503. |
+| `RELAY_TOKEN` | — | Token de `/events`, `/events/ack` y `/events/store`. Sin configurar, devuelven 503. |
+| `DATA_DIR` | Sin guardar (Compose: `/app/call-data`) | Directorio del archivo `calls.json`. Fuera de Compose, vacío o ausente usa solo memoria. |
+| `GEOCODER_URL` | Vacío (desactivado) | URL base de un servicio compatible con Nominatim. Solo se consulta cuando no basta el nomenclátor, después de «Enviar». |
+| `GEOCODER_TIMEOUT_MS` | `3000` | Plazo total de geocodificación, incluida la cola; máximo efectivo de 10 s. |
 | `ALLOWED_ORIGINS` | — | Orígenes permitidos (CORS y `Origin` de los POST), separados por comas: el de Funnel. |
 | `MAX_CALL_SECONDS` | 120 | Máximo de duración; `stt` responde 413 (sin transcribir) si supera máximo + 5 s. También se usa al construir la web. |
 | `RATE_LIMIT` / `RATE_WINDOW_MIN` | 3 / 10 | Cuota por IP y ventana: cuenta las llamadas aceptadas, salvo devolución por descarte, caducidad, retirada por falta de sitio o fallo del servicio (ver «Límites»). |
@@ -172,7 +175,7 @@ STT_MODEL=whisper
 - **Perfil `local-stt`:** el servicio `stt` solo se levanta con `COMPOSE_PROFILES=local-stt` (ya en `relay.env.example`, así el despliegue sin sobremesa funciona igual que antes). Un `relay.env` anterior que no tenga esa línea deja de levantar el `stt` local: añádela, o configura el sobremesa. Requiere Docker Compose ≥ 2.20 (`depends_on … required: false`).
 - **Aislamiento intacto:** el VPS llega al sobremesa solo por su URL pública HTTPS; `server/tailnet-guard.nft` no cambia.
 - **Latencia (medición actual, 6 hilos de CPU; pocas muestras, no un benchmark):** 14,5 s de castellano → 8,9 s; 18,1 s de árabe → 9,1–9,5 s; una llamada real de 6 s → 9,2 s. El coste es casi fijo por ventana de ~30 s de audio, no proporcional a la duración. Suma la red y el gateway.
-- **Privacidad:** con este STT el audio de las llamadas del público se transcribe en el sobremesa del equipo (allí es donde va para el STT), y el texto transcrito se envía al LLM del equipo en el mismo sobremesa; no se guarda en disco ni en el VPS ni en el sobremesa. La página `/llamar` lo dice en el texto de consentimiento.
+- **Privacidad:** con este STT el audio se envía al sobremesa del equipo para transcribirlo; el audio se elimina tras la transcripción y no se guarda en disco. Con `DATA_DIR`, el VPS guarda el texto de las llamadas publicadas hasta el fin del evento. Ver «Privacidad».
 
 ## Límites del endpoint público
 
@@ -200,7 +203,21 @@ Si `UPLOAD_LIMIT` está vacío, sigue a `RATE_LIMIT` (3 × 60 = 180): limita los
 - `GET /events?token=…` abre el SSE: reenvía hasta 50 llamadas sin tratar (`event: call`, datos `PublicCallEvent`) y transmite los eventos nuevos.
 - `POST /events/ack` (en Caddy, `/relay/events/ack`) recibe JSON de hasta 1024 bytes, por ejemplo `{"id":"PABC1","outcome":"accepted"}` (`accepted` o `discarded`). Usa `Authorization: Bearer <token>` con el mismo `RELAY_TOKEN` del SSE. Ambos admiten peticiones sin `Origin` y rechazan orígenes no configurados; el preflight del acuse permite `Content-Type` y `Authorization` solo en los orígenes configurados.
 - Responde `200 {"ok":true}` al primer acuse y a sus repeticiones; la primera decisión prevalece. Respuestas de error JSON: 400 cuerpo o id no válido, 401 token ausente o incorrecto, 403 origen no permitido, 404 llamada no reconocida, 413 cuerpo demasiado grande y 503 token sin configurar.
-- El primer acuse retira la llamada del historial y emite `event: handled` con `data: {"id":"PABC1","outcome":"accepted"}` a las consolas conectadas. Las pestañas antiguas solo escuchan `call`, así que ignoran `handled`. El relay conserva en memoria los ids de las últimas 500 publicaciones para reconocer los acuses repetidos; un reinicio borra el historial y los acuses.
+- El primer acuse emite `event: handled` con `data: {"id":"PABC1","outcome":"accepted"}`. Con almacenamiento, si se acepta también se emite `event: accepted` con el `PublicCallEvent`; al conectar se reenvían las aceptadas por `receivedAt`, sin volver a pedir aceptación. No se reenvían las descartadas. Se mantiene el límite de 50 pendientes por conexión para no saturar la bandeja, aunque haya más guardadas. Sin almacenamiento, el historial y los acuses solo viven en memoria y se pierden al reiniciar.
+- `DELETE /events/store` usa el mismo Bearer y las mismas reglas de origen que el acuse. Borra lo guardado, devuelve `200 {"removed":N}` y emite `event: cleared` con los mismos datos. Las consolas vacían la bandeja; su sesión local en directo **no** se borra.
+
+## Almacenamiento y limpieza tras el evento
+
+En Compose, el volumen `relay_calls` monta `/app/call-data`. `calls.json` (modo `0600`) guarda las llamadas publicadas (transcripción, extracción, ubicación, traducción si la hay y tiempos), su resultado y un contador. No guarda audio ni credenciales. El límite es de 500: primero salen las descartadas más antiguas, luego las aceptadas más antiguas. Si todas están pendientes, «Enviar» devuelve 503 sin perder las llamadas anteriores y devuelve la cuota.
+
+**Al terminar el evento**, deja de recibir llamadas, espera a que terminen las publicaciones en curso y borra lo guardado:
+
+```sh
+curl -X DELETE -H 'Authorization: Bearer <token-del-operador>' \
+  'https://<dominio-de-la-demo>/relay/events/store'
+```
+
+En cada consola, usa también «Limpiar sesión en directo» para borrar la copia local. Hazlo después de borrar el historial del VPS para evitar que vuelvan a entrar llamadas aceptadas.
 
 ## Latencia esperada (CPU)
 
@@ -211,10 +228,11 @@ Con el Whisper del sobremesa (6 hilos): 8,9 s para 14,5 s de castellano, 9,1–9
 - El audio solo vive en memoria del relay y de quien lo transcribe: no se escribe en disco en ninguno y se descarta al terminar la transcripción. El texto de una llamada pendiente solo está en memoria hasta la publicación, «Volver a grabar» o la caducidad.
 - **Texto al LLM antes de «Enviar»:** la extracción empieza cuando la transcripción está lista. Con LLM configurado, el texto de una llamada que luego se descarta ya se envió al LLM del equipo.
 - Los registros no contienen texto de las llamadas, el id secreto ni IPs completas (solo un hash corto).
-- Se conservan en memoria hasta 50 eventos sin tratar (texto y extracción) para reenviarlos al conectar; se pierden al reiniciar.
+- Con `DATA_DIR`, la transcripción de una llamada publicada se guarda en el VPS hasta el fin del evento o hasta que la retire el límite del almacén. Las llamadas no publicadas permanecen solo en memoria.
+- **Geocodificador opcional:** solo sale del VPS el texto de la dirección, nunca la transcripción completa ni el audio. La búsqueda se limita a Málaga; si falla, se conserva el resultado local (desconocido si no hay coincidencia). Si usas el servicio público de OpenStreetMap, consulta su [política de Nominatim](https://operations.osmfoundation.org/policies/nominatim/): máximo 1 petición/s e identificación de la aplicación con el User-Agent `agente-112-demo`.
 - La transcripción es texto no confiable: no dispara acciones y la consola la muestra como texto plano. Tras aceptarla, el operador decide.
-- Los datos llegan al VPS del equipo. Con el `stt` local, Whisper se ejecuta en el VPS (sin APIs externas; solo la descarga inicial del modelo). Con el STT del sobremesa (despliegue actual), el audio se transcribe **en el sobremesa del equipo** —ahí es donde va para el STT, por HTTPS— y el texto transcrito se envía al LLM del equipo en ese mismo sobremesa; en ninguno de los dos sitios se guarda en disco.
-- **Consola del operador tras recargar:** las últimas 500 ids tratadas se guardan por URL del relay como respaldo si falla un acuse. La copia de la sesión en directo, incluidas las transcripciones de las llamadas públicas de prueba aceptadas, se guarda solo en el navegador del operador y se borra con “Limpiar sesión en directo”.
+- Los datos llegan al VPS del equipo. Con el `stt` local, Whisper se ejecuta en el VPS. Con el STT del sobremesa, el audio va al sobremesa por HTTPS y allí se transcribe; si el LLM está configurado, recibe el texto para extraer los datos.
+- **Consola del operador tras recargar:** las últimas 500 ids tratadas se guardan por URL del relay como respaldo si falla un acuse. La consola conserva además su copia de la sesión en directo en el navegador, incluidas transcripciones aceptadas; se borra con «Limpiar sesión en directo».
 
 ### Limitaciones conocidas
 

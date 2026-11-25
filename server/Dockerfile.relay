@@ -7,7 +7,8 @@ RUN npm ci --ignore-scripts --include=dev
 COPY tsconfig.json ./
 COPY lib ./lib
 COPY data ./data
-COPY server/relay.ts ./server/relay.ts
+COPY server/relay.ts server/store.ts ./server/
+RUN install -d -m 0700 -o node -g node /app/call-data
 USER node
 EXPOSE 8080
 CMD ["npx", "tsx", "server/relay.ts"]

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { consoleReducer, initialConsoleState } from "@/lib/consoleMode";
 import { scenario } from "@/data/scenario-dana-malaga";
 import { initialState, processCall, snapshot } from "@/lib/engine";
 import type { EngineCall } from "@/lib/engine";
 import { HANDLED_CAP, PENDING_CAP, acceptEvent, addEvent, discardEvent, emptyInbox, handledKey, loadHandled, markLoaded, publicEventToCall, saveHandled, handleAckEvent } from "@/lib/inbox";
+import { clearInbox, receiveAccepted, prepareAcceptedCall } from "@/lib/inbox";
 import { MAX_TRANSCRIPT_CHARS, isPublicCallEvent } from "@/lib/publicCall";
 import type { PublicCallEvent } from "@/lib/publicCall";
 
@@ -66,6 +68,33 @@ describe("publicEventToCall", () => {
 });
 
 describe("bandeja", () => {
+  it("retira la aceptada sin perder el evento por un handled previo y valida payloads", () => {
+    const s = addEvent(addEvent(emptyInbox, event()), event({ id: "P2" }));
+    expect(receiveAccepted(s, null)).toEqual({ state: s, accepted: null });
+    const handled = handleAckEvent(s, { id: "P1", outcome: "accepted" });
+    expect(receiveAccepted(handled, event())).toEqual({ state: handled, accepted: event() });
+    expect(receiveAccepted(s, event()).state).toEqual(handled);
+    expect(clearInbox(handled)).toEqual({ pending: [], seen: ["P1"] });
+  });
+
+  it("la sesión deduplica por id y conserva la pregunta para ubicación desconocida", () => {
+    const ev = event({ location: { place: null, known: false, aml: first.aml } });
+    expect(prepareAcceptedCall(ev, { P1: true }, withIncident(), 5)).toBeNull();
+    expect(prepareAcceptedCall(ev, {}, withIncident(), 5)?.result.decision.action).toBe("ask");
+  });
+  it("aplica aceptadas en directo aunque Simulación esté activa y limpiar no borra la sesión", () => {
+    const sim = initialConsoleState();
+    const inbox = addEvent(emptyInbox, event());
+    const incoming = receiveAccepted(inbox, event());
+    const prepared = prepareAcceptedCall(incoming.accepted!, {}, [], 0)!;
+    const next = consoleReducer(sim, { type: "live", call: prepared.meta, result: prepared.result });
+    expect(next.mode).toBe("sim");
+    expect(next.engine).toBe(sim.engine);
+    expect(next.arrived).toBe(sim.arrived);
+    expect(clearInbox(inbox).pending).toEqual([]);
+    expect(consoleReducer(next, { type: "mode", mode: "live" }).arrived).toEqual(["P1"]);
+  });
+
   it("añade, deduplica por id e ignora eventos inválidos", () => {
     let s = addEvent(emptyInbox, event());
     s = addEvent(s, event());

@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { PUBLIC_RELAY_URL } from "@/lib/consoleMode";
+import { consoleReducer, PUBLIC_RELAY_URL } from "@/lib/consoleMode";
 import { snapshot } from "@/lib/engine";
-import { acceptEvent, addEvent, discardEvent, emptyInbox, handleAckEvent, loadHandled, markLoaded, publicEventToCall, saveHandled } from "@/lib/inbox";
+import { acceptEvent, addEvent, clearInbox, discardEvent, emptyInbox, handleAckEvent, loadHandled, markLoaded, prepareAcceptedCall, receiveAccepted, saveHandled } from "@/lib/inbox";
+import type { PublicCallEvent } from "@/lib/publicCall";
 import type { InboxState } from "@/lib/inbox";
 import { RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import type { ProcessResult } from "@/lib/types";
@@ -15,14 +16,16 @@ import { langName } from "./format";
 const TOKEN_KEY = "copiloto112.operatorToken";
 
 type Conn = "connecting" | "open" | "down";
-type Act = { type: "event"; raw: unknown } | { type: "handled"; raw: unknown } | { type: "accept" | "discard"; id: string } | { type: "load"; ids: string[] };
+type Act = { type: "event" | "handled" | "accepted"; raw: unknown } | { type: "cleared" } | { type: "accept" | "discard"; id: string } | { type: "load"; ids: string[] };
 
 function reducer(s: InboxState, a: Act): InboxState {
+  if (a.type === "cleared") return clearInbox(s);
+  if (a.type === "accepted") return receiveAccepted(s, a.raw).state;
   if (a.type === "event") return addEvent(s, a.raw);
   if (a.type === "handled") return handleAckEvent(s, a.raw);
   if (a.type === "load") return markLoaded(s, a.ids);
   if (a.type === "discard") return discardEvent(s, a.id);
-  return acceptEvent(s, a.id).state;
+  return a.type === "accept" ? acceptEvent(s, a.id).state : s;
 }
 
 const CONN_TEXT: Record<Conn, string> = { open: "Conectado", connecting: "Reconectando…", down: "Sin conexión" };
@@ -40,8 +43,18 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
   const [conn, setConn] = useState<Conn>("connecting");
-  const ref = useRef({ s, inbox });
-  ref.current = { s, inbox };
+  const ref = useRef({ s, inbox, onLive });
+  ref.current = { s, inbox, onLive };
+  const integrate = useCallback((ev: PublicCallEvent) => {
+    const current = ref.current;
+    const live = current.s.mode === "live" ? current.s : current.s.saved.live;
+    const prepared = prepareAcceptedCall(ev, live?.live ?? {}, live?.engine.incidents.map(snapshot) ?? [], live?.clock ?? 0);
+    if (!prepared) return;
+    const { meta, result } = prepared;
+    // Un lote SSE puede llegar antes de que React renderice: cada llamada ve las anteriores del lote.
+    current.s = consoleReducer(current.s, { type: "live", call: meta, result });
+    current.onLive(meta, result);
+  }, []);
 
   // La lista local también evita volver a ofrecer una llamada si el acuse al relay no llegó.
   useEffect(() => {
@@ -122,6 +135,15 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
       };
       src.addEventListener("call", receive("event"));
       src.addEventListener("handled", receive("handled"));
+      src.addEventListener("accepted", (e) => {
+        let raw: unknown;
+        try { raw = JSON.parse((e as MessageEvent<string>).data); } catch { return; }
+        const { accepted } = receiveAccepted(ref.current.inbox, raw);
+        if (!accepted) return;
+        dispatch({ type: "accepted", raw });
+        integrate(accepted);
+      });
+      src.addEventListener("cleared", () => dispatch({ type: "cleared" }));
     };
     connect();
     return () => {
@@ -129,7 +151,7 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
       if (timer) clearTimeout(timer);
       es?.close();
     };
-  }, [token]);
+  }, [token, integrate]);
 
   const acknowledge = useCallback(async (id: string, outcome: "accepted" | "discarded") => {
     if (!PUBLIC_RELAY_URL || !token) return;
@@ -149,12 +171,11 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
       const { s: cs, inbox: ib } = ref.current;
       const ev = ib.pending.find((e) => e.id === id);
       if (cs.mode !== "live" || !ev) return;
-      const { meta, result } = publicEventToCall(ev, cs.engine.incidents.map(snapshot), cs.clock);
-      onLive(meta, result);
+      integrate(ev);
       dispatch({ type: "accept", id });
       void acknowledge(id, "accepted");
     },
-    [onLive, acknowledge],
+    [integrate, acknowledge],
   );
 
   if (!PUBLIC_RELAY_URL) return null; // S8: sin relay, la consola es la de siempre

@@ -71,19 +71,33 @@ describe("resolveLocation", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("omite búsquedas nuevas hasta que pase un segundo", async () => {
+  it("encola búsquedas nuevas hasta que pase un segundo", async () => {
     vi.useFakeTimers();
     const fetch = mockResponse([{ ...point, type: "suburb" }]);
     const opts = { url, fetch };
     const first = resolveLocation(address, opts);
-    expect(await resolveLocation("Otra calle", opts)).toEqual(unknown);
+    const second = resolveLocation("Otra calle", opts);
     expect(await first).toEqual({ ...success, aml: { ...success.aml, acc: 500 } });
     await vi.advanceTimersByTimeAsync(999);
-    expect(await resolveLocation("Otra calle", opts)).toEqual(unknown);
     expect(fetch).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect((await resolveLocation("Otra calle", opts)).known).toBe(true);
+    expect((await second).known).toBe(true);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("acota la cola y el plazo total aunque las consultas en vuelo no respondan", async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(() => new Promise(() => {}));
+    const opts = { url, fetch };
+    const batch = Array.from({ length: 11 }, (_, i) => resolveLocation(`Calle Ajena ${i}`, opts));
+    expect(await resolveLocation("Calle Fuera de Cola", opts)).toEqual(unknown);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(7001);
+    expect(await Promise.all(batch)).toEqual(Array(11).fill(unknown));
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch.mock.calls.every(([, init]) => init?.signal?.aborted)).toBe(true);
   });
 
   it("limita la caché a 256 resultados", async () => {

@@ -12,7 +12,50 @@ export interface GeocodeOptions {
 const MALAGA = { west: -4.63, north: 36.94, east: -4.29, south: 36.65 };
 const CACHE_LIMIT = 256;
 const cache = new Map<string, Aml>();
-let nextRequestAt = -Infinity;
+const QUEUE_LIMIT = 10;
+const TOTAL_LIMIT_MS = 10_000;
+let active = false;
+let cooling = false;
+const queue: (() => void)[] = [];
+
+function drain() {
+  if (!active && !cooling) queue.shift()?.();
+}
+
+function queuedSearch(search: (signal: AbortSignal) => Promise<Aml | undefined>, timeoutMs?: number) {
+  if (queue.length >= QUEUE_LIMIT) return Promise.resolve(undefined);
+  return new Promise<Aml | undefined>((resolve) => {
+    const controller = new AbortController();
+    const total = setTimeout(() => {
+      const index = queue.indexOf(start);
+      if (index >= 0) queue.splice(index, 1);
+      controller.abort();
+      resolve(undefined);
+    }, Math.min(timeoutMs ?? TOTAL_LIMIT_MS, TOTAL_LIMIT_MS));
+    function start() {
+      active = true;
+      cooling = true;
+      setTimeout(() => { cooling = false; drain(); }, 1000);
+      const onAbort = () => finish(undefined);
+      const fetchTimer = setTimeout(() => controller.abort(), timeoutMs ?? 3000);
+      function finish(value: Aml | undefined) {
+        resolve(value);
+        clearTimeout(total);
+        clearTimeout(fetchTimer);
+        controller.signal.removeEventListener("abort", onAbort);
+        active = false;
+        drain();
+      }
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+      void search(controller.signal).then(
+        (value) => { if (!controller.signal.aborted) finish(value); },
+        () => { if (!controller.signal.aborted) finish(undefined); },
+      );
+    }
+    queue.push(start);
+    drain();
+  });
+}
 
 const unknown = (): PublicLocation => ({ place: null, known: false, aml: { ...UNKNOWN_LOCATION_AML } });
 
@@ -65,41 +108,24 @@ export async function resolveLocation(locationText: string, opts: GeocodeOptions
     const url = searchUrl(base, place);
     const cached = cache.get(url);
     if (cached) return { place, known: true, aml: { ...cached } };
-    // Sin cola: las consultas no cacheadas que lleguen antes de un segundo se omiten.
-    const now = performance.now();
-    if (now < nextRequestAt) return unknown();
-    nextRequestAt = now + 1000;
-
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const deadline = new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => {
-          controller.abort();
-          resolve(undefined);
-        }, opts.timeoutMs ?? 3000);
+    const aml = await queuedSearch(async (signal) => {
+      const cached = cache.get(url);
+      if (cached) return cached;
+      const response = await (opts.fetch ?? globalThis.fetch)(url, {
+        method: "GET",
+        headers: { "User-Agent": "agente-112-demo" },
+        signal,
+        redirect: "error",
       });
-      const fetchLocation = opts.fetch ?? globalThis.fetch;
-      const search = async () => {
-        const response = await fetchLocation(url, {
-          method: "GET",
-          headers: { "User-Agent": "agente-112-demo" },
-          signal: controller.signal,
-          redirect: "error",
-        });
-        return response.ok ? readPoint(await response.json()) : undefined;
-      };
-      const aml = await Promise.race([deadline, search()]);
-      if (!aml) return unknown();
-      cache.set(url, { ...aml });
-      if (cache.size > CACHE_LIMIT) {
-        const oldest = cache.keys().next();
-        if (!oldest.done) cache.delete(oldest.value);
-      }
-      return { place, known: true, aml };
-    } finally {
-      clearTimeout(timer);
+      return response.ok ? readPoint(await response.json()) : undefined;
+    }, opts.timeoutMs);
+    if (!aml) return unknown();
+    cache.set(url, { ...aml });
+    if (cache.size > CACHE_LIMIT) {
+      const oldest = cache.keys().next();
+      if (!oldest.done) cache.delete(oldest.value);
     }
+    return { place, known: true, aml: { ...aml } };
   } catch {
     return unknown();
   }

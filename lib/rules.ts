@@ -148,6 +148,12 @@ function stripNegations(t: string): string {
     .replace(/\bno (injuries|injured|one hurt)\b/g, " ");
 }
 
+/** Solo un tramo con tipo de vía explícito; el resto de la llamada no sale al geocodificador. */
+export function extractAddressFragment(text: string): string {
+  const match = /\b(?:calle|avenida|avda|plaza|paseo|camino|carretera|barrio|urbanizaci[oó]n|pol[ií]gono|street|avenue|square|road|neighbou?rhood)((?:[ \t]+[\p{L}\p{M}\p{N}]+){1,6})/iu.exec(text);
+  return match?.[0].replace(/[ \t]+/g, " ").slice(0, 80).trimEnd() ?? "";
+}
+
 export function extractByRules(input: { transcript: string; language: string; translation_en: string | null }): {
   extraction: Extraction;
   location: PublicLocation;

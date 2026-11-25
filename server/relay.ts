@@ -5,8 +5,9 @@
  *   GET  /llamar/:id          → {status: transcribing|ready|publishing|failed|expired|sent, transcript?, language?, error?}
  *   POST /llamar/:id/enviar   → confirma al instante; publica el evento una sola vez al terminar la extracción (S18)
  *   DELETE /llamar/:id        → «Volver a grabar»: descarta la llamada si aún no se ha confirmado
- *   GET  /events   SSE (token obligatorio): últimos 50 eventos sin tratar + en vivo
+ *   GET  /events   SSE (token obligatorio): hasta 50 pendientes + aceptadas del almacén + en vivo
  *   POST /events/ack   acuse del operador (Bearer): {id, outcome} → {ok: true}
+ *   DELETE /events/store   borra el historial (Bearer): {removed}
  *   GET  /health   {ok, queue, maxCallSeconds}
  * Uso: npx tsx server/relay.ts   (variables de entorno: ver server/README.md)
  * El audio solo vive en memoria y se descarta tras transcribir. No se registra texto ni IPs completas.
@@ -28,6 +29,9 @@ import { chatJSON } from "../lib/ai";
 import { getConfig, llmEnabled } from "../lib/config";
 import type { AppConfig } from "../lib/config";
 import { locate } from "../lib/gazetteer";
+import { resolveLocation } from "../lib/geocode";
+import { extractAddressFragment } from "../lib/rules";
+import { openStore } from "./store";
 import { EXTRACTION_SYSTEM, extractionUser } from "../lib/prompts";
 import { sanitizeExtraction } from "../lib/sanitize";
 import type { Extraction } from "../lib/types";
@@ -41,6 +45,7 @@ export type Extractor = (input: {
 export type LlmExtractor = (transcript: string, language: string, signal?: AbortSignal) => Promise<Extraction>;
 
 const DEFAULT_LLM_TIMEOUT_MS = 20_000;
+const INBOX_FULL = "La bandeja de la sala está llena. Vuelve a intentarlo más tarde.";
 const RELAY_EXTRACTION_SYSTEM = `${EXTRACTION_SYSTEM}\nIncluye también la clave "translation_es": traducción fiel al castellano si la llamada no está en castellano, o null si ya está en castellano.`;
 
 export function createLlmExtractor(cfg: AppConfig, timeoutMs = DEFAULT_LLM_TIMEOUT_MS): LlmExtractor {
@@ -170,6 +175,11 @@ export function parseLlmDeferMaxMs(v: unknown): number {
 }
 
 export interface RelayOptions {
+  dataDir?: string;
+  storeCap?: number;
+  geocoderUrl?: string;
+  geocoderTimeoutMs?: number;
+  geocodeFetch?: typeof fetch;
   sttBaseUrl: string;
   sttModel?: string;
   /** Clave del STT (Authorization: Bearer). Vacía → sin cabecera. */
@@ -341,8 +351,11 @@ export function createRelay(opts: RelayOptions) {
   const queue: (() => Promise<void>)[] = [];
   let running = false;
   let sttConnectionFailures = 0;
-  let seq = 0;
+  const store = opts.dataDir?.trim() ? openStore(opts.dataDir.trim(), log, opts.storeCap) : undefined;
+  let reservedPublications = 0;
+  let seq = store?.counter ?? 0;
   const bootTag = opts.bootTag ?? defaultBootTag();
+  const geocoderUrl = opts.geocoderUrl?.trim();
   let idleWaiters: (() => void)[] = [];
 
   const extract: Extractor = opts.extract ?? (async (i) => (await import("../lib/rules")).extractByRules(i));
@@ -377,6 +390,11 @@ export function createRelay(opts: RelayOptions) {
   let reserving = 0;
 
   function publish(ev: PublicCallEvent) {
+    if (store) {
+      store.publish(ev, seq);
+      broadcast("call", ev);
+      return;
+    }
     published.set(ev.id, false);
     if (published.size > publishedCap) {
       const oldest = published.keys().next().value!;
@@ -390,7 +408,7 @@ export function createRelay(opts: RelayOptions) {
     broadcast("call", ev);
   }
 
-  function broadcast(event: "call" | "handled", data: unknown) {
+  function broadcast(event: "call" | "handled" | "accepted" | "cleared", data: unknown) {
     const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const c of clients) c.write(frame);
   }
@@ -619,6 +637,7 @@ export function createRelay(opts: RelayOptions) {
       const language = /^[a-z]{2}$/.test(first.language) ? first.language : "";
       p.transcript = first.text.slice(0, MAX_TRANSCRIPT_CHARS);
       p.language = language;
+      if (opts.llmExtract || !language || language === "es") p.file = undefined; // No habrá segunda pasada de Whisper.
       p.durationS = first.duration;
       p.sttMs = sttMs;
       p.status = "ready";
@@ -648,6 +667,20 @@ export function createRelay(opts: RelayOptions) {
     const built = await p.built;
     const id = p.label;
     if (!built) return fail(p, "No se pudo procesar la llamada. Vuelve a grabar.");
+    // Solo después de «Enviar» y solo el campo de dirección, nunca el texto íntegro de la llamada.
+    let { location, extraction } = built;
+    const geocodeStart = Date.now();
+    if (geocoderUrl) {
+      const address = extraction.location_text || (built.extractor === "rules" && !location.known
+        ? extractAddressFragment(built.translation ?? "") || extractAddressFragment(p.transcript ?? "") : "");
+      if (address) {
+        const resolved = await resolveLocation(address, { url: geocoderUrl, timeoutMs: opts.geocoderTimeoutMs ?? 3000, fetch: opts.geocodeFetch });
+        if (resolved.known) {
+          location = resolved;
+          if (!extraction.location_text) extraction = { ...extraction, location_text: address };
+        }
+      }
+    }
     const sttMs = p.sttMs ?? 0;
     const ev: PublicCallEvent = {
       id,
@@ -656,10 +689,10 @@ export function createRelay(opts: RelayOptions) {
       language: built.language,
       transcript: p.transcript ?? "",
       translation_en: built.translation,
-      extraction: built.extraction,
-      location: built.location,
+      extraction,
+      location,
       extractor: built.extractor,
-      timings: { sttMs, totalMs: sttMs + built.extractMs },
+      timings: { sttMs, totalMs: sttMs + built.extractMs + (geocoderUrl ? Date.now() - geocodeStart : 0) },
     };
     if (!isPublicCallEvent(ev)) {
       log(`[relay] ${id} descartada: el evento no cumple el contrato`);
@@ -792,7 +825,9 @@ export function createRelay(opts: RelayOptions) {
     const full = held() > maxPending;
     const victim = full ? oldestReady() : undefined;
     if (full && !victim) return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
-    const label = `P${bootTag}${++seq}`;
+    ++seq;
+    // Corto para la bandeja: el contador guardado no retrocede y la etiqueta cambia en cada arranque.
+    const label = `P${bootTag}${seq}`;
     const id = randomBytes(16).toString("hex"); // 128 bits: quien tiene el id es quien grabó
     log(`[relay] ${label} recibida (${Math.round(file.size / 1024)} KB, ip ${short(ip)})`);
     const p: Pending = { id, label, status: "transcribing", ip, file, refund: undoQuota, timers: [] };
@@ -848,9 +883,13 @@ export function createRelay(opts: RelayOptions) {
     if (p.status === "publishing" || p.status === "sent") return json(req, res, 200, { status: p.status });
     if (p.status === "expired") return json(req, res, 410, { status: "expired", error: p.error });
     if (p.status === "transcribing") return json(req, res, 409, { status: "transcribing", error: "Todavía se está transcribiendo la llamada." });
-    if (p.status === "failed") return json(req, res, 409, { status: "failed", error: p.error });
+    if (p.status === "failed") return json(req, res, p.error === INBOX_FULL ? 503 : 409, { status: "failed", error: p.error });
     if (p.status !== "ready") return json(req, res, 404, { error: "No encontramos esa llamada. Puede que haya caducado: vuelve a grabar." });
-
+    if (store && !store.hasRoom(reservedPublications)) {
+      fail(p, INBOX_FULL);
+      return json(req, res, 503, { status: "failed", error: p.error });
+    }
+    if (store) reservedPublications++;
     p.status = "publishing";
     p.timers.forEach(clearTimeout);
     p.timers = [];
@@ -860,6 +899,7 @@ export function createRelay(opts: RelayOptions) {
         log(`[relay] ${p.label} error al publicar: ${e instanceof Error ? e.message : "desconocido"}`);
       } catch { /* Un fallo del propio logger tampoco puede rechazar la tarea en segundo plano. */ }
     });
+    if (store) p.sending = p.sending.finally(() => { reservedPublications--; });
     json(req, res, 200, { status: "publishing" });
     llmNext(); // «Enviar» pulsado: la extracción aplazada de esta llamada ya es elegible
   }
@@ -872,9 +912,19 @@ export function createRelay(opts: RelayOptions) {
     return false;
   }
 
+  const bearer = (req: http.IncomingMessage) => /^Bearer (.+)$/i.exec(req.headers.authorization ?? "")?.[1] ?? "";
+
+  function handleStoreClear(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (!authorizeOperator(req, res, bearer(req))) return;
+    const removed = store?.clear() ?? published.size;
+    published.clear();
+    history.length = 0;
+    broadcast("cleared", { removed });
+    return json(req, res, 200, { removed });
+  }
+
   async function handleAck(req: http.IncomingMessage, res: http.ServerResponse) {
-    const token = /^Bearer (.+)$/i.exec(req.headers.authorization ?? "")?.[1] ?? "";
-    if (!authorizeOperator(req, res, token)) return;
+    if (!authorizeOperator(req, res, bearer(req))) return;
     const maxAckBytes = 1024;
     let body: unknown;
     try {
@@ -889,6 +939,15 @@ export function createRelay(opts: RelayOptions) {
     const { id, outcome } = (body ?? {}) as { id?: unknown; outcome?: unknown };
     if (typeof id !== "string" || !PUBLIC_CALL_ID.test(id) || (outcome !== "accepted" && outcome !== "discarded")) {
       return json(req, res, 400, { error: "Acuse no válido" });
+    }
+    if (store) {
+      const entry = store.acknowledge(id, outcome);
+      if (!entry) return json(req, res, 404, { error: "No encontramos esa llamada." });
+      if (entry.outcome === "pending") {
+        broadcast("handled", { id, outcome });
+        if (outcome === "accepted") broadcast("accepted", entry.call);
+      }
+      return json(req, res, 200, { ok: true });
     }
     const handled = published.get(id);
     if (handled === undefined) return json(req, res, 404, { error: "No encontramos esa llamada." });
@@ -911,7 +970,15 @@ export function createRelay(opts: RelayOptions) {
       "X-Accel-Buffering": "no",
     });
     res.write(": conectado\n\n");
-    for (const ev of history) res.write(`event: call\ndata: ${JSON.stringify(ev)}\n\n`);
+    if (store) {
+      const accepted = store.calls.filter((entry) => entry.outcome === "accepted")
+        .sort((a, b) => Date.parse(a.call.receivedAt) - Date.parse(b.call.receivedAt));
+      for (const { call } of accepted) res.write(`event: accepted\ndata: ${JSON.stringify(call)}\n\n`);
+      const unhandled = store.calls.filter((entry) => entry.outcome === "pending");
+      for (const { call } of unhandled.slice(Math.max(0, unhandled.length - replayN))) res.write(`event: call\ndata: ${JSON.stringify(call)}\n\n`);
+    } else {
+      for (const ev of history) res.write(`event: call\ndata: ${JSON.stringify(ev)}\n\n`);
+    }
     clients.add(res);
     const beat = setInterval(() => res.write(": ping\n\n"), heartbeatMs);
     const done = () => {
@@ -933,7 +1000,7 @@ export function createRelay(opts: RelayOptions) {
       cors(req, res);
       if (res.hasHeader("Access-Control-Allow-Origin")) {
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-        res.setHeader("Access-Control-Allow-Headers", url.pathname === "/events/ack" ? "Content-Type, Authorization" : "Content-Type");
+        res.setHeader("Access-Control-Allow-Headers", (url.pathname === "/events/ack" || url.pathname === "/events/store") ? "Content-Type, Authorization" : "Content-Type");
         res.setHeader("Access-Control-Max-Age", "600");
       }
       res.writeHead(204);
@@ -944,6 +1011,7 @@ export function createRelay(opts: RelayOptions) {
     }
     if (req.method === "GET" && url.pathname === "/events") return handleEvents(req, res, url);
     if (req.method === "POST" && url.pathname === "/events/ack") return handleAck(req, res);
+    if (req.method === "DELETE" && url.pathname === "/events/store") return handleStoreClear(req, res);
     if (req.method === "POST" && url.pathname === "/llamar") {
       return handleCall(req, res);
     }
@@ -984,6 +1052,9 @@ export function start() {
   const llmTimeoutMs = envInt("LLM_TIMEOUT_MS", DEFAULT_LLM_TIMEOUT_MS);
   const rateMax = envInt("RATE_LIMIT", 3);
   const relay = createRelay({
+    dataDir: process.env.DATA_DIR,
+    geocoderUrl: process.env.GEOCODER_URL,
+    geocoderTimeoutMs: envInt("GEOCODER_TIMEOUT_MS", 3000),
     sttBaseUrl: process.env.STT_BASE_URL ?? "http://stt:8000/v1",
     sttModel: process.env.STT_MODEL ?? "Systran/faster-whisper-small",
     sttApiKey: sttApiKeyFromEnv(process.env),

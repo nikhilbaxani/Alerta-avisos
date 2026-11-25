@@ -266,7 +266,9 @@ export default function CallRecorder() {
       }
       if (res.status === 404 || res.status === 410) return backToIdle(GONE);
       const detail = typeof body?.error === "string" ? body.error : "";
-      if (res.status === 409 || res.status === 502) return backToIdle(detail || "No se pudo procesar la llamada. Vuelve a grabar.");
+      if (res.status === 409 || res.status === 502 || (res.status === 503 && body?.status === "failed")) {
+        return backToIdle(detail || "No se pudo procesar la llamada. Vuelve a grabar.");
+      }
       setMsg({ ok: false, text: detail || "No se pudo enviar. Inténtalo de nuevo." });
     } catch {
       if (run.current !== token) return;
@@ -389,7 +391,7 @@ export default function CallRecorder() {
       {!busy && !recording && phase !== "done" && (
       <label className={s.consent}>
         <input ref={consentInput} type="checkbox" checked={consent} disabled={permissionPending} onChange={(e) => setConsent(e.target.checked)} />
-        <span>Acepto que mi audio se envíe por HTTPS a los servidores del equipo (el VPS y el ordenador del equipo) para transcribirlo, y que el texto resultante lo procese la IA del equipo para extraer los datos, aunque no llegue a pulsar «Enviar». Ni el audio ni el texto se guardan en disco, y no se recoge mi teléfono ni mi nombre. La llamada solo llega al operador si pulso «Enviar».</span>
+        <span>Acepto que mi audio se envíe por HTTPS a los servidores del equipo (el VPS y el ordenador del equipo) para transcribirlo, y que el texto resultante lo procese la IA del equipo para extraer los datos, aunque no llegue a pulsar «Enviar». El audio se elimina tras la transcripción. Si pulso «Enviar», la llamada llega al operador y la transcripción se guarda en el servidor de la demo hasta el fin del evento. No se recoge mi teléfono ni mi nombre.</span>
       </label>
       )}
 

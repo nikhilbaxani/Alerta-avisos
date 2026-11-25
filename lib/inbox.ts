@@ -67,6 +67,21 @@ const drop = (s: InboxState, id: string): InboxState => ({
   seen: s.seen.includes(id) ? s.seen : [...s.seen, id].slice(-HANDLED_CAP),
 });
 
+export function clearInbox(s: InboxState): InboxState {
+  return s.pending.length ? { ...s, pending: [] } : s;
+}
+
+/** «handled» puede haber quitado ya la tarjeta; no determina si el motor recibió la llamada. */
+export function receiveAccepted(s: InboxState, raw: unknown): { state: InboxState; accepted: PublicCallEvent | null } {
+  if (!isPublicCallEvent(raw)) return { state: s, accepted: null };
+  return { state: handleAckEvent(s, { id: raw.id, outcome: "accepted" }), accepted: raw };
+}
+
+export function prepareAcceptedCall(ev: PublicCallEvent, live: Record<string, unknown>, incidents: IncidentSnapshot[], clock: number) {
+  if (Object.hasOwn(live, ev.id)) return null;
+  return publicEventToCall(ev, incidents, clock);
+}
+
 export function handleAckEvent(s: InboxState, raw: unknown): InboxState {
   if (!raw || typeof raw !== "object") return s;
   const { id, outcome } = raw as { id?: unknown; outcome?: unknown };

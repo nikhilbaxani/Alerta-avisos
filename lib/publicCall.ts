@@ -3,7 +3,7 @@ import type { Aml, Extraction } from "@/lib/types";
 
 /** Llamada grabada por el público (QR → /llamar → relay del VPS → SSE → bandeja de la consola). */
 export interface PublicCallEvent {
-  /** "P" + etiqueta de arranque del relay + número ("PK3F1"…), asignado por el relay. */
+  /** Id opaco asignado por el relay: prefijo P, etiqueta de arranque y contador. */
   id: string;
   /** ISO 8601. */
   receivedAt: string;
@@ -16,7 +16,7 @@ export interface PublicCallEvent {
   translation_en: string | null;
   /** Extracción del LLM o del extractor de reglas (lib/rules.ts). */
   extraction: Extraction;
-  /** Ubicación dicha en el audio; `known = false` si el nomenclátor no reconoce ningún lugar. */
+  /** Ubicación dicha en el audio; `known = false` si no se pudo resolver. */
   location: PublicLocation;
   /** Motor que produjo la extracción ("llm" o "rules"). Ausente en eventos antiguos (equivale a "rules"). */
   extractor?: "llm" | "rules";

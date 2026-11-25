@@ -64,6 +64,11 @@ services:
       # Plazo máximo (ms) que una extracción sin «Enviar» espera a que el STT quede libre (0 = sin aplazar).
       LLM_DEFER_MAX_MS: ${LLM_DEFER_MAX_MS:-20000}
       LLM_EXTRA_BODY: ${LLM_EXTRA_BODY:-}
+      DATA_DIR: /app/call-data
+      GEOCODER_URL: ${GEOCODER_URL:-}
+      GEOCODER_TIMEOUT_MS: ${GEOCODER_TIMEOUT_MS:-3000}
+    volumes:
+      - relay_calls:/app/call-data
     depends_on:
       stt:
         condition: service_started
@@ -87,6 +92,7 @@ volumes:
   caddy_data:
   caddy_config:
   whisper_models:
+  relay_calls:
 
 networks:
   default:

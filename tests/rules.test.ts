@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { extractByRules } from "@/lib/rules";
+import { extractAddressFragment, extractByRules } from "@/lib/rules";
+
 import { isPublicCallEvent } from "@/lib/publicCall";
 import { KNOWN_LOCATION_ACC, UNKNOWN_LOCATION_AML } from "@/lib/publicCall";
 import { scenario as dana } from "@/data/scenario-dana-malaga";
@@ -22,7 +23,23 @@ function asEvent(r: ReturnType<typeof run>, language = "es") {
   };
 }
 
+const newAddressCall = "Hay un incendio en la calle Flor Nueva 7, necesito ayuda.";
+
+it("extrae solo un fragmento de dirección explícito y acotado", () => {
+  expect(extractAddressFragment(newAddressCall)).toBe("calle Flor Nueva 7");
+  expect(extractAddressFragment("calle a b c d e f g h")).toBe("calle a b c d e f");
+  expect(extractAddressFragment("en mi calle.")).toBe("");
+  expect(extractAddressFragment(`calle ${"a".repeat(100)}`).length).toBe(80);
+});
+
 describe("extractByRules", () => {
+  it("conserva el resultado determinista al margen de la extracción para el geocodificador", () => {
+    expect(run(newAddressCall)).toEqual({
+      extraction: { language: "es", translation_es: null, summary_es: "Incendio.", incident_type: "incendio",
+        location_text: "", keywords: ["incendio", "aviso", "llamada"], risks: [], people_at_risk: 0, severity: 4 },
+      location: { place: null, known: false, aml: UNKNOWN_LOCATION_AML },
+    });
+  });
   it("coche atrapado en el paso inferior de la A-357 con un bebé", () => {
     const r = run("Hay un coche atrapado en el paso inferior de la A-357, en Campanillas, con un bebé dentro. ¡Rápido!");
     expect(r.extraction.incident_type).toBe("inundacion_vehiculo");
