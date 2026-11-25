@@ -43,6 +43,18 @@ await page.waitForTimeout(1500);
 const kpi = async (pg, k) => Number(await pg.locator(`[data-kpi=${k}]`).getAttribute("data-value"));
 if ((await kpi(page, "calls")) !== 26 || (await kpi(page, "incidents")) !== 7) fail(`contadores: ${await page.locator(".kpis").innerText()}`);
 
+// Agente de espera (X11): la caja aparece, el asistente atiende llamadas en la DANA y E1 sale escalada.
+const wait = page.locator("#box-waiting");
+await wait.waitFor({ timeout: 5000 });
+if (!(await wait.innerText()).includes("Simulación con supuestos declarados")) fail("la caja En espera no se rotula como simulación");
+const waitNum = async (k) => Number(await wait.locator(`[data-wait=${k}]`).innerText());
+for (const ops of ["1 operador", "2 operadores"]) {
+  await wait.getByRole("button", { name: ops, exact: true }).click();
+  if ((await waitNum("attended")) < 1) fail(`con ${ops}, el asistente no atiende ninguna llamada`);
+  if ((await wait.locator('[data-call="E1"]').getAttribute("data-outcome")) !== "escalada") fail(`con ${ops}, E1 no sale escalada`);
+}
+if (!(await wait.locator('[data-call="E1"]').innerText()).includes("Escalada")) fail("E1 escalada sin aviso visible");
+
 // Los incidentes se buscan por contenido (tipo, motivo y nº de llamadas), no por su número INC-xx:
 // los números no se reutilizan y dependen de las decisiones del operador.
 const prio = (name) => page.locator(".prio").getByRole("button", { name }).first();
@@ -141,4 +153,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, acciones del agente, audio, Separar, sin errores de consola");
+console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, acciones del agente, agente de espera, audio, Separar, sin errores de consola");

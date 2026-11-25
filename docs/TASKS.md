@@ -93,7 +93,7 @@ Reglas: se trabaja **siempre la primera tarea `[ ]` cuyas dependencias estén `[
 ## Fase 7: Ideas para el pitch (MEMORIA §17, `docs/IDEAS.md`)
 Elegidas por Nick el 2026-11-25. **Pueden tocar la interfaz** (aprobado por Nick). Se trabajan en la rama `noche/ideas-pitch`, nunca en `main`.
 Verificación común (además de la propia de cada tarea): `npm run build`, `npm run lint`, `npm test`, `npm run eval` y `npm run eval:apagon` en verde; `node scripts/e2e.mjs` en verde y ampliado con la comprobación de la tarea; en las tareas con interfaz, capturas con Playwright de escritorio 1440×900 y móvil 390×844 (oscuro y claro) **miradas de verdad**, sin errores en la consola del navegador ni scroll horizontal en móvil; la exportación estática de GitHub Pages sigue funcionando. Veredicto APTO de `qa-verificador` con pruebas antes de cerrar.
-- [ ] X11 Agente de espera visible en la consola (idea #10) · agente: `frontend-consola` · deps: X06
+- [x] X11 Agente de espera visible en la consola (idea #10) · agente: `frontend-consola` · deps: X06
   - Caja «En espera» en `components/Console.tsx` (componente nuevo) alimentada por `lib/waiting.ts` con los mismos supuestos de `lib/metrics.ts`: llamadas que atiende el asistente automático (se presenta como asistente, en el idioma del llamante, con frases pretraducidas), duplicados agrupados sin ocupar a un operador y llamadas escaladas a la cola humana con un aviso visible.
   - Selector o valor de operadores disponibles (por defecto el de la franja de sala, como `npm run agente`). Rotulado «simulación con supuestos declarados».
   - E1 (dolor torácico, árabe) aparece como escalada si le toca esperar; nunca atiende una llamada que un operador libre podría coger (mismos tests de X06 en verde).

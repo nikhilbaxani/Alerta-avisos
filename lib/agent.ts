@@ -27,10 +27,11 @@ import { confirmDifferent, confirmSame, initialState, processCall } from "@/lib/
 import type { EngineCall, Incident } from "@/lib/engine";
 import { LANG_NAMES, RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { DUPLICATE_SECONDS, NEW_CALL_SECONDS } from "@/lib/metrics";
-import type { SimCall } from "@/lib/metrics";
 import type { DecisionAction, IncidentType, RiskTag, Scenario } from "@/lib/types";
 import { DEFAULT_OPERATORS, compareWaiting } from "@/lib/waiting";
 import type { Attention, RoomIndicators, WaitingCall, WaitingReport } from "@/lib/waiting";
+import { heardOf, roomCall } from "@/lib/waitingConsole";
+import type { Heard } from "@/lib/waitingConsole";
 
 /** Segundos de escenario que tarda el operador simulado en aprobar una acción. */
 export const APPROVAL_DELAY_S = 5;
@@ -112,7 +113,7 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
   const queue: { key: string; due: number; role: Role }[] = [];
   const steps: AgentStep[] = [];
   /** Lo que sabe el sistema de cada llamada al entrar, antes de que decida nadie (para el asistente de espera). */
-  const heard: Record<string, Omit<WaitingCall, keyof SimCall | "lang">> = {};
+  const heard: Record<string, Heard> = {};
 
   /** El operador (o el coordinador) simulado aprueba, y el conector envía, lo que toca hasta `until`. */
   const approveUntil = (until: number) => {
@@ -130,16 +131,7 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
     const before = state;
     const r = processCall(state, byId[c.id]);
     state = r.state;
-    const entered = state.incidents.find((i) => i.id === state.assignment[c.id])!;
-    const target = r.decision.action === "merge" ? before.incidents.find((i) => i.id === r.decision.incidentId) : undefined;
-    heard[c.id] = {
-      decision: r.decision.action,
-      newInfo: entered.alerts.find((a) => a.callId === c.id)?.risks ?? [],
-      intoProvisional: r.decision.action === "merge" && entered.provisional,
-      incidentType: entered.type,
-      incidentRisks: [...entered.risks],
-      known: target ? { risks: [...target.risks], severity: target.severity } : null,
-    };
+    heard[c.id] = heardOf(before, state, c.id, r.decision);
     let operator: AgentStep["operator"] = null;
     if (r.decision.action === "ask" && r.decision.incidentId) {
       // Operador ideal (como el eval): compara con el gold del incidente enlazado. Nunca es una fusión automática.
@@ -190,18 +182,9 @@ export async function runAgent(scenario: Scenario, opts: AgentOptions = {}): Pro
   approveUntil(Infinity);
 
   // Sala simulada: «primera de su incidente» con el estado final, como la franja de sala de la consola.
-  const roomCalls: WaitingCall[] = calls.map((c) => {
-    const inc = state.incidents.find((i) => i.id === state.assignment[c.id])!;
-    return {
-      id: c.id,
-      t: c.t,
-      extraction: { severity: c.mock.severity, risks: [...c.mock.risks] },
-      incidentId: inc.id,
-      first: inc.callIds[0] === c.id,
-      lang: facts[c.id].lang,
-      ...heard[c.id],
-    };
-  });
+  const roomCalls: WaitingCall[] = calls.map((c) =>
+    roomCall({ id: c.id, t: c.t, extraction: c.mock }, state.incidents.find((i) => i.id === state.assignment[c.id]), heard[c.id]),
+  );
 
   return {
     scenarioId: scenario.id,

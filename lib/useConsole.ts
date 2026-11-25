@@ -18,6 +18,8 @@ import type { EngineCall, EngineState, Incident } from "@/lib/engine";
 import type { Aml, Decision, ProcessResult } from "@/lib/types";
 import { actionIncidents, addProposals, approve, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
 import type { AgentAction, Proposal } from "@/lib/actions";
+import { heardOf } from "@/lib/waitingConsole";
+import type { Heard } from "@/lib/waitingConsole";
 
 export type Speed = 1 | 4 | 10;
 const sortedCalls = (id: string) => [...getScenario(id).calls].sort((a, b) => a.t - b.t);
@@ -101,6 +103,8 @@ export interface ConsoleState {
   actions: AgentAction[];
   /** Incidentes que el operador ha dado por solucionados, con cuándo. */
   archived: ArchivedIncident[];
+  /** Lo que el sistema sabía de cada llamada al entrar (para el agente de espera, X11). */
+  heard: Record<string, Heard>;
 }
 
 export interface ArchivedIncident {
@@ -130,6 +134,7 @@ export const init = (epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleState 
   live: {},
   actions: [],
   archived: [],
+  heard: {},
 });
 
 export type ConsoleAction =
@@ -180,6 +185,7 @@ function applyResult(s: ConsoleState, src: CallMeta, result: ProcessResult): Con
     inflight: src.live ? s.inflight : null,
     engine,
     calls: { ...s.calls, [id]: call },
+    heard: { ...s.heard, [id]: heardOf(s.engine, engine, id, decision) },
     recs: { ...s.recs, [id]: { ...s.recs[id], status: "done", result: { ...result, decision } } },
     audit,
     fx,

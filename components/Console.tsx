@@ -26,6 +26,7 @@ import PriorityList from "./PriorityList";
 import TopBar from "./TopBar";
 import type { Theme } from "./TopBar";
 import TranslateBox from "./TranslateBox";
+import WaitingBox from "./WaitingBox";
 
 /** Lleva la vista a una caja (útil en pantallas pequeñas) y la resalta un instante. */
 function focusBox(box: FocusBox) {
@@ -145,7 +146,10 @@ export default function Console() {
       />
       {/* Una sola pantalla: cada apartado en su caja, todos a la vista a la vez. */}
       <main className="board">
-        <CallQueue s={s} ranks={ranks} onArchived={openArchive} playing={audio.playing} sttUp={sttUp} localAI={status.mode === "local"} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
+        <div className="col col-left">
+          <CallQueue s={s} ranks={ranks} onArchived={openArchive} playing={audio.playing} sttUp={sttUp} localAI={status.mode === "local"} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
+          <WaitingBox s={s} ranks={ranks} onSelect={selectIncident} />
+        </div>
 
         <div className="col col-center">
           {/* La decisión ámbar va encima del mapa y nunca se resuelve sola. */}
