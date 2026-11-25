@@ -327,10 +327,6 @@
 .deck .screen .compare-text { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .deck .screen .deck-link { display: none; }
 
-.open-row { display: flex; align-items: center; gap: 22px; margin-top: 8px; }
-.open-console { display: inline-flex; align-items: center; gap: 10px; height: 58px; padding: 0 28px; border-radius: 999px; background: var(--d-ink); color: var(--d-paper); font-size: 20px; font-weight: 650; text-decoration: none; }
-.open-console:hover { background: #000; }
-.open-local { font: 14px var(--d-mono); color: var(--d-muted); text-decoration: underline; text-underline-offset: 3px; }
 
 /* ═════════════ 7 · Clientes ═════════════ */
 .chain { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }

@@ -2,10 +2,10 @@
 
 Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descartada.
 
-## 2026-11-25 · Presentación: la demo salta a la consola del VPS y el cierre usa la tarjeta del QR (petición de Nick)
-- Decisión: al avanzar a la diapositiva de la demo, la presentación abre la consola del VPS (`https://oracle-exit.tail0093c8.ts.net/`, cambiable con `NEXT_PUBLIC_DEMO_CONSOLE_URL`). Si se vuelve hacia atrás, la diapositiva se queda con «Abrir la consola» y un enlace «Sin red: consola local». La consola incrustada deja de usarse en la presentación. El cierre muestra `public/qr-llamar-tarjeta.png` (QR de `/llamar`) con «Este QR lleva a una simulación de llamada al 112».
+## 2026-11-25 · Presentación: al terminar salta a la consola del VPS y el cierre usa la tarjeta del QR (petición de Nick)
+- Decisión: al pasar de la última diapositiva (o pulsar «Abrir la consola» en el cierre), la presentación abre la consola del VPS (`https://oracle-exit.tail0093c8.ts.net/`, cambiable con `NEXT_PUBLIC_DEMO_CONSOLE_URL`) en lugar de la consola local. La diapositiva de la demo sigue con la consola incrustada (corrección de Nick: el salto es desde la 9, no desde la 5). El cierre muestra `public/qr-llamar-tarjeta.png` (QR de `/llamar`) con «Este QR lleva a una simulación de llamada al 112».
 - Token de operador: no se guarda en el código ni en el repositorio (la presentación es pública). La consola del VPS guarda el `#op=` en `localStorage` la primera vez que se abre con él, así que basta con abrir una vez el enlace de operador en el navegador con el que se presenta.
-- Excepción al modo simulado sin red: la demo en la consola del VPS necesita conexión; el enlace a la consola local queda como reserva.
+- Excepción al modo simulado sin red: abrir la consola del VPS necesita conexión; la demo incrustada de la presentación sigue funcionando sin red.
 - Motivo: Nick quiere enseñar la terminal del VPS, donde también entran las llamadas del público.
 
 ## 2026-11-25 · Presentación: orden, «cómo lo hacemos», acciones en la demo y QR lateral (petición de Nick)
