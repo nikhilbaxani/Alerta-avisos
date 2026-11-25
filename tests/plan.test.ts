@@ -185,7 +185,7 @@ describe("POST /api/plan", () => {
     "No entre a pie ni en vehículo en zonas inundadas.",
     "Si el agua sube y sigue dentro del vehículo, suba al techo si puede hacerlo sin meterse en la corriente.",
     "No cruce pasos inferiores inundados.",
-    "Mantenga el teléfono libre.",
+    "Mantenga el teléfono disponible por si el 112 le devuelve la llamada.",
   ];
 
   it("da entre dos y cuatro consejos para cada tipo de incidente, incluso sin riesgos detectados", async () => {
@@ -194,10 +194,10 @@ describe("POST /api/plan", () => {
       const res = await planPOST(json({ ...incA, type, risks: [], calls: [{ ...incA.calls[0], risks: [] }] }));
       expect(res.status).toBe(200);
       const { advice } = await res.json();
-      expect(advice, type).toEqual(expect.arrayContaining(["Mantenga el teléfono libre."]));
+      expect(advice, type).toEqual(expect.arrayContaining(["Mantenga el teléfono disponible por si el 112 le devuelve la llamada."]));
       expect(advice.length, type).toBeGreaterThanOrEqual(2);
       expect(advice.length, type).toBeLessThanOrEqual(4);
-      if (type === "otro") expect(advice).toEqual(["Aléjese del peligro y siga las indicaciones de los servicios de emergencia.", "Mantenga el teléfono libre."]);
+      if (type === "otro") expect(advice).toEqual(["Aléjese del peligro y siga las indicaciones de los servicios de emergencia.", "Mantenga el teléfono disponible por si el 112 le devuelve la llamada."]);
     }
   });
 

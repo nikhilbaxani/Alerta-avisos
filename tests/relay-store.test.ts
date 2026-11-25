@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRelay, type RelayOptions } from "@/server/relay";
-import { UNKNOWN_LOCATION_AML } from "@/lib/publicCall";
+import { PUBLIC_CALL_ID, UNKNOWN_LOCATION_AML } from "@/lib/publicCall";
 
 const TOKEN = "fake-operator-token";
 const AUDIO = "fake-audio-bytes";
@@ -125,7 +125,7 @@ it("reenvía aceptadas por fecha original y retira descartadas antes que aceptad
   expect((await frames(r))[0]).toEqual({ ...two, type: "accepted" });
 });
 
-it("requiere token y origen permitido para borrar; notifica y elimina el archivo", async () => {
+it("requiere token y origen permitido para borrar; notifica y conserva solo el contador", async () => {
   const r = await boot();
   await publish(r);
   expect((await wipe(r)).status).toBe(401);
@@ -137,8 +137,82 @@ it("requiere token y origen permitido para borrar; notifica y elimina el archivo
   expect(await res.json()).toEqual({ removed: 1 });
   expect(new TextDecoder().decode((await reader.read()).value)).toContain("event: cleared\ndata: {\"removed\":1}");
   await reader.cancel();
-  expect(await readdir(dir)).toEqual([]);
   expect(await frames(r)).toEqual([]);
+  expect(await readdir(dir)).toEqual(["calls.json"]);
+  const file = join(dir, "calls.json");
+  expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ version: 1, counter: 1, calls: [] });
+  expect((await stat(file)).mode & 0o777).toBe(0o600);
+});
+
+it("S27: el contador no retrocede tras borrar y reiniciar", async () => {
+  const r = await boot(); await publish(r); await publish(r);
+  expect((await wipe(r, AUTH)).status).toBe(200);
+  await close(r.server);
+  const again = await boot(); await publish(again);
+  expect((await frames(again))[0].data.id).toBe("PTEST3");
+});
+
+it("S27: recupera el contador de un archivo corrupto o usa una semilla de época", async () => {
+  const file = join(dir, "calls.json");
+  await writeFile(file, '{"version":1,"counter":8,"calls":[');
+  const recovered = await boot();
+  expect(await frames(recovered)).toEqual([]);
+  await publish(recovered);
+  expect((await frames(recovered)).map((f) => f.data.id)).toEqual(["PTEST9"]);
+  await close(recovered.server);
+
+  await writeFile(file, '{"version":1,"counter":-1,"calls":[');
+  const now = Math.floor(Date.now() / 1000);
+  const seeded = await boot({ bootTag: "TST" });
+  expect(await frames(seeded)).toEqual([]);
+  await publish(seeded);
+  const [published] = await frames(seeded);
+  expect(published.data.id).toMatch(PUBLIC_CALL_ID);
+  const { counter } = JSON.parse(await readFile(file, "utf8"));
+  expect(counter).toBeGreaterThanOrEqual(now + 1);
+  expect(counter).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 1);
+});
+
+it("S27: archivo hostil no se reenvía ni rompe el relay", async () => {
+  await writeFile(join(dir, "calls.json"), JSON.stringify({ version: 1, counter: 3, calls: [1, null, { call: { id: "bad" }, outcome: "pending" }] }));
+  const r = await boot();
+  expect(await frames(r)).toEqual([]);
+  await publish(r);
+  expect((await frames(r)).map((f) => f.data.id)).toEqual(["PTEST4"]);
+});
+
+const root = process.getuid?.() === 0;
+it.skipIf(root)(`S27: publica y acusa con DATA_DIR de solo lectura${root ? " (omitida: root puede escribir pese a chmod 0500)" : ""}`, async () => {
+  const log = vi.fn();
+  const r = await boot({ log });
+  const reader = (await r.req(`/events?token=${TOKEN}`)).body!.getReader();
+  try {
+    await reader.read();
+    await chmod(dir, 0o500);
+    await publish(r);
+    const decoder = new TextDecoder();
+    let text = "";
+    while (!text.includes("event: call\n")) text += decoder.decode((await reader.read()).value);
+    const [event] = await frames(r);
+    expect(event).toMatchObject({ type: "call", data: { id: "PTEST1" } });
+    const health = await r.req("/health");
+    expect(health.status).toBe(200);
+    expect(await health.json()).toMatchObject({ store: "failing" });
+    const response = await ack(r, event.data.id, "discarded");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(await frames(r)).toEqual([]);
+    expect(await readdir(dir)).toEqual([]);
+    expect(log.mock.calls.map(([line]) => line).filter((line) => line.includes("EACCES"))).toEqual(["EACCES", "EACCES"]);
+    await chmod(dir, 0o700);
+    await publish(r);
+    expect(await (await r.req("/health")).json()).toMatchObject({ store: "ok" });
+    await close(r.server);
+    expect((await frames(await boot())).map((f) => f.data.id)).toEqual(["PTEST2"]);
+  } finally {
+    await chmod(dir, 0o700);
+    await reader.cancel().catch(() => {});
+  }
 });
 
 it("aparta un archivo corrupto y arranca vacío", async () => {

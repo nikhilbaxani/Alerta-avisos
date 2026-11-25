@@ -36,7 +36,7 @@ describe("resolveLocation", () => {
 
   it("devuelve ubicación desconocida y aborta a los 3000 ms incluso esperando el cuerpo", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue({ ok: true, json: () => new Promise(() => {}) } as Response);
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(new ReadableStream<Uint8Array>()));
     const pending = resolveLocation(address, { url, fetch });
     expect(fetch).toHaveBeenCalledTimes(1);
     const signal = fetch.mock.calls[0][1]?.signal;
@@ -53,6 +53,30 @@ describe("resolveLocation", () => {
     expect(await resolveLocation(address, { url, fetch })).toEqual(unknown);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rechaza una respuesta 302 y no permite seguir redirecciones", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.redirect("https://otro.invalid", 302));
+    expect((await resolveLocation(address, { url, fetch })).known).toBe(false);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.objectContaining({ redirect: "error" }));
+  });
+
+  it.each([65_536, 65_537])("limita el cuerpo contado en bytes (%i)", async (size) => {
+    const payload = JSON.stringify([{ ...point, display_name: "á".repeat(20_000) }]);
+    const bytes = new TextEncoder().encode(payload);
+    const cancel = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.enqueue(new Uint8Array(size - bytes.length).fill(32));
+        if (size === 65_536) controller.close();
+      },
+      // RED también termina: la implementación anterior lee hasta el cierre.
+      pull(controller) { controller.close(); },
+      cancel,
+    }, { highWaterMark: 0 })));
+    expect(await resolveLocation(address, { url, fetch })).toEqual(size === 65_536 ? success : unknown);
+    expect(cancel).toHaveBeenCalledTimes(size === 65_536 ? 0 : 1);
   });
 
   it.each([

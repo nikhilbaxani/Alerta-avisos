@@ -1,6 +1,6 @@
 import type { IncidentType, RiskTag } from "@/lib/types";
 
-const KEEP_PHONE_FREE = "Mantenga el teléfono libre.";
+const KEEP_PHONE_AVAILABLE = "Mantenga el teléfono disponible por si el 112 le devuelve la llamada.";
 const FOLLOW_EMERGENCY_SERVICES = "Aléjese del peligro y siga las indicaciones de los servicios de emergencia.";
 
 type AdviceRule = { risk: RiskTag; instruction: string };
@@ -16,7 +16,7 @@ const ADVICE: Record<IncidentType, AdviceEntry> = {
     base: ["Suba a una planta alta sin atravesar el agua.", "No baje a sótanos ni garajes."],
   },
   garaje_inundado: {
-    base: ["No baje al garaje ni intente sacar el vehículo.", "Si está dentro, busque un lugar elevado sin atravesar la corriente."],
+    base: ["Si está dentro del garaje, salga a pie hacia una planta superior, sin usar el vehículo ni el ascensor, si puede hacerlo sin atravesar la corriente.", "No baje al garaje ni intente sacar el vehículo."],
   },
   arbol_caido: { base: ["Manténgase lejos del árbol y de las ramas inestables.", "No intente retirar el árbol ni corte el tráfico por su cuenta."] },
   semaforos: { base: ["Si conduce, reduzca la velocidad y siga la señalización y las indicaciones de los agentes.", "No entre en el cruce si no puede hacerlo con seguridad."] },
@@ -37,8 +37,8 @@ const ELECTRICAL_RISK = "No toque cables caídos ni objetos en contacto con ello
 export function adviceFor({ type, risks }: { type: IncidentType; risks: readonly RiskTag[] }): string[] {
   const entry = ADVICE[type] ?? ADVICE.otro;
   const [first, second] = entry.base;
-  const extra = risks.includes("cables_electricos")
-    ? ELECTRICAL_RISK
-    : entry.risks?.find(({ risk }) => risks.includes(risk))?.instruction;
-  return [first, extra, second, KEEP_PHONE_FREE].filter((line): line is string => line !== undefined);
+  const electrical = risks.includes("cables_electricos") ? ELECTRICAL_RISK : undefined;
+  const specific = entry.risks?.find(({ risk }) => risks.includes(risk))?.instruction;
+  const secondary = electrical && specific ? undefined : second;
+  return [electrical, first, specific, secondary, KEEP_PHONE_AVAILABLE].filter((line): line is string => line !== undefined);
 }

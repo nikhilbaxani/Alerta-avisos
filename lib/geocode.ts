@@ -11,6 +11,7 @@ export interface GeocodeOptions {
 // Caja envolvente aproximada del municipio (no es su perímetro administrativo).
 const MALAGA = { west: -4.63, north: 36.94, east: -4.29, south: 36.65 };
 const CACHE_LIMIT = 256;
+const MAX_RESPONSE_BYTES = 64 * 1024;
 const cache = new Map<string, Aml>();
 const QUEUE_LIMIT = 10;
 const TOTAL_LIMIT_MS = 10_000;
@@ -95,6 +96,30 @@ function readPoint(body: unknown): Aml | undefined {
   return { lat: latitude, lng: longitude, acc };
 }
 
+async function readResponse(response: Response, signal: AbortSignal): Promise<unknown> {
+  const reader = response.body?.getReader();
+  if (!reader) return;
+  const cancel = () => { void reader.cancel().catch(() => {}); };
+  signal.addEventListener("abort", cancel, { once: true });
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  try {
+    if (signal.aborted) { cancel(); return; }
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (signal.aborted) return;
+      if (done) return JSON.parse(text + decoder.decode());
+      bytes += value.byteLength;
+      if (bytes > MAX_RESPONSE_BYTES) { cancel(); return; }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    reader.releaseLock();
+  }
+}
+
 /** Recibe solo el campo de dirección extraído; nunca pasar la transcripción. */
 export async function resolveLocation(locationText: string, opts: GeocodeOptions = {}): Promise<PublicLocation> {
   const place = locationText.trim();
@@ -117,7 +142,7 @@ export async function resolveLocation(locationText: string, opts: GeocodeOptions
         signal,
         redirect: "error",
       });
-      return response.ok ? readPoint(await response.json()) : undefined;
+      return response.ok ? readPoint(await readResponse(response, signal)) : undefined;
     }, opts.timeoutMs);
     if (!aml) return unknown();
     cache.set(url, { ...aml });

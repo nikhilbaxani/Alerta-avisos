@@ -8,7 +8,7 @@
  *   GET  /events   SSE (token obligatorio): hasta 50 pendientes + aceptadas del almacén + en vivo
  *   POST /events/ack   acuse del operador (Bearer): {id, outcome} → {ok: true}
  *   DELETE /events/store   borra el historial (Bearer): {removed}
- *   GET  /health   {ok, queue, maxCallSeconds}
+ *   GET  /health   {ok, queue, maxCallSeconds, store?}
  * Uso: npx tsx server/relay.ts   (variables de entorno: ver server/README.md)
  * El audio solo vive en memoria y se descarta tras transcribir. No se registra texto ni IPs completas.
  */
@@ -827,7 +827,11 @@ export function createRelay(opts: RelayOptions) {
     if (full && !victim) return json(req, res, 503, { error: "Hay demasiadas llamadas en cola. Inténtalo en un minuto." });
     ++seq;
     // Corto para la bandeja: el contador guardado no retrocede y la etiqueta cambia en cada arranque.
-    const label = `P${bootTag}${seq}`;
+    const decimal = String(seq);
+    const compact = seq.toString(36).toUpperCase();
+    // Las semillas de época ya no caben en decimal. La Z distingue los contadores compactos.
+    const label = bootTag.length + decimal.length <= 12 ? `P${bootTag}${decimal}`
+      : `P${bootTag.slice(0, 11 - compact.length)}Z${compact}`;
     const id = randomBytes(16).toString("hex"); // 128 bits: quien tiene el id es quien grabó
     log(`[relay] ${label} recibida (${Math.round(file.size / 1024)} KB, ip ${short(ip)})`);
     const p: Pending = { id, label, status: "transcribing", ip, file, refund: undoQuota, timers: [] };
@@ -1007,7 +1011,7 @@ export function createRelay(opts: RelayOptions) {
       return void res.end();
     }
     if (req.method === "GET" && url.pathname === "/health") {
-      return json(req, res, 200, { ok: true, queue: queue.length + (running ? 1 : 0), maxCallSeconds: maxCall });
+      return json(req, res, 200, { ok: true, queue: queue.length + (running ? 1 : 0), maxCallSeconds: maxCall, store: store?.health });
     }
     if (req.method === "GET" && url.pathname === "/events") return handleEvents(req, res, url);
     if (req.method === "POST" && url.pathname === "/events/ack") return handleAck(req, res);
