@@ -157,6 +157,74 @@ export const WAITING_PHRASES: readonly (Phrase & { id: WaitingPhraseId })[] = [
   },
 ];
 
+/** Datos que faltan cuya pregunta es nueva (X12); los demás reutilizan `respira`, `heridos` y `direccion` de `PHRASES`. */
+export const MISSING_PHRASE_IDS = ["personas", "altura_agua", "planta"] as const;
+export type MissingPhraseId = (typeof MISSING_PHRASE_IDS)[number];
+
+/**
+ * Preguntas de «Falta saber» (X12). Exportación aparte a propósito: la consola pinta un botón por cada
+ * elemento de `PHRASES`. Son preguntas, no instrucciones, así que no van por SMS (`SMS_PHRASE_IDS`).
+ * Traducciones escritas para el proyecto y anotadas en DECISIONES (X12).
+ */
+export const MISSING_PHRASES: readonly (Phrase & { id: MissingPhraseId })[] = [
+  {
+    id: "personas",
+    es: "¿Cuántas personas están en peligro?",
+    tr: {
+      en: "How many people are in danger?",
+      de: "Wie viele Personen sind in Gefahr?",
+      fr: "Combien de personnes sont en danger ?",
+      ar: "كم عدد الأشخاص المعرّضين للخطر؟",
+      it: "Quante persone sono in pericolo?",
+    },
+  },
+  {
+    id: "altura_agua",
+    es: "¿Hasta dónde llega el agua?",
+    tr: {
+      en: "How high is the water?",
+      de: "Wie hoch steht das Wasser?",
+      fr: "Jusqu'où monte l'eau ?",
+      ar: "إلى أي ارتفاع وصل الماء؟",
+      it: "Fin dove arriva l'acqua?",
+    },
+  },
+  {
+    id: "planta",
+    es: "¿En qué planta está?",
+    tr: {
+      en: "Which floor are you on?",
+      de: "In welchem Stockwerk sind Sie?",
+      fr: "À quel étage êtes-vous ?",
+      ar: "في أي طابق أنت؟",
+      it: "A che piano si trova?",
+    },
+  },
+];
+
+/** Frase del aviso a quien llama otra vez por una emergencia que ya tiene recursos en camino (X14). */
+export const DUPLICATE_PHRASE_IDS = ["duplicado_en_camino"] as const;
+export type DuplicatePhraseId = (typeof DUPLICATE_PHRASE_IDS)[number];
+
+/**
+ * SMS de duplicado (`sms_duplicado`, X14). Exportación aparte a propósito: la consola pinta un botón por
+ * cada elemento de `PHRASES`. Solo es verdad cuando hay recursos aprobados o enviados (lo comprueba el
+ * planificador). Traducciones escritas para el proyecto y anotadas en DECISIONES (X14).
+ */
+export const DUPLICATE_PHRASES: readonly (Phrase & { id: DuplicatePhraseId })[] = [
+  {
+    id: "duplicado_en_camino",
+    es: "Ya hemos recibido su aviso; la ayuda está en camino. Si hay algo nuevo, vuelva a llamar.",
+    tr: {
+      en: "We have already received your report; help is on the way. If anything changes, call again.",
+      de: "Ihre Meldung ist bei uns eingegangen; Hilfe ist unterwegs. Wenn sich etwas Neues ergibt, rufen Sie erneut an.",
+      fr: "Nous avons bien reçu votre signalement ; les secours arrivent. S'il y a du nouveau, rappelez-nous.",
+      ar: "لقد تلقّينا بلاغك، والمساعدة في الطريق. إذا استجدّ أي أمر، اتصل بنا مرة أخرى.",
+      it: "Abbiamo già ricevuto la sua segnalazione; i soccorsi stanno arrivando. Se c'è qualcosa di nuovo, richiami.",
+    },
+  },
+];
+
 export const SPEECH_LOCALE: Record<string, string> = {
   es: "es-ES",
   en: "en-GB",

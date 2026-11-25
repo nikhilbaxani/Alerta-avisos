@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getScenario } from "@/data/scenarios";
 import {
+  LOST_CALLS_ID,
   ACTION_POLICY,
   ES_ALERT_LINK_M,
   ES_ALERT_TEXT,
@@ -335,7 +336,9 @@ describe("npm run agente con las herramientas de X07", async () => {
   it("las herramientas de X05 no cambian (10 recursos, 8 SMS, 2 avisos a la distribuidora) y no hay claves repetidas", () => {
     const n = (t: string) => run.actions.filter((a) => a.tool === t).length;
     expect([n("proponer_recursos"), n("sms_al_llamante"), n("avisar_distribuidora")]).toEqual([10, 8, 2]);
-    expect([n("aviso_ayuntamiento"), n("devolver_llamada"), n("proponer_es_alert")]).toEqual([2, 2, 1]);
+    // devolver_llamada: B3 y G3 (X07) más P3 y P4, las llamadas perdidas sin incidente (X15).
+    expect([n("aviso_ayuntamiento"), n("devolver_llamada"), n("proponer_es_alert")]).toEqual([2, 4, 1]);
+    expect(run.actions.filter((a) => a.tool === "devolver_llamada" && a.incidentId === LOST_CALLS_ID).map((a) => a.destination)).toEqual(["P3", "P4"]);
     const keys = run.actions.map((a) => a.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -362,7 +365,9 @@ describe("npm run agente con las herramientas de X07", async () => {
     const ap = await runAgent(apagon);
     expect(esAlerts(ap)).toEqual([]);
     expect(ap.actions.filter((a) => a.tool === "aviso_ayuntamiento").map((a) => a.destination)).toEqual(["semaforos"]);
-    expect(ap.actions.filter((a) => a.tool === "devolver_llamada").map((a) => a.destination)).toEqual(["H1", "J1"]);
+    const callbacks = ap.actions.filter((a) => a.tool === "devolver_llamada");
+    expect(callbacks.filter((a) => a.incidentId !== LOST_CALLS_ID).map((a) => a.destination)).toEqual(["H1", "J1"]);
+    expect(callbacks.filter((a) => a.incidentId === LOST_CALLS_ID).map((a) => a.destination)).toEqual(["P7"]); // llamada perdida (X15)
     const n = (t: string) => ap.actions.filter((a) => a.tool === t).length;
     expect([n("proponer_recursos"), n("sms_al_llamante"), n("avisar_distribuidora")]).toEqual([7, 4, 4]);
   });

@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { actionIncidents, canApprove } from "@/lib/actions";
 import { buildAuditLog } from "@/lib/audit";
-import { proposalsFor } from "@/lib/consoleActions";
-import { callMeta, scenarioEnd, useConsole } from "@/lib/useConsole";
+import { getScenario } from "@/data/scenarios";
+import { callMeta, consoleHazards, consoleHazardWarnings, consoleProposals, consoleUnits, scenarioEnd, useConsole } from "@/lib/useConsole";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import AgentFeed from "@/components/AgentFeed";
 import DecisionBanner from "@/components/DecisionBanner";
@@ -46,10 +46,9 @@ export default function LiveConsole({ active }: { active: boolean }) {
     if (s.running) dispatch({ type: "pause" });
   }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const proposals = useMemo(() => {
-    const phones = Object.fromEntries(s.arrived.map((id) => [id, callMeta(s, id)?.phone ?? ""]));
-    return proposalsFor(s.engine.incidents, s.calls, phones);
-  }, [s.engine, s.calls, s.arrived, s.live, s.scenarioId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Llamadas perdidas (X15): dependen del reloj; basta con recalcular cuando ocurre una nueva.
+  const lostSeen = (getScenario(s.scenarioId).lost ?? []).filter((l) => l.t <= s.clock).length;
+  const proposals = useMemo(() => consoleProposals(s), [s.engine, s.calls, s.arrived, s.live, s.scenarioId, s.actions, lostSeen]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     dispatch({ type: "plan", proposals });
   }, [proposals, dispatch]);
@@ -66,6 +65,9 @@ export default function LiveConsole({ active }: { active: boolean }) {
   }, [s]);
 
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
+  const units = useMemo(() => consoleUnits(s), [s.units, s.clock]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hazards = useMemo(() => consoleHazards(s), [s.engine, s.calls, s.archived]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hazardWarnings = useMemo(() => consoleHazardWarnings(s), [s.units, s.clock, hazards]); // eslint-disable-line react-hooks/exhaustive-deps
   const toApprove = s.actions.filter((a) => a.status === "propuesta" && canApprove(a.policy, "operador"));
   const pendingByIncident: Record<string, number> = {};
   for (const a of toApprove) for (const id of actionIncidents(a)) pendingByIncident[id] = (pendingByIncident[id] ?? 0) + 1;
@@ -93,7 +95,7 @@ export default function LiveConsole({ active }: { active: boolean }) {
         <section className="center" aria-label="Mapa y decisiones">
           {/* Solo la diapositiva visible escucha las teclas M y D. */}
           <div className="decision-slot" aria-live="polite">{active && <DecisionBanner s={s} onDecide={decide} />}</div>
-          <MapView s={s} onSelect={select} onFxDone={fxDone} pendingActions={pendingByIncident} />
+          <MapView s={s} onSelect={select} onFxDone={fxDone} pendingActions={pendingByIncident} units={units} hazards={hazards} hazardWarnings={hazardWarnings} />
           <AgentFeed actions={s.actions} epoch={s.epoch} />
         </section>
         <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />

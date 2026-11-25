@@ -60,6 +60,12 @@
   --map-dot-line: #0b0f15;
   --marker: #e9eef4;
   --marker-ink: #0b0f15;
+  --unit: #5b9bff;
+  --unit-ink: #0b0f15;
+  --unit-line: #0b0f15;
+  --unit-free: #8592a2;
+  --unit-free-line: #0b0f15;
+  --unit-route: #5b9bff;
   color-scheme: dark;
 }
 :root[data-theme="light"] {
@@ -114,6 +120,12 @@
   --map-dot-line: #121a24;
   --marker: #ffffff;
   --marker-ink: #121a24;
+  --unit: #2563eb;
+  --unit-ink: #ffffff;
+  --unit-line: #ffffff;
+  --unit-free: #7d8a99;
+  --unit-free-line: #ffffff;
+  --unit-route: #2563eb;
   color-scheme: light;
 }
 :root {
@@ -215,6 +227,7 @@ a.btn { text-decoration: none; }
 .col-center > .map-wrap { grid-row: 2; }
 .col-center > .pair { grid-row: 3; }
 .col-side { grid-template-rows: minmax(0, .9fr) minmax(0, 1.1fr); }
+.col-left { grid-template-rows: minmax(0, 1fr); }
 .pair { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .box {
   display: flex; flex-direction: column; min-height: 0; overflow: hidden;
@@ -291,8 +304,58 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 .act-incs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 2px; }
 .detail-kicker { display: flex; align-items: center; gap: 8px; }
 
+/* ---------- en espera: asistente automático (X11, simulación) ---------- */
+.wait-ops { display: flex; align-items: center; gap: 6px; }
+.wait-ops-label { font-size: 12.5px; color: var(--ink-3); }
+.wait-ops .seg button { min-width: 28px; padding: 0 7px; }
+.wait-assume summary, .wait-script summary { cursor: pointer; color: var(--ink-3); font-size: 12.5px; font-weight: 600; }
+.wait-assume summary:hover, .wait-script summary:hover { color: var(--ink); }
+.wait-assume ul { display: grid; gap: 4px; margin-top: 6px; max-height: 150px; overflow: auto; padding: 8px 10px; border-radius: var(--radius); background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; }
+.wait-stats { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.wait-stats div { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: 2px; padding: 5px 8px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--line); }
+.wait-stats dt { font-size: 11.5px; line-height: 1.2; color: var(--ink-3); }
+.wait-stats dd { margin: 0; font-size: 18px; font-weight: 750; line-height: 1; font-variation-settings: "wdth" 85; }
+.wait-stats .is-red { background: var(--red-bg); border-color: var(--red-line); }
+.wait-stats .is-red dd, .wait-stats .is-red dt { color: var(--red-ink); }
+.wait-alert { margin: 8px 8px 0; padding: 6px 10px; border-radius: var(--radius); background: var(--red-bg); border: 1px solid var(--red-line); box-shadow: inset 4px 0 0 var(--red); color: var(--ink); font-size: 13px; }
+.wait-alert b { color: var(--red-ink); }
+.wait-list { display: grid; gap: 6px; padding: 8px; }
+.wait-row { display: grid; gap: 4px; padding: 9px 10px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface-2); }
+.wait-row.out-escalada { box-shadow: inset 4px 0 0 var(--red); }
+.wait-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.wait-id { font-weight: 750; }
+.wait-meta { font-size: 12.5px; color: var(--ink-3); }
+.wait-top .pill { font-size: 12px; }
+.wait-status { font-size: 13px; color: var(--ink-2); }
+.wait-reason { font-size: 12.5px; color: var(--ink-3); }
+.wait-script p { margin-top: 6px; padding: 7px 10px; border-radius: var(--radius); background: var(--accent-bg); font-size: 13.5px; font-variation-settings: "wdth" 100; }
+.wait-script p.wait-es { background: transparent; padding: 0 10px; color: var(--ink-3); font-size: 12.5px; }
+.wait-foot { flex: none; display: grid; gap: 2px; padding: 7px 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
+.wait-foot b { color: var(--ink-2); font-weight: 650; }
+
 /* ---------- llamadas ---------- */
 .calls-col { display: flex; flex-direction: column; overflow: hidden; }
+/* Pestañas de la caja de llamadas: Entrantes · En espera · Perdidas */
+.calls-tabs { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0 6px; border-bottom: 1px solid var(--line); }
+.calls-tabs button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 0 6px;
+  border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent;
+  color: var(--ink-3); font-weight: 650; font-size: 13px; white-space: nowrap;
+}
+.calls-tabs button:hover { color: var(--ink); }
+.calls-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.calls-tabs .pill { padding: 0 6px; font-size: 11.5px; }
+.calls-tabs button.is-red:not([aria-selected="true"]) { color: var(--red-ink); }
+.calls-tabs button.is-amber:not([aria-selected="true"]) { color: var(--amber-ink); }
+.calls-escalated {
+  flex: none; margin: 8px 8px 0; padding: 6px 10px; text-align: left; cursor: pointer; font: inherit; font-size: 13px; color: var(--ink);
+  border-radius: var(--radius); background: var(--red-bg); border: 1px solid var(--red-line); box-shadow: inset 4px 0 0 var(--red);
+}
+.calls-escalated b { color: var(--red-ink); }
+.calls-escalated:hover { border-color: var(--red); }
+.calls-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.calls-pane[hidden] { display: none; }
+.wait-tools .wait-ops { justify-content: space-between; }
 .calls-tools { display: grid; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .calls-tools .seg { width: 100%; }
 .calls-tools .seg button { flex: 1 1 auto; font-size: 12.5px; padding: 0 6px; min-width: 0; white-space: nowrap; }
@@ -427,6 +490,34 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 .marker .sel-ring { fill: none; stroke: var(--accent); }
 .marker-todo rect { fill: var(--amber); stroke: #1b1200; }
 .marker-todo text { fill: #1b1200; font-weight: 800; stroke: none; }
+
+/* X16: unidades simuladas. Cuadrado con la sigla del servicio (los incidentes son círculos). */
+.units { pointer-events: none; }
+.unit { pointer-events: auto; transition: transform 1s linear; }
+.unit rect { fill: var(--unit); stroke: var(--unit-line); }
+.unit .unit-abbr { fill: var(--unit-ink); font-weight: 800; text-anchor: middle; stroke: none; pointer-events: none; }
+.unit .unit-tag { text-anchor: start; fill: var(--map-label); stroke: var(--map-halo); font-weight: 700; pointer-events: none; }
+.unit.st-libre rect { fill: var(--unit-free); stroke: var(--unit-free-line); opacity: .8; }
+.unit.st-asignada rect { stroke-dasharray: 3 2; }
+.unit.st-en_el_lugar rect { stroke: var(--ok); }
+.unit-line { stroke: var(--unit-route); fill: none; }
+.unit-line.st-en_el_lugar { display: none; }
+.map.sat .unit .unit-tag { fill: #fff; stroke: rgba(8,16,24,.8); }
+/* X17: peligros en la vía (simulación). Triángulo de señal de peligro (blanco con borde rojo); los
+   incidentes son círculos y las unidades, cuadrados. Sin animación: el aviso es estático. */
+.hazards { pointer-events: none; }
+.hazard { pointer-events: auto; }
+.hazard .hz-tri { fill: #fff; stroke: var(--red); stroke-linejoin: round; }
+.hazard .hz-water { fill: none; stroke: #2b6cb0; stroke-width: 1.6; stroke-linecap: round; }
+.hazard .hz-bang { fill: none; stroke: #15222e; stroke-width: 2.4; stroke-linecap: round; }
+.hazard .hz-bolt { fill: #15222e; stroke: none; }
+.hazard .hz-halo { fill: var(--red); opacity: .2; stroke: var(--red); stroke-width: 1.5; stroke-opacity: .9; stroke-dasharray: 3 3; }
+.hazard .hz-tag { text-anchor: middle; fill: var(--red-ink); stroke: var(--map-halo); font-weight: 800; paint-order: stroke; }
+.map.sat .hazard .hz-tag { fill: #fff; stroke: rgba(8,16,24,.85); }
+.unit .unit-warn { fill: #fff; stroke: var(--red); }
+.lg.hazard { width: 14px; height: 13px; border: 0; border-radius: 0; background: var(--red); clip-path: polygon(50% 0, 100% 100%, 0 100%); position: relative; }
+.lg.hazard::after { content: ""; position: absolute; inset: 4px 3.5px 2px; background: #fff; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.lg.unit { width: auto; height: 14px; padding: 0 4px; border-radius: 3px; border: 1.5px solid var(--unit-line); background: var(--unit); color: var(--unit-ink); font-size: 9.5px; font-weight: 800; font-style: normal; display: grid; place-items: center; }
 
 .map-presets, .map-zoom, .map-layers, .map-foot { position: absolute; z-index: 1; }
 .map-float { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
@@ -570,8 +661,17 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 .act-inc:hover { color: var(--ink); text-decoration: underline; }
 .act-inc:focus-visible { outline: 2px solid var(--accent); }
 .act-target { font-size: 13px; color: var(--ink-3); }
+.act-unit { display: inline-flex; align-items: flex-start; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--accent-ink); }
+.act-unit.k-sin_libre { color: var(--ink-2); }
+.act-unit { flex-wrap: wrap; }
+.act-unit svg { flex: none; margin-top: 2px; }
+.act-unit > span { flex: 1 1 0; min-width: 0; }
+.act-unit > .act-hazard { flex: 1 1 100%; display: flex; align-items: flex-start; gap: 6px; margin-top: 3px; padding: 6px 9px; border-radius: var(--radius); background: var(--red-bg); border: 1px solid var(--red-line); box-shadow: inset 4px 0 0 var(--red); color: var(--ink); font-weight: 500; }
+.act-hazard b { color: var(--red-ink); }
+.act-hazard svg { color: var(--red-ink); }
 .act-sms { display: grid; gap: 2px; margin: 4px 0 2px; padding: 7px 10px; background: var(--accent-bg); border-radius: var(--radius); font-size: 14px; }
 .act-sms small { font-size: 12px; color: var(--ink-3); }
+.act-batch { display: grid; gap: 1px; margin: 0 0 2px; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
 .act-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .act-who { font-size: 12.5px; font-weight: 600; color: var(--amber-ink); }
 .act-status { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--ink-3); margin-top: 2px; }
@@ -723,7 +823,7 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
   .col, .pair { display: contents; }
   .decision-slot { order: 0; }
   .map-wrap { order: 1; display: flex; flex-direction: column; }
-  #box-calls { order: 2; max-height: 520px; }
+  #box-calls { order: 2; max-height: 620px; }
   #box-prio { order: 3; max-height: 460px; }
   #box-actions { order: 4; max-height: 640px; }
   #box-detail { order: 5; }
@@ -758,4 +858,51 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* ---------- falta saber (X12) ---------- */
+.missing-list { display: grid; gap: 5px; }
+.missing-item { display: grid; gap: 1px; width: 100%; }
+.missing-item b { font-size: 13.5px; color: var(--ink); }
+.missing-item span { font-size: 13px; color: var(--ink-3); font-weight: 400; }
+.missing-said { margin: 0; }
+.said-es { font-size: 13px; color: var(--ink-3); }
+
+/* eCall (X13): aviso de datos del vehículo, sin voz */
+.chan-ecall { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; color: var(--accent-ink); }
+.call-phone .chan-ecall { margin-right: 2px; }
+.callcard .no-voice { font-size: 12px; color: var(--ink-3); border: 1px dashed var(--line); border-radius: 6px; padding: 1px 6px; }
+.ecall-data { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px 14px; margin: 0; font-size: 13px; }
+.ecall-data dt { color: var(--ink-3); font-size: 12px; }
+.ecall-data dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---------- llamadas perdidas (X15, simulación) ---------- */
+#box-lost .wait-assume p { margin-top: 6px; padding: 8px 10px; border-radius: var(--radius); background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; }
+#box-lost .wait-assume summary b { color: var(--ink-2); }
+.lost-lists { display: grid; gap: 4px; padding-bottom: 6px; }
+.lost-lists h3 { display: flex; align-items: center; gap: 6px; padding: 8px 12px 0; font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.lost-lists h3 .pill { padding: 0 6px; font-size: 11.5px; }
+.lost-lists .note { padding: 4px 12px; }
+.lost-lists .wait-list { padding: 6px 8px 2px; }
+.lost-row { display: grid; gap: 4px; padding: 9px 10px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface-2); }
+.lost-row:has([data-state="pending"]) { box-shadow: inset 4px 0 0 var(--amber); }
+.lost-said { display: grid; gap: 1px; padding: 6px 9px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); font-size: 13px; font-variation-settings: "wdth" 100; }
+.lost-said small { font-size: 12.5px; color: var(--ink-3); }
+.lost-prop { display: grid; gap: 5px; }
+.lost-prop-title { font-size: 13px; font-weight: 700; }
+.lost-prop .act-buttons { margin-top: 0; }
+.lost-wait { font-size: 12.5px; color: var(--ink-3); font-style: italic; }
+.lost-done { font-size: 12.5px; }
+
+/* Avisos del agente: dentro del mapa, abajo a la derecha (sobre la atribución), cortos */
+.map-wrap .agent-feed { position: absolute; right: 12px; bottom: 30px; width: min(276px, calc(100% - 24px)); z-index: 3; }
+.map-wrap .feed-item { padding: 7px 10px; }
+.map-wrap .feed-ack { display: none; }
+.console:has(.deck-return) .map-wrap .agent-feed { bottom: 30px; }
+@media (max-width: 1100px) {
+  .map-wrap .agent-feed { top: 54px; bottom: auto; left: 12px; right: auto; }
+}
+/* X17: en móvil los botones Mapa/Satélite bajan a la segunda fila; el aviso del agente va debajo, a la izquierda del zoom */
+@media (max-width: 700px) {
+  .map-wrap .agent-feed { top: 96px; width: min(276px, calc(100% - 76px)); }
 }

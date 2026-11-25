@@ -652,7 +652,7 @@ export const SLIDES: SlideDef[] = [
   },
   {
     id: "demo", section: "La demo", title: "La consola, en directo", theme: "dark", Body: Live,
-    notes: "Arranca sola a ×4 con sonido. Sube las líneas liberadas. F1 se pone en ámbar: pulsar D (es otro coche). B2: pulsar M (misma dirección). Subir a ×10 para terminar: 26 llamadas, 7 emergencias.",
+    notes: "Arranca sola a ×4 con sonido. Sube las líneas liberadas. F1 se pone en ámbar: pulsar D (es otro coche). B2: pulsar M (misma dirección). Subir a ×10 para terminar: 27 avisos (26 llamadas y una eCall), 7 emergencias.",
   },
   {
     id: "zona-gris", section: "La demo", title: "Zona gris", theme: "dark", tone: "amber", Body: GrayZone,

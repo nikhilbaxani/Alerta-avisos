@@ -18,7 +18,7 @@ await p.screenshot({ path: C + "consola-decision.png" });
 await p.keyboard.press("d");
 await p.getByText(/¿La llamada B2/).waitFor({ timeout: 40000 });
 await p.keyboard.press("m");
-await p.getByText(/26 de 26/).waitFor({ timeout: 40000 });
+await p.getByText(/27 de 27/).waitFor({ timeout: 40000 });
 await p.waitForTimeout(1500);
 await p.getByRole("button", { name: /INC-05,/ }).first().click(); // marcador del mapa: abre su ficha
 await p.getByRole("button", { name: "¿La persona respira? ¿Está consciente?" }).click();

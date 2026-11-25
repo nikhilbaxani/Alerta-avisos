@@ -4,6 +4,7 @@ import path from "node:path";
 import { findCall } from "@/data/scenarios";
 import { chatJSON, chatText, transcribe } from "@/lib/ai";
 import { decide } from "@/lib/cluster";
+import { isEcall } from "@/lib/ecall";
 import { llmEnabled, sttEnabled } from "@/lib/config";
 import type { AppConfig } from "@/lib/config";
 import {
@@ -55,6 +56,19 @@ async function judge(cfg: AppConfig, d: Decision, summary: string, incidents: In
 export async function processCall(cfg: AppConfig, input: ProcessInput): Promise<ProcessResult> {
   const t0 = Date.now();
   const known = input.callId ? findCall(input.callId) : undefined;
+  // eCall (X13): datos del vehículo, sin voz. Ni STT ni LLM: extracción de referencia y el mismo agrupador.
+  if (known && isEcall(known)) {
+    const decision = decide({ aml: input.aml, extraction: known.mock }, input.incidents);
+    return {
+      callId: known.id,
+      transcript: known.transcript,
+      language: known.mock.language,
+      extraction: known.mock,
+      decision,
+      engine: { stt: "eCall: datos del vehículo, sin voz", llm: "Extracción a partir de los datos (sin IA)" },
+      timings: { sttMs: 0, llmMs: 0, totalMs: Date.now() - t0 },
+    };
+  }
   let transcript = input.transcript ?? known?.transcript ?? "";
   let sttMs = 0;
 

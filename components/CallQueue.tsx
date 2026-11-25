@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getScenario } from "@/data/scenarios";
+import { isEcall } from "@/lib/ecall";
 import { TYPE_LABELS } from "@/lib/labels";
 import { callMeta } from "@/lib/useConsole";
 import type { CallMeta, ConsoleState } from "@/lib/useConsole";
@@ -29,7 +29,6 @@ type Mode = "recent" | "group" | "ask";
 
 export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect, onArchived, onLive }: Props) {
   const [mode, setMode] = useState<Mode>("recent");
-  const total = getScenario(s.scenarioId).calls.length;
   const byInc = new Map(s.engine.incidents.map((i) => [i.id, i]));
   const archivedIds = new Set(s.archived.map((x) => x.incident.id));
   const rows = [...s.arrived].reverse().map((id) => {
@@ -50,23 +49,30 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
     else if (gray) status = { cls: "ask", text: `¿Misma emergencia que ${inc!.linkedTo}?`, icon: "alert" };
     else if (first) status = { cls: inc && toneOf(inc) === "critical" ? "critical" : "new", text: "Emergencia nueva", icon: "phone" };
     else status = { cls: "dup", text: "Repetida", icon: "merge" };
-    return { id, call, inc, solved, gray, text, foreign, status };
+    const ecall = isEcall(call);
+    return { id, call, inc, solved, gray, text, foreign, status, ecall };
   });
   const asks = rows.filter((r) => r.gray).length;
 
-  const row = ({ id, call, inc, solved, gray, text, foreign, status }: (typeof rows)[number], inGroup = false) => {
+  const row = ({ id, call, inc, solved, gray, text, foreign, status, ecall }: (typeof rows)[number], inGroup = false) => {
     const onAir = playing === id;
     const rank = inc ? ranks.get(inc.id) ?? 0 : 0;
     return (
-      <li key={id} className={`call ${gray ? "is-ask" : ""} ${solved ? "is-done" : ""} ${inc && inc.id === s.selected ? "is-sel" : ""}`}>
+      <li
+        key={id}
+        data-call={id}
+        data-channel={ecall ? "ecall" : "voice"}
+        data-incident={inc?.id ?? solved ?? ""}
+        className={`call ${gray ? "is-ask" : ""} ${solved ? "is-done" : ""} ${inc && inc.id === s.selected ? "is-sel" : ""}`}
+      >
         <button
           disabled={!inc && !solved}
           onClick={() => (inc ? onSelect(inc.id) : solved && onArchived(solved))}
-          aria-label={`Llamada ${id} de las ${mmss(call.t)} en ${langName(call.lang)}: ${text.replace(/\.$/, "")}. ${status.text}${inc ? ` · ${inc.id}` : ""}`}
+          aria-label={`${ecall ? `eCall ${id} (datos del vehículo, sin voz)` : `Llamada ${id}`} de las ${mmss(call.t)}${ecall ? "" : ` en ${langName(call.lang)}`}: ${text.replace(/\.$/, "")}. ${status.text}${inc ? ` · ${inc.id}` : ""}`}
         >
-          <span className={`call-ico ${onAir ? "live" : status.cls}`} aria-hidden="true"><Icon name={status.icon} size={19} /></span>
+          <span className={`call-ico ${onAir ? "live" : status.cls}`} aria-hidden="true"><Icon name={ecall && status.icon !== "alert" ? "car" : status.icon} size={19} /></span>
           <span className="call-main">
-            <span className="call-phone">{call.phone || (id.startsWith("T") ? "Escrita a mano" : "En directo")}</span>
+            <span className="call-phone">{ecall ? <><span className="chan-ecall"><Icon name="car" size={13} />eCall</span> {call.phone}</> : call.phone || (id.startsWith("T") ? "Escrita a mano" : "En directo")}</span>
             <span className="call-text">{text}</span>
             <span className="call-meta">
               {inc && !inGroup && <IncToken inc={inc} rank={rank} />}
@@ -129,11 +135,7 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
   }
 
   return (
-    <section className="box calls-col" id="box-calls" aria-labelledby="calls-h">
-      <div className="panel-head">
-        <h2 id="calls-h">Llamadas entrantes</h2>
-        <span className="panel-count">{s.arrived.length} de {total}</span>
-      </div>
+    <>
       <div className="calls-tools">
         <div className="seg" role="group" aria-label="Cómo ver las llamadas">
           <button aria-pressed={mode === "recent"} onClick={() => setMode("recent")}>Recientes</button>
@@ -144,6 +146,6 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
       <ManualCall s={s} localAI={localAI} onCall={onLive} />
       <LivePanel s={s} sttUp={sttUp} onCall={onLive} />
       {body}
-    </section>
+    </>
   );
 }

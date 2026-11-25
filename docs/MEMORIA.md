@@ -253,3 +253,11 @@ Para cada incidente, el agente genera **acciones propuestas**: herramienta, dest
 ### 16.5 Relato (X08)
 - README y PITCH cuentan el paso de copiloto a agente: percepción → decisión → acción. Métricas de demo: «líneas liberadas», «acciones preparadas» y «llamadas en espera atendidas», **siempre como simulación**. Ninguna cifra nueva fuera de §3.
 - Nombre: **Agente 112** (decisión de Nick, 2026-11-24) en README, PITCH, PROYECTO, diagramas y registro de auditoría. La consola sigue mostrando «Copiloto 112» porque la interfaz no se toca; los identificadores del código (`copiloto-112`, `sin_copiloto`) tampoco cambian.
+
+## 17. Fase 7: ideas para el pitch (X11–X17)
+
+> Aprobada por Nick el 2026-11-25. Detalle en `docs/TASKS.md` (Fase 7) y la lista completa de ideas en `docs/IDEAS.md`.
+
+- **Estas tareas pueden tocar la interfaz** (además de X09–X10). Todo lo demás sigue igual: modo simulado sin red, la IA propone y decide el operador, la zona gris nunca se fusiona sola, solo los avisos informativos a organismos son automáticos (los SMS al ciudadano y las devoluciones de llamada los aprueba el operador), ES-Alert siempre un coordinador, `gold`, `transcript` y `mock` de las llamadas existentes intactos y ninguna cifra nueva fuera de §3–§4.
+- Las unidades, sus bases, las llamadas perdidas y los peligros en la vía son **simulación** y se rotulan así.
+- Se trabaja en la rama `noche/ideas-pitch`; `main` no se toca hasta que Nick lo revise.

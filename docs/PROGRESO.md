@@ -140,3 +140,64 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 ## 2026-11-25 · Integración con la presentación de GitHub (`/presentacion`) · hecho
 - Qué se hizo: merge de `origin/main` (presentación interactiva, QR, vuelta desde la consola) con el rediseño de la consola. Conflictos resueltos conservando las dos partes (`useConsole` exporta `init`/`reducer` y además lleva el archivo; iconos; DECISIONES). La presentación usa ya las piezas nuevas: `TopBar` sin botones de tema ni archivo (son opcionales), `MapView` sin botones de la ficha (opcionales), `PriorityList` como caja y `AgentActions` como lista de `ActionCard`. CSS de la consola incrustada (diapositiva 6) adaptado a la cabecera de una fila. El enlace a la presentación de la barra superior se oculta entre 1101 y 1599 px (ahí no cabe); sigue en la bienvenida. Los avisos del agente suben cuando aparece «Volver a la presentación».
 - Verificación: lint, build, 336 tests (incluidos los de la presentación), `eval` y `eval:apagon` en verde; `node scripts/e2e.mjs` OK; las 12 diapositivas revisadas con capturas, sin errores de consola.
+
+## 2026-11-25T02:08:19+01:00 · X11 · hecha
+- Qué se hizo: caja «En espera» (`components/WaitingBox.tsx`) en la columna izquierda de la consola, alimentada por `lib/waitingConsole.ts` (función pura que reutiliza `lib/waiting.ts` con las llamadas ya llegadas; `lib/agent.ts` usa la misma lógica). Selector de 1–4 operadores (2 por defecto), contadores atendidas/agrupadas/escaladas, aviso rojo de escalada, guion del asistente en el idioma del llamante y rótulo «Simulación con supuestos declarados».
+- Verificación (qa-verificador APTO): lint OK, build OK, 347 tests en verde (incluidos X06 y `tests/waitingConsole.test.ts`), eval OK (7/7, 0 fusiones incorrectas), eval:apagon OK (6/6), `e2e.mjs` OK (caja, ≥1 atendida por el asistente, E1 escalada con 1 y 2 operadores), exportación de GitHub Pages probada en copia temporal; capturas `docs/capturas/X11v-*.png` revisadas (escritorio y móvil, oscuro y claro), sin errores de consola ni scroll horizontal.
+- Decisiones: ver DECISIONES (X11).
+- Pendiente menor (no de X11): el aviso pasajero «El agente ha enviado…» se pinta encima de una tarjeta durante su animación a mitad de escenario.
+- Siguiente: X12.
+
+## 2026-11-25T02:26:24+01:00 · X12 · hecha
+- Qué se hizo: `lib/missingInfo.ts` (tabla `MISSING_RULES` por tipo: respira, dirección, personas, altura del agua, planta, heridos; `incidentMissing(incident, calls)`), `MISSING_PHRASES` aparte en `lib/phrases.ts` (personas, altura_agua, planta en en/de/fr/ar/it; las existentes se reutilizan por id). Lista «Falta saber» en `IncidentDetail`: el clic prepara la pregunta en el idioma del llamante en la caja de Traducción, sin reproducirla; si todo es en castellano, se muestra en la ficha.
+- Verificación (qa-verificador APTO): lint OK, build OK, 368 tests (21 de `missingInfo`), eval 7/7 y eval:apagon 6/6 sin fusiones incorrectas, `e2e.mjs` OK (E1 muestra `respira` y el clic prepara «هل الشخص يتنفس؟» sin sonar), exportación de GitHub Pages OK, capturas `docs/capturas/X12-*` revisadas en oscuro y claro, sin errores de consola ni scroll horizontal en móvil.
+- Decisiones: ver DECISIONES («X12: Falta saber»).
+- Pendiente menor: el aviso flotante «El agente ha enviado…» tapa unos segundos la parte baja del detalle (ya anotado en X11).
+- Siguiente: X13.
+
+## 2026-11-25T02:40:57+01:00 · X13 · hecha
+- Qué se hizo: canal `ecall` en `lib/types.ts` y `lib/ecall.ts` (datos estructurados: activación, ocupantes, rumbo, vehículo, posición; transcripción generada a partir de los datos, sin STT ni LLM). eCall EC1 (t=14, gold A, manual, 3 ocupantes, ±10 m) en `data/scenario-dana-extra.ts`, unida en `data/scenarios.ts`; el escenario protegido no se toca. En la consola: icono de coche y rótulo «eCall» en la cola, tarjeta «Mensaje de datos (sin voz)» con sus datos y sin «Escuchar».
+- Verificación (qa-verificador APTO): lint OK, build OK, 374 tests (6 en `tests/ecall.test.ts`), eval 7/0/2 (F1 y B2, E1 2.º; EC1 merge INC-01 0,90), eval:apagon 6/0/1, `e2e.mjs` OK (27 llamadas, eCall en A), GitHub Pages OK, capturas `docs/capturas/X13-*` revisadas en escritorio y móvil, oscuro y claro, sin errores de consola ni scroll horizontal.
+- Decisiones: ver DECISIONES (X13: canal eCall, transcripción generada, fuera de la sala de voz del agente de espera, tipo fijado en el escenario). Recuentos 26→27 ajustados solo en el número.
+- Pendiente menor: EC1 sale como «Repetida» en la cola; «±10 m» se parte en dos líneas en la tarjeta; README/PITCH dicen 26 llamadas (para X08). En X14 decidir si EC1 recibe SMS de duplicado.
+- Siguiente: X14.
+
+## 2026-11-25T02:56:16+01:00 · X14 · hecha
+- Qué se hizo: herramienta `sms_duplicado` en `lib/actions.ts` (política «operador», fuera de las que puede proponer el LLM), frase nueva `DUPLICATE_PHRASES` en `lib/phrases.ts` (es/en/de/fr/ar/it). Se propone solo si el incidente tiene recursos aprobados o enviados; una vez por teléfono (también entre incidentes); EC1 excluida. Lote por incidente con «Aprobar todos (n)» en la caja de acciones (`actionApproveBatch`); los repetidos que traen información nueva (A4, C3, G2, B3/B4, G3/G4) van aparte y marcados. Traza de `npm run agente` y registro con `batch: true`.
+- Verificación (qa-verificador APTO): lint OK, build OK, 388 tests (nuevo `tests/duplicate.test.ts`), eval 7/0/2 y eval:apagon 6/0/1 sin cambios, `e2e.mjs` OK (aprueba el lote de INC-01), exportación de GitHub Pages OK, capturas `docs/capturas/X14-*` revisadas (escritorio/móvil, oscuro/claro), 0 errores de consola, sin scroll horizontal en móvil. `data/` sin cambios.
+- Decisiones: ver DECISIONES (X14).
+- Pendiente menor: en escritorio la caja de Acciones es baja (~250 px) y hay que desplazarse para llegar a «Aprobar todos».
+- Siguiente: X15.
+
+## 2026-11-25T03:26:10+01:00 · X15 · hecha
+- Qué se hizo: llamadas perdidas simuladas en `data/lost-calls.ts` (P1–P5 DANA, P6–P7 apagón; `Scenario.lost`, fuera del motor y del eval). `lib/lostCalls.ts` puro (`analyzeLostCalls`: mismo teléfono y luego posición con `spatial()` de `lib/cluster.ts`, solo incidentes abiertos; devoluciones delante de duplicados). `devolver_llamada` con `motivo: "llamada_perdida"` y SMS de X14 para duplicados, ambos de operador. Caja `#box-lost` (`components/LostCallsBox.tsx`) con «Devolver primero» y «Probables duplicados», motivo, estado y Aprobar/Descartar; ayuda plegable con la cifra de §3 y su fuente. El aviso flotante del agente va ahora dentro del mapa (pendiente de X11/X12 resuelto).
+- Verificación (qa-verificador APTO): lint OK, build OK, 405 tests (17 en `tests/lostCalls.test.ts`), eval 7/0/2 y eval:apagon 6/0/1 sin cambios, `e2e.mjs` OK (caja, P3 desconocida antes de P1 duplicado, aprobar P3 no envía P1), GitHub Pages OK, capturas `docs/capturas/X15-*` revisadas, 0 errores de consola, sin scroll horizontal en móvil. Escenario protegido intacto.
+- Decisiones: ver DECISIONES («X15: llamadas perdidas»).
+- Pendiente menor: a 1440×900 la caja de perdidas es baja (solo se ve P3 sin desplazar); columna izquierda llena (X16/X17 no deberían añadir otra caja ahí); `/presentacion` no muestra la caja; una devolución propuesta no se retira si la perdida pasa a duplicado.
+- Siguiente: X16.
+
+## 2026-11-25T07:22:41+01:00 · X16 · hecha
+- Qué se hizo: `lib/units.ts` puro con parque simulado de 10 unidades (B-1..3, S-1..3, PL-1..2, PN-1..2; bases rotuladas «(simulación)»). Al aprobar `proponer_recursos` el reducer asigna la libre más cercana del servicio (haversine) o dice que no hay; estado y posición se derivan del reloj (`consoleUnits`: asignada → en camino → en el lugar) y `resolve` las libera. Mapa: cuadrados con sigla y rótulo de estado, línea discontinua al incidente, leyenda «Unidades: simulación», sin transición con `prefers-reduced-motion`. La tarjeta de Acciones muestra la unidad propuesta/asignada.
+- Verificación (qa-verificador APTO): lint OK, build OK, 418 tests (incluido `tests/units.test.ts`: más cercana, sin libres, avance, liberación), eval 7/0/2 y eval:apagon 6/0/1 sin fusiones incorrectas, `e2e.mjs` OK (B-2 asignada a INC-01 en el mapa con su línea y en la tarjeta), GitHub Pages OK, capturas `docs/capturas/X16-*` revisadas (escritorio/móvil, oscuro/claro), 0 errores de consola, sin scroll horizontal. `data/` sin cambios.
+- Decisiones: ver DECISIONES («X16: unidades simuladas»).
+- Pendiente menor: si se aprueba con el escenario terminado (reloj parado en end+1) la unidad se queda «asignada» y no avanza; al aprobar se abre la ficha de INC-01 y en escritorio tapa B-2; en móvil el aviso «Enviado con tu aprobación» tapa el botón «Satélite».
+- Siguiente: X17.
+
+## 2026-11-25T07:58:48+01:00 · X17 · hecha
+- Qué se hizo: `lib/hazards.ts` puro (`hazardsFrom`, `unitHazardWarnings`, umbral 400 m): peligros en la vía a partir de `risks`/tipo/AML (vía cortada, árbol, cables; agua subiendo solo en vehículo atrapado por agua, rótulo fijo «paso inferior inundado»/«vía inundada»); el peligro del propio destino no avisa; resuelto = incidente solucionado. `consoleHazards`/`consoleHazardWarnings` en `lib/useConsole.ts`. Mapa: triángulos de señal por tipo, halo en el peligro afectado, marca en la unidad, leyenda «Peligros en la vía: simulación». Tarjeta: aviso informativo sin botones en `.act-unit`.
+- Verificación (qa-verificador APTO): lint OK, build OK, 432 tests (14 en `tests/hazards.test.ts`), eval 7/0/2 y eval:apagon 6/0/1, `e2e.mjs` OK (aviso cruzado «B-2 pasaría por la vía inundada de INC-06… (simulación)» en la tarjeta de bomberos de INC-01), GitHub Pages OK, capturas `docs/capturas/X17-*` revisadas (escritorio/móvil, oscuro/claro), 0 errores de consola, sin scroll horizontal.
+- Decisiones: ver DECISIONES (X17: lógica e interfaz).
+- Arreglados pendientes de X16: la ficha de INC-01 ya no tapa B-2 al asignar; en móvil el aviso del agente no tapa «Satélite».
+- Pendiente menor: a vista general el triángulo de INC-06 se monta sobre INC-01; la leyenda ocupa tres líneas a 1440×900; en móvil «Enviado con tu aprobación» tapa un momento la parte alta del mapa.
+- Siguiente: verificación final de la Fase 7.
+
+## 2026-11-25T08:00:45+01:00 · Fase 7 (X11–X17) · resumen para Nick
+- Hecho (todo `[x]`, una tarea por commit en `noche/ideas-pitch`): X11 caja «En espera» (agente de espera con selector de operadores); X12 «Falta saber» con preguntas pretraducidas; X13 eCall EC1 en la DANA; X14 SMS de duplicado con aprobación en lote; X15 llamadas perdidas (devolver primero, SMS a duplicados); X16 unidades simuladas en el mapa con la más cercana; X17 peligros en la vía y aviso cruzado a las unidades. Nada bloqueado en la Fase 7.
+- Verificación final (misma sesión, tras el commit de X17): lint OK, build OK, 432 tests en verde, eval 7 incidentes/0 fusiones incorrectas/2 preguntas, eval:apagon 6/0/1, `node scripts/e2e.mjs` OK (27 llamadas, eCall, árabe, lote, perdidas, unidades, peligros, espera, falta saber, audio, Separar, 0 errores de consola). Capturas `docs/capturas/X17-*` revisadas en escritorio y móvil.
+- Sin tocar (por encargo): X04b sigue `[!]` (necesita Ollama/Whisper) y X08 (README/PITCH) pendiente: ya puede contar lo de la Fase 7.
+- Pendientes menores conocidos: en móvil el aviso «Enviado con tu aprobación» tapa un momento la parte alta del mapa; a vista general el peligro de INC-06 se monta sobre INC-01; columna izquierda llena a 1440×900; si se aprueba recursos con el escenario terminado la unidad queda «asignada».
+- Cómo probarlo: `git switch noche/ideas-pitch && npm install && npm run dev` → http://localhost:3000, escenario DANA a ×10, aprobar «Enviar Bomberos» de INC-01 y mirar el mapa (B-2, triángulos) y la tarjeta en Acciones › Enviadas. Nada se ha subido: el push es tuyo.
+
+## 2026-11-25 · Llamadas en una caja con pestañas · hecho
+- Qué se hizo: ver DECISIONES (misma fecha). Nuevo `components/CallsBox.tsx`. `CallQueue`, `WaitingBox` y `LostCallsBox` pasan a ser el contenido de cada pestaña. Pestañas con teclado (flechas, Inicio y Fin). `scripts/e2e.mjs` cambia de pestaña antes de comprobar En espera y Perdidas, y comprueba que hay tres pestañas y que solo se ve la activa.
+- Verificación: lint, build, 432 tests, `eval` y `eval:apagon` en verde; `node scripts/e2e.mjs` OK; capturas de las tres pestañas en escritorio (oscuro y claro) y móvil revisadas, sin errores de consola ni scroll horizontal; la franja «B1 escalada» aparece a mitad de escenario y lleva a En espera.

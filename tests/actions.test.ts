@@ -63,6 +63,7 @@ describe("política de aprobación (tabla en código)", () => {
       aviso_ayuntamiento: "automatica",
       devolver_llamada: "operador",
       proponer_es_alert: "coordinador",
+      sms_duplicado: "operador",
     });
   });
 

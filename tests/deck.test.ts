@@ -58,9 +58,9 @@ describe("Reproducción del escenario para la presentación (lib/replay.ts)", ()
     expect(prov[0].linkedTo).toBe("INC-01");
   });
 
-  it("con las decisiones del operador, 26 llamadas quedan en 7 emergencias", () => {
+  it("con las decisiones del operador, 27 avisos (26 llamadas y la eCall EC1, X13) quedan en 7 emergencias", () => {
     const s = replayTo("dana-malaga", Infinity, { F1: false, B2: true });
-    expect(s.arrived).toHaveLength(26);
+    expect(s.arrived).toHaveLength(27);
     expect(s.engine.incidents).toHaveLength(7);
     expect(s.engine.incidents.some((i) => i.provisional)).toBe(false);
   });

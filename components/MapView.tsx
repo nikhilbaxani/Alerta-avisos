@@ -8,6 +8,10 @@ import { rankIncidents } from "@/lib/priority";
 import { TYPE_LABELS } from "@/lib/labels";
 import type { Incident } from "@/lib/engine";
 import type { ConsoleState } from "@/lib/useConsole";
+import { SIMULATION_LABEL, UNIT_STATUS_LABELS } from "@/lib/units";
+import type { Unit, UnitService } from "@/lib/units";
+import type { Hazard, HazardKind, UnitHazardWarning } from "@/lib/hazards";
+import { RESOURCE_LABELS } from "@/lib/actions";
 import Icon from "./Icon";
 import ResolveButton from "./ResolveButton";
 import { resolveBlocker } from "@/lib/engine";
@@ -40,7 +44,7 @@ interface Streets {
 let streetsCache: Promise<Streets> | null = null;
 const loadStreets = () => (streetsCache ??= import("@/assets/map/streets.json").then((m) => (m.default ?? m) as unknown as Streets));
 
-export type FocusBox = "detail" | "translate" | "actions";
+export type FocusBox = "detail" | "translate" | "actions" | "lost";
 
 interface Props {
   s: ConsoleState;
@@ -50,9 +54,25 @@ interface Props {
   onFocus?: (box: FocusBox) => void;
   pendingActions: Record<string, number>;
   onResolve?: (id: string) => void;
+  /** Unidades simuladas con su estado en `s.clock` (X16); sin ellas no se pinta la capa. */
+  units?: Unit[];
+  /** Peligros en la vía (X17, simulación); sin ellos no se pinta la capa. Los resueltos no se pintan. */
+  hazards?: Hazard[];
+  /** Avisos «la unidad pasaría por un peligro» (X17): marcan el peligro y la unidad afectados. */
+  hazardWarnings?: UnitHazardWarning[];
   /** Capas encima del mapa (bienvenida). */
   children?: React.ReactNode;
 }
+
+/** Sigla del servicio dentro del icono de la unidad. */
+const UNIT_ABBR: Record<UnitService, string> = { bomberos: "B", samu_061: "S", policia_local: "PL", policia_nacional: "PN" };
+
+/** Dibujo dentro del triángulo de peligro (en píxeles de pantalla, centrado en 0,0). */
+const HAZARD_GLYPH: Record<HazardKind, React.ReactNode> = {
+  agua_en_via: <path className="hz-water" d="M-5.5 1.5q1.4-1.6 2.75 0t2.75 0 2.75 0 2.75 0M-5.5 5q1.4-1.6 2.75 0t2.75 0 2.75 0 2.75 0" />,
+  via_cortada: <path className="hz-bang" d="M0-4.5v5.5M0 4.2v.1" />,
+  cables_electricos: <path className="hz-bolt" d="M1-5-3.2 1h3L-1 6l4.2-6h-3z" />,
+};
 
 /** Zonas rápidas: recuadro [x, y, ancho, alto] en unidades del mapa. */
 const PRESETS = [
@@ -159,7 +179,7 @@ const BaseMap = memo(function BaseMap({ view, size, streets, sat, hiReady }: { v
   );
 });
 
-export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions, onResolve, children }: Props) {
+export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions, onResolve, units, hazards, hazardWarnings, children }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -170,6 +190,17 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
   const [streets, setStreets] = useState<Streets | null>(null);
   const [hiReady, setHiReady] = useState(false);
   const [closed, setClosed] = useState<string | null>(null);
+  // Al asignar una unidad al incidente seleccionado, su ficha se cierra para dejar ver la unidad y su
+  // trayecto (y el aviso de peligro, X17). Se vuelve a abrir con un clic en el incidente.
+  const sentTo = units?.filter((un) => un.incidentId && un.incidentId === s.selected).map((un) => un.id).join(",") ?? "";
+  const lastSent = useRef({ sel: s.selected, ids: sentTo });
+  useEffect(() => {
+    const prev = lastSent.current;
+    lastSent.current = { sel: s.selected, ids: sentTo };
+    if (!s.selected || prev.sel !== s.selected) return;
+    const before = prev.ids.split(",");
+    if (sentTo.split(",").some((id) => id && !before.includes(id))) setClosed(s.selected);
+  }, [sentTo, s.selected]);
   /** Vista pintada en pantalla, última vista asentada y vista provisional durante un gesto. */
   const rendered = useRef(view);
   const committed = useRef(view);
@@ -329,12 +360,23 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
   const u = view.w / Math.max(1, size.w);
 
   const incidents = s.engine.incidents;
+  const warnedUnits = new Map<string, string>();
+  for (const w of hazardWarnings ?? []) if (!warnedUnits.has(w.unitId)) warnedUnits.set(w.unitId, w.text);
   const byId = new Map(incidents.map((i) => [i.id, i]));
   const rank = new Map(rankIncidents(incidents, s.clock).map((i, n) => [i.id, n + 1]));
   const selected = incidents.find((i) => i.id === s.selected);
   const scaleM = view.w * METERS_PER_UNIT > 12000 ? 2000 : view.w * METERS_PER_UNIT > 5000 ? 1000 : view.w * METERS_PER_UNIT > 2000 ? 500 : 200;
   const scalePx = scaleM / METERS_PER_UNIT / u;
   const sat = layer === "sat" || !streets;
+
+  /** Desplazamiento (px) del rótulo centrado de un peligro para que no se corte en el borde del mapa. */
+  const tagShift = (tag: string, x: number) => {
+    const half = tag.length * 3.2;
+    const px = (x - vb.x) / u;
+    if (px - half < 8) return 8 + half - px;
+    if (px + half > size.w - 8) return size.w - 8 - half - px;
+    return 0;
+  };
 
   const select = (id: string) => {
     if (suppressClick.current) { suppressClick.current = false; return; }
@@ -435,6 +477,48 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
             return <circle key={id} cx={p.x} cy={p.y} r={(mine ? 4.5 : 3.5) * u} fill={mine ? "var(--accent)" : sat ? "#fff" : "var(--map-dot)"} stroke={sat ? "#0b1620" : "var(--map-dot-line)"} strokeWidth={1.2 * u} />;
           })}
 
+          {/* X16: unidades simuladas. Debajo de los incidentes para no taparlos; las libres, pequeñas y atenuadas. */}
+          {units && (
+            <g className="units" aria-label={`Unidades ${SIMULATION_LABEL}`}>
+              {units.filter((un) => un.incidentId && un.target).map((un) => {
+                const a = project(un.position.lat, un.position.lng);
+                const b = project(un.target!.lat, un.target!.lng);
+                return <line key={`ul-${un.id}`} data-unit-line={un.id} className={`unit-line st-${un.status}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={2 * u} strokeDasharray={`${6 * u} ${4 * u}`} />;
+              })}
+              {[...units].sort((a, b) => Number(a.status !== "libre") - Number(b.status !== "libre")).map((un) => {
+                const p = project(un.position.lat, un.position.lng);
+                const free = un.status === "libre";
+                const abbr = UNIT_ABBR[un.service];
+                const h = (free ? 11 : 17) * u;
+                const w = (free ? 11 : abbr.length > 1 ? 24 : 18) * u;
+                const status = UNIT_STATUS_LABELS[un.status].toLowerCase();
+                const warn = warnedUnits.get(un.id);
+                const desc = `${un.id}, ${RESOURCE_LABELS[un.service]}: ${status}${un.incidentId ? ` hacia ${un.incidentId}` : ""}. ${free ? un.base.name : `Base: ${un.base.name}`}${warn ? `. ${warn}` : ""}`;
+                return (
+                  <g
+                    key={un.id}
+                    className={`unit st-${un.status} svc-${un.service}`}
+                    data-unit={un.id}
+                    data-status={un.status}
+                    data-incident={un.incidentId ?? undefined}
+                    data-hazard-warning={warnedUnits.has(un.id) ? "true" : undefined}
+                    style={{ transform: `translate(${p.x}px, ${p.y}px)` }}
+                    role="img"
+                    aria-label={desc}
+                  >
+                    <title>{desc}</title>
+                    <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={3 * u} strokeWidth={(free ? 1 : 1.6) * u} />
+                    {warn && <path className="unit-warn" d={`M${w / 2} ${-h / 2 - 9 * u}l${6 * u} ${10 * u}h${-12 * u}z`} strokeWidth={1.2 * u} />}
+                    {!free && <text className="unit-abbr" fontSize={10.5 * u} dy="0.36em">{abbr}</text>}
+                    {!free && (
+                      <text className="unit-tag" x={w / 2 + 4 * u} fontSize={11 * u} strokeWidth={3 * u} dy="0.35em">{`${un.id} · ${status}`}</text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
           {/* Los más prioritarios encima y el seleccionado arriba del todo, para que no los tape uno menos urgente */}
           {[...incidents].sort((a, b) => (a.id === s.selected ? 1 : 0) - (b.id === s.selected ? 1 : 0) || (rank.get(b.id) ?? 0) - (rank.get(a.id) ?? 0)).map((i) => {
             const c = centroid(i);
@@ -470,6 +554,49 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
               </g>
             );
           })}
+
+          {/* X17: peligros en la vía (simulación). Triángulo de aviso, encima de los incidentes; si cae sobre
+              el anillo de su propio incidente, se aparta a su borde izquierdo para no tapar el número. */}
+          {hazards && (
+            <g className="hazards" aria-label={`Peligros en la vía ${SIMULATION_LABEL}`}>
+              {hazards.filter((h) => !h.resolved).map((h) => {
+                let p = project(h.position.lat, h.position.lng);
+                const inc = byId.get(h.incidentId);
+                if (inc) {
+                  const c = centroid(inc);
+                  const r = (12 + Math.min(inc.callIds.length, 8) * 1.4) * u;
+                  if (Math.hypot(p.x - c.x, p.y - c.y) < r + 10 * u) {
+                    const same = hazards.filter((o) => !o.resolved && o.incidentId === h.incidentId);
+                    const a = Math.PI * (1 - 0.3 * (same.indexOf(h) - (same.length - 1) / 2));
+                    p = { x: c.x + Math.cos(a) * (r + 9 * u), y: c.y + Math.sin(a) * (r + 9 * u) };
+                  }
+                }
+                const warned = hazardWarnings?.filter((w) => w.hazardId === h.id) ?? [];
+                const desc = `Peligro en la vía ${SIMULATION_LABEL}: ${h.label} de ${h.incidentId}${warned.length ? `. Aviso: ${warned.map((w) => `${w.unitId} pasaría a ${Math.round(w.distance)} m`).join(", ")}` : ""}`;
+                return (
+                  <g
+                    key={h.id}
+                    className={`hazard k-${h.kind} ${warned.length ? "is-warned" : ""}`}
+                    data-hazard={h.id}
+                    data-kind={h.kind}
+                    data-incident={h.incidentId}
+                    data-warned={warned.length ? "true" : undefined}
+                    transform={`translate(${p.x} ${p.y}) scale(${u})`}
+                    role="img"
+                    aria-label={desc}
+                  >
+                    <title>{desc}</title>
+                    {warned.length > 0 && <circle className="hz-halo" r={17} />}
+                    <path className="hz-tri" d="M0-10.5 10.5 8H-10.5z" strokeWidth={warned.length ? 2.6 : 2} />
+                    {HAZARD_GLYPH[h.kind]}
+                    {warned.length > 0 && (
+                      <text className="hz-tag" x={tagShift(`Peligro: ${h.label} · ${h.incidentId}`, p.x)} y={-21} fontSize={11} strokeWidth={3}>{`Peligro: ${h.label} · ${h.incidentId}`}</text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          )}
 
           {!reduce && s.fx.map((f) => {
             const call = s.calls[f.callId];
@@ -520,6 +647,8 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
       <span><i className="lg tone-pending" />Necesita tu decisión</span>
       <span><i className="lg todo">2</i>Acciones por aprobar</span>
       <span><i className="lg call" />Llamada</span>
+      {units && <span><i className="lg unit">B</i>Unidades: simulación</span>}
+      {hazards && hazards.some((h) => !h.resolved) && <span><i className="lg hazard" />Peligros en la vía: simulación</span>}
     </div>
     </div>
   );

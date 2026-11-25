@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LANG_NAMES } from "@/lib/labels";
+import { missingPhrase } from "@/lib/missingInfo";
 import { PHRASES, SPEECH_LOCALE } from "@/lib/phrases";
 import Icon from "./Icon";
 import type { Reply } from "@/lib/useConsole";
 
+/** Pregunta pedida desde «Falta saber» (X12); `n` cambia en cada clic para poder repetir la misma. */
+export interface Ask {
+  incidentId: string;
+  phraseId: string;
+  n: number;
+}
+
 interface Props {
   incidentId: string;
+  ask?: Ask | null;
   langs: string[];
   clock: number;
   localAI: boolean;
@@ -26,7 +35,7 @@ function speak(text: string, lang: string) {
   return true;
 }
 
-export default function ReplyPanel({ incidentId, langs, clock, localAI, replies, onReply }: Props) {
+export default function ReplyPanel({ incidentId, ask, langs, clock, localAI, replies, onReply }: Props) {
   const foreign = langs.filter((l) => l !== "es");
   const [pick, setPick] = useState<string | null>(null);
   const [phraseId, setPhraseId] = useState<string | null>(null);
@@ -34,6 +43,14 @@ export default function ReplyPanel({ incidentId, langs, clock, localAI, replies,
   const [msg, setMsg] = useState("");
   const [freeOut, setFreeOut] = useState<{ es: string; tr: string } | null>(null);
   const lang = pick && foreign.includes(pick) ? pick : foreign[0];
+
+  // «Falta saber»: deja la pregunta preparada, pero no la reproduce; eso lo decide el operador.
+  useEffect(() => {
+    if (!ask) return;
+    setPhraseId(ask.phraseId);
+    setFreeOut(null);
+    setMsg("");
+  }, [ask?.n]);
 
   if (!lang) {
     return (
@@ -44,7 +61,7 @@ export default function ReplyPanel({ incidentId, langs, clock, localAI, replies,
     );
   }
 
-  const phrase = PHRASES.find((p) => p.id === phraseId);
+  const phrase = phraseId ? missingPhrase(phraseId) : undefined;
   const current = freeOut ?? (phrase ? { es: phrase.es, tr: phrase.tr[lang] ?? "" } : null);
   const mine = replies.filter((r) => r.incidentId === incidentId).slice(-2);
 
@@ -86,7 +103,8 @@ export default function ReplyPanel({ incidentId, langs, clock, localAI, replies,
         </div>
       )}
       {current && (
-        <div className="said-box">
+        <div className="said-box" data-phrase={freeOut ? "libre" : phraseId ?? undefined}>
+          {!freeOut && phrase && !PHRASES.includes(phrase) && <p className="said-es">{phrase.es}</p>}
           <div className="said" lang={lang} dir={lang === "ar" ? "rtl" : "ltr"}>{current.tr}</div>
           <button className="btn btn-dark" onClick={play}><Icon name="speaker" />Reproducir al llamante</button>
         </div>

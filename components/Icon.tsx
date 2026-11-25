@@ -37,6 +37,7 @@ const PATHS = {
   arrow: "M5 12h14M13 6l6 6-6 6",
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
   solved: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.5l2.8 2.8L16.5 9.5",
+  car: "M5 16V12l2-5h10l2 5v4M3.5 16h17v2.5h-17zM5 12h14M7.5 21v-2.5M16.5 21v-2.5M8 14.25h.01M16 14.25h.01",
   slides: "M3 4.5h18v12H3zM12 16.5V20M8 20h8M10 8.5v4.5l4-2.25z",
 } as const;
 

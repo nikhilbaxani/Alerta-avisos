@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { callMeta, useConsole } from "@/lib/useConsole";
+import { actionUnit, callMeta, consoleHazards, consoleHazardWarnings, consoleLostCalls, consoleProposals, consoleUnits, useConsole } from "@/lib/useConsole";
 import { actionIncidents, canApprove } from "@/lib/actions";
-import { proposalsFor } from "@/lib/consoleActions";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import { buildAuditLog } from "@/lib/audit";
 import { STATIC_EXPORT } from "@/lib/config";
@@ -13,7 +12,8 @@ import ActionsBox from "./ActionsBox";
 import ArchiveDialog from "./ArchiveDialog";
 import AgentFeed from "./AgentFeed";
 import { useCallAudio } from "./useCallAudio";
-import CallQueue from "./CallQueue";
+import CallsBox from "./CallsBox";
+import type { CallsTab } from "./CallsBox";
 import DecisionBanner from "./DecisionBanner";
 import DeckReturn from "./DeckReturn";
 import HelpDialog from "./HelpDialog";
@@ -26,10 +26,12 @@ import PriorityList from "./PriorityList";
 import TopBar from "./TopBar";
 import type { Theme } from "./TopBar";
 import TranslateBox from "./TranslateBox";
+import type { Ask } from "./ReplyPanel";
 
 /** Lleva la vista a una caja (útil en pantallas pequeñas) y la resalta un instante. */
-function focusBox(box: FocusBox) {
-  const el = document.getElementById(`box-${box}`);
+function focusBox(box: FocusBox | "calls") {
+  // Las llamadas perdidas son una pestaña de la caja de llamadas: se resalta la caja entera.
+  const el = document.getElementById(`box-${box === "lost" ? "calls" : box}`);
   if (!el) return;
   el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   el.focus({ preventScroll: true });
@@ -45,7 +47,10 @@ export default function Console() {
   const [help, setHelp] = useState(false);
   const [theme, setTheme] = useState<Theme>("dark");
   const [actionsFilter, setActionsFilter] = useState<string | null>(null);
+  const [callsTab, setCallsTab] = useState<CallsTab>("incoming");
   const [archive, setArchive] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
+  // «Falta saber» (X12): pregunta que el operador ha pedido preparar en la caja de traducción (n cambia en cada clic).
+  const [ask, setAsk] = useState<Ask | null>(null);
   const openArchive = useCallback((focus: string | null = null) => setArchive({ open: true, focus }), []);
   const audio = useCallAudio(s);
 
@@ -78,6 +83,10 @@ export default function Console() {
     dispatch({ type: "select", incidentId: id });
     focusBox("detail");
   }, [dispatch]);
+  const prepareAsk = useCallback((incidentId: string, phraseId: string, foreign: boolean) => {
+    setAsk((a) => ({ incidentId, phraseId, n: (a?.n ?? 0) + 1 }));
+    if (foreign) focusBox("translate");
+  }, []);
   const resolve = useCallback((id: string) => dispatch({ type: "resolve", incidentId: id }), [dispatch]);
   const reopen = useCallback((id: string) => {
     dispatch({ type: "reopen", incidentId: id });
@@ -94,17 +103,23 @@ export default function Console() {
     URL.revokeObjectURL(a.href);
   }, [s, status.label]);
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
+  // Unidades simuladas (X16): posición y estado según el reloj del escenario.
+  const units = useMemo(() => consoleUnits(s), [s.units, s.clock]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Peligros en la vía (X17): los peligros cambian con los incidentes; los avisos, con la posición de las unidades.
+  const hazards = useMemo(() => consoleHazards(s), [s.engine, s.calls, s.archived]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hazardWarnings = useMemo(() => consoleHazardWarnings(s), [s.units, s.clock, hazards]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Agente de acciones (X05): las reglas proponen a partir del estado de los incidentes; las automáticas se envían al añadirse.
-  const proposals = useMemo(() => {
-    const phones = Object.fromEntries(s.arrived.map((id) => [id, callMeta(s, id)?.phone ?? ""]));
-    return proposalsFor(s.engine.incidents, s.calls, phones);
-  }, [s.engine, s.calls, s.arrived, s.live, s.scenarioId]);
+  // Llamadas perdidas (X15): dependen del reloj; basta con recalcular cuando ocurre una nueva.
+  const lostSeen = (getScenario(s.scenarioId).lost ?? []).filter((l) => l.t <= s.clock).length;
+  const proposals = useMemo(() => consoleProposals(s), [s.engine, s.calls, s.arrived, s.live, s.scenarioId, s.actions, lostSeen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lost = useMemo(() => consoleLostCalls(s), [s.engine, s.calls, s.arrived, s.scenarioId, s.actions, lostSeen]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     dispatch({ type: "plan", proposals });
   }, [proposals, dispatch]);
   const approve = useCallback((key: string) => dispatch({ type: "actionApprove", key }), [dispatch]);
   const discard = useCallback((key: string) => dispatch({ type: "actionDiscard", key }), [dispatch]);
+  const approveBatch = useCallback((incidentId: string) => dispatch({ type: "actionApproveBatch", incidentId }), [dispatch]);
   const toApprove = s.actions.filter((a) => a.status === "propuesta" && canApprove(a.policy, "operador"));
   const pendingByIncident: Record<string, number> = {};
   for (const a of toApprove) for (const id of actionIncidents(a)) pendingByIncident[id] = (pendingByIncident[id] ?? 0) + 1;
@@ -116,8 +131,13 @@ export default function Console() {
   // Desde la ficha del mapa: «Aprobar» lleva a las acciones de esa emergencia ya filtradas
   const onMapFocus = useCallback((box: FocusBox) => {
     if (box === "actions") setActionsFilter(s.selected);
+    if (box === "lost") setCallsTab("lost");
     focusBox(box);
   }, [s.selected]);
+  const goLost = useCallback(() => {
+    setCallsTab("lost");
+    focusBox("lost");
+  }, []);
   useEffect(() => setActionsFilter(null), [s.epoch]);
   useEffect(() => {
     if (actionsFilter && !s.engine.incidents.some((i) => i.id === actionsFilter)) setActionsFilter(null);
@@ -145,12 +165,32 @@ export default function Console() {
       />
       {/* Una sola pantalla: cada apartado en su caja, todos a la vista a la vez. */}
       <main className="board">
-        <CallQueue s={s} ranks={ranks} onArchived={openArchive} playing={audio.playing} sttUp={sttUp} localAI={status.mode === "local"} onSelect={select} onLive={(call, result) => dispatch({ type: "live", call, result })} />
+        <div className="col col-left">
+          <CallsBox
+            s={s}
+            ranks={ranks}
+            tab={callsTab}
+            onTab={setCallsTab}
+            playing={audio.playing}
+            sttUp={sttUp}
+            localAI={status.mode === "local"}
+            lost={lost}
+            actions={s.actions}
+            onSelect={select}
+            onSelectIncident={selectIncident}
+            onArchived={openArchive}
+            onLive={(call, result) => dispatch({ type: "live", call, result })}
+            onApprove={approve}
+            onDiscard={discard}
+          />
+        </div>
 
         <div className="col col-center">
           {/* La decisión ámbar va encima del mapa y nunca se resuelve sola. */}
           <div className="decision-slot" aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
-          <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident} onResolve={resolve}>
+          <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident} onResolve={resolve} units={units} hazards={hazards} hazardWarnings={hazardWarnings}>
+            {/* Avisos del agente en la esquina del mapa: no tapan tarjetas ni el detalle. */}
+            <AgentFeed actions={s.actions} epoch={s.epoch} />
             {notStarted && (
               <div className="welcome">
                 <h2>{scn.name}</h2>
@@ -164,8 +204,8 @@ export default function Console() {
             )}
           </MapView>
           <div className="pair">
-            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onIncident={selectIncident} />
-            <TranslateBox s={s} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
+            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={goLost} unitOf={(a) => actionUnit(s, a)} hazardWarnings={hazardWarnings} />
+            <TranslateBox s={s} ask={ask} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
           </div>
         </div>
 
@@ -173,12 +213,11 @@ export default function Console() {
           <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
           <section className="box" id="box-detail" tabIndex={-1} aria-label="Ficha de la emergencia">
             <div className="box-body">
-              <IncidentDetail s={s} audio={audio} onResolve={resolve} onSplit={(callId) => dispatch({ type: "split", callId })} />
+              <IncidentDetail s={s} audio={audio} ask={ask} onAsk={prepareAsk} onResolve={resolve} onSplit={(callId) => dispatch({ type: "split", callId })} />
             </div>
           </section>
         </div>
       </main>
-      <AgentFeed actions={s.actions} epoch={s.epoch} />
       <HelpDialog open={help} onClose={() => setHelp(false)} />
       <ArchiveDialog open={archive.open} focus={archive.focus} s={s} onClose={() => setArchive({ open: false, focus: null })} onReopen={reopen} />
       <DeckReturn />

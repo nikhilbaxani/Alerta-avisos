@@ -39,9 +39,9 @@ describe("parte de situación · DANA", async () => {
     expect(r.llamadas).toBe(run.steps.length);
     expect(r.incidentes).toBe(run.incidents.length);
     expect(r.lineasLiberadas).toBe(run.steps.length - run.incidents.length);
-    expect([r.llamadas, r.incidentes, r.lineasLiberadas]).toEqual([26, 7, 19]);
+    expect([r.llamadas, r.incidentes, r.lineasLiberadas]).toEqual([27, 7, 20]); // X13: 26 llamadas + la eCall EC1
     expect(r.decisionesZonaGris).toBe(2);
-    expect(md).toContain("26 llamadas → 7 incidentes · 19 líneas liberadas");
+    expect(md).toContain("27 llamadas → 7 incidentes · 20 líneas liberadas");
   });
 
   it("incidentes por prioridad, con el motivo de priorityBreakdown en una línea", () => {

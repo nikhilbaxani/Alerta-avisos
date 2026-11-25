@@ -17,14 +17,19 @@
  * Acciones de zona (X07): el ES-Alert no es de un incidente sino de una zona con varios. Lo propone
  * `planZoneAlerts` sobre todos los incidentes; su `incidentId` es el id de la zona (`ZONA-…`) y sus
  * incidentes van en `args.incidentes` (`actionIncidents`).
+ *
+ * Aviso de duplicado (X14): `sms_duplicado` no sale de las reglas por incidente ni del modelo, porque
+ * depende de lo que ya se ha aprobado (recursos en camino). Lo propone `planDuplicateSms(input, acciones)`
+ * y el operador lo aprueba, una a una o en lote (`approveBatch`, solo las que no traen información nueva).
  */
 import { haversine } from "@/lib/cluster";
 import type { Incident } from "@/lib/engine";
 import { LANG_NAMES, RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { PLACES } from "@/lib/map";
-import { PHRASES } from "@/lib/phrases";
+import { DUPLICATE_PHRASES, PHRASES } from "@/lib/phrases";
+import type { DuplicatePhraseId } from "@/lib/phrases";
 import { RISK_TAGS } from "@/lib/types";
-import type { Aml, IncidentType, RiskTag } from "@/lib/types";
+import type { Aml, CallChannel, IncidentType, RiskTag } from "@/lib/types";
 
 // ───────────────────────────── Herramientas y política ─────────────────────────────
 
@@ -35,6 +40,7 @@ export const ACTION_TOOLS = [
   "aviso_ayuntamiento",
   "devolver_llamada",
   "proponer_es_alert",
+  "sms_duplicado",
 ] as const;
 export type ActionTool = (typeof ACTION_TOOLS)[number];
 
@@ -52,6 +58,8 @@ export const ACTION_POLICY: Readonly<Record<ActionTool, ApprovalPolicy>> = {
   devolver_llamada: "operador",
   // Avisa a toda la población de una zona: siempre una persona con rol de coordinador.
   proponer_es_alert: "coordinador",
+  // Va al ciudadano: nunca automática (X14). Se puede aprobar en lote, pero siempre la aprueba el operador.
+  sms_duplicado: "operador",
 };
 
 /** Nombre de cada herramienta para el operador y el parte de situación. */
@@ -62,10 +70,14 @@ export const TOOL_LABELS: Readonly<Record<ActionTool, string>> = {
   aviso_ayuntamiento: "Aviso al ayuntamiento",
   devolver_llamada: "Devolver la llamada",
   proponer_es_alert: "ES-Alert",
+  sms_duplicado: "SMS de duplicado",
 };
 
 /** Herramientas de zona: no son de un incidente, las propone `planZoneAlerts` sobre varios. */
 export const ZONE_TOOLS: readonly ActionTool[] = ["proponer_es_alert"];
+
+/** Herramientas que solo propone el sistema: no se ofrecen al modelo y lo que proponga se descarta (X14). */
+export const SYSTEM_TOOLS: readonly ActionTool[] = ["sms_duplicado"];
 
 export type Role = "operador" | "coordinador";
 const ROLE_RANK: Record<Role, number> = { operador: 1, coordinador: 2 };
@@ -138,9 +150,24 @@ export interface ToolArgs {
     llamada: string;
     telefono: string | null;
     idioma: string;
-    /** Llamada que trajo la información nueva. */
+    /** Llamada que trajo la información nueva (o la propia llamada perdida, X15). */
     noticia: string;
-    motivo: "sin_respuesta";
+    /** `llamada_perdida` (X15): se colgó antes de que la atendieran y no se sabe de qué incidente es. */
+    motivo: "sin_respuesta" | "llamada_perdida";
+  };
+  sms_duplicado: {
+    /** Llamada a cuyo teléfono se envía (la primera de ese número en el incidente). */
+    llamada: string;
+    telefono: string;
+    idioma: string;
+    frase: DuplicatePhraseId;
+    /** Frase pretraducida en el idioma del llamante, tal cual está en `lib/phrases.ts`. */
+    texto: string;
+    texto_es: string;
+    /** Información nueva que trajo ese teléfono: si no está vacía, no entra en el lote y el operador la ve antes. */
+    revisar: RiskTag[];
+    /** Llamada perdida (X15) y cómo se asoció al incidente; por `posicion` no entra en el lote. */
+    perdida?: "telefono" | "posicion";
   };
   proponer_es_alert: {
     zona: EsAlertZone;
@@ -160,6 +187,8 @@ export interface PlanCall {
   /** Teléfono enmascarado (como en el escenario) o null si no se conoce. */
   phone: string | null;
   risks: RiskTag[];
+  /** `ecall`: datos del vehículo, sin nadie al teléfono (X13). Sin valor, voz. */
+  channel?: CallChannel;
 }
 
 /** Lo único que ve el planificador: datos estructurados, sin texto de la llamada. */
@@ -179,6 +208,7 @@ export interface CallFacts {
   lang: string;
   phone?: string | null;
   risks: RiskTag[];
+  channel?: CallChannel;
 }
 
 /** Construye la entrada del planificador desde un incidente del motor. No copia ningún texto libre. */
@@ -193,7 +223,9 @@ export function planInputFrom(inc: Incident, facts: Record<string, CallFacts>): 
     calls: inc.callIds.map((id) => {
       const f = facts[id];
       // Sin datos de la llamada se asume castellano: no recibe SMS (lo atiende el operador de viva voz).
-      return { id, lang: f?.lang ?? "es", phone: f?.phone || null, risks: f ? [...f.risks] : [] };
+      const c: PlanCall = { id, lang: f?.lang ?? "es", phone: f?.phone || null, risks: f ? [...f.risks] : [] };
+      if (f?.channel) c.channel = f.channel;
+      return c;
     }),
     provisional: inc.provisional,
   };
@@ -239,7 +271,8 @@ export interface Receipt {
 export interface ActionLifecycle {
   status: ActionStatus;
   proposedAt: number;
-  approval: { by: Role | "automatica"; at: number } | null;
+  /** `batch`: aprobada con «Aprobar todos» del lote de su incidente (X14). */
+  approval: { by: Role | "automatica"; at: number; batch?: true } | null;
   receipt: Receipt | null;
   discarded: { by: Role | "sistema"; at: number; reason: string } | null;
 }
@@ -701,9 +734,150 @@ export function planZoneAlerts(inputs: readonly PlanInput[]): Proposal[] {
   return out;
 }
 
-/** Incidentes de una acción: los de la zona para un ES-Alert; si no, el suyo. */
+/** Incidentes de una acción: los de la zona para un ES-Alert; ninguno para la devolución de una llamada perdida; si no, el suyo. */
 export function actionIncidents(p: Proposal): string[] {
+  if (p.incidentId === LOST_CALLS_ID) return [];
   return p.tool === "proponer_es_alert" ? [...p.args.incidentes] : [p.incidentId];
+}
+
+// ───────────────────────────── Llamadas perdidas: devolver_llamada (X15) ─────────────────────────────
+
+/**
+ * `incidentId` de las devoluciones de llamadas perdidas que no son de ningún incidente: no es un INC-xx,
+ * así que no se descartan como huérfanas ni cuentan en los pendientes de un incidente.
+ */
+export const LOST_CALLS_ID = "PERDIDAS";
+
+/** Lo que el planificador sabe de una llamada perdida: teléfono, idioma y cuándo. Nada de su frase. */
+export interface LostCallFacts {
+  id: string;
+  t: number;
+  phone: string;
+  lang: string;
+}
+
+/**
+ * Devolver la llamada a quien se colgó antes de que le atendieran y no se puede asociar a ningún
+ * incidente abierto (X15): puede ser un aviso nuevo. La aprueba el operador (tabla `ACTION_POLICY`);
+ * el motivo lo pone quien la llama (`lib/lostCalls.ts`).
+ */
+export function lostCallbackProposal(lost: LostCallFacts, reason: string): ProposalOf<"devolver_llamada"> {
+  const tool = "devolver_llamada";
+  return {
+    key: actionKey(LOST_CALLS_ID, tool, lost.id),
+    incidentId: LOST_CALLS_ID,
+    tool,
+    destination: lost.id,
+    args: { llamada: lost.id, telefono: lost.phone, idioma: lost.lang, noticia: lost.id, motivo: "llamada_perdida" },
+    reason,
+    evidence: { type: "otro", risks: [], callIds: [lost.id] },
+    policy: policyFor(tool, "reglas"),
+    origin: "reglas",
+  };
+}
+
+// ───────────────────────────── Aviso de duplicado: sms_duplicado (X14) ─────────────────────────────
+
+/** Estados en los que unos recursos cuentan como «en camino». */
+const ON_THE_WAY: readonly ActionStatus[] = ["aprobada", "enviada"];
+
+/** Recursos aprobados o enviados de un incidente, del registro de acciones. */
+export function resourcesOnTheWay(actions: readonly AgentAction[], incidentId: string): ProposalOf<"proponer_recursos">[] {
+  return actions.filter(
+    (a): a is AgentAction & ProposalOf<"proponer_recursos"> => a.tool === "proponer_recursos" && a.incidentId === incidentId && ON_THE_WAY.includes(a.status),
+  );
+}
+
+/** Frase pretraducida del duplicado en un idioma; null si no hay traducción. */
+export function duplicateText(lang: string): string | null {
+  const p = DUPLICATE_PHRASES[0];
+  return (lang === "es" ? p.es : p.tr[lang]) ?? null;
+}
+
+/**
+ * Información nueva de cada llamada, en orden de llegada: riesgos que no traía ninguna llamada anterior
+ * del incidente, más «no responde» siempre (aunque ya se supiera, el operador debe oírlo).
+ */
+export function newInfoByCall(input: PlanInput): Record<string, RiskTag[]> {
+  const known = new Set<RiskTag>();
+  const out: Record<string, RiskTag[]> = {};
+  input.calls.forEach((c, k) => {
+    out[c.id] = k === 0 ? [] : uniq(c.risks.filter((r) => !known.has(r) || r === "sin_respuesta"));
+    for (const r of c.risks) known.add(r);
+  });
+  return out;
+}
+
+/**
+ * Un SMS de duplicado por teléfono a quien vuelve a llamar por un incidente que ya tiene recursos
+ * aprobados o enviados: «ya hemos recibido su aviso; la ayuda está en camino», en su idioma y solo con la
+ * frase pretraducida. No a quien abrió el incidente (lo atiende el operador), ni a una eCall (nadie lee
+ * el teléfono del coche), ni a un teléfono que ya lo tiene en cualquier incidente. Quien trajo
+ * información nueva lo recibe marcado (`revisar`): fuera del lote, el operador lo ve antes. Puro y solo
+ * con datos estructurados más el registro de acciones.
+ */
+export function planDuplicateSms(input: PlanInput, actions: readonly AgentAction[]): ProposalOf<"sms_duplicado">[] {
+  if (input.provisional) return [];
+  const resources = resourcesOnTheWay(actions, input.incidentId);
+  if (!resources.length) return [];
+  const voice = input.calls.filter((c) => c.channel !== "ecall");
+  const opener = voice[0];
+  if (!opener) return [];
+  const news = newInfoByCall(input);
+  // Teléfonos que ya tienen (o tendrán) un aviso de duplicado: no se repite en ningún incidente.
+  const notified = new Set(actions.filter((a) => a.tool === "sms_duplicado" && a.status !== "descartada").map((a) => (a.args as ToolArgs["sms_duplicado"]).telefono));
+  const services = joinEs(uniq(resources.map((r) => RESOURCE_LABELS[r.args.servicio])));
+  const out: ProposalOf<"sms_duplicado">[] = [];
+  const seen = new Set<string>(opener.phone ? [opener.phone] : []);
+  for (const c of voice.slice(1)) {
+    if (!c.phone || seen.has(c.phone)) continue;
+    seen.add(c.phone);
+    if (notified.has(c.phone)) continue;
+    const texto = duplicateText(c.lang);
+    const textoEs = duplicateText("es");
+    if (!texto || !textoEs) continue;
+    const same = voice.filter((x) => x.phone === c.phone);
+    const revisar = uniq(same.flatMap((x) => news[x.id] ?? []));
+    const ids = same.map((x) => x.id);
+    const head = `${joinEs(ids)} ${ids.length === 1 ? "vuelve a llamar" : "vuelven a llamar"} por ${input.incidentId}, que ya tiene recursos en camino (${services}): aviso en ${langName(c.lang)} de que su llamada consta, «${textoEs}»`;
+    const reason = revisar.length
+      ? `${head}. Trajo información nueva (${joinEs(revisar.map(riskLabel))}): revísela antes de enviarlo; no entra en «Aprobar todos».`
+      : `${head}. Entra en el lote del incidente.`;
+    out.push(
+      make(
+        input,
+        "sms_duplicado",
+        c.id,
+        { llamada: c.id, telefono: c.phone, idioma: c.lang, frase: "duplicado_en_camino", texto, texto_es: textoEs, revisar },
+        reason,
+        { type: input.type, risks: revisar, callIds: ids },
+        "reglas",
+      ),
+    );
+  }
+  return out;
+}
+
+/** Avisos de duplicado de un incidente que se pueden aprobar en lote: propuestos y sin información nueva. */
+export function duplicateBatch(actions: readonly AgentAction[], incidentId: string): AgentAction[] {
+  return actions.filter(
+    (a) => a.tool === "sms_duplicado" && a.incidentId === incidentId && a.status === "propuesta" && a.args.revisar.length === 0 && a.args.perdida !== "posicion",
+  );
+}
+
+export type BatchResult = { ok: true; actions: AgentAction[]; approved: AgentAction[] } | { ok: false; error: string };
+
+/**
+ * «Aprobar todos»: el rol aprueba de una vez los avisos de duplicado del lote de un incidente
+ * (`duplicateBatch`). Los que traen información nueva se quedan propuestos: se aprueban uno a uno.
+ */
+export function approveBatch(actions: AgentAction[], incidentId: string, role: Role, at: number): BatchResult {
+  const batch = duplicateBatch(actions, incidentId);
+  if (!batch.length) return { ok: false, error: `No hay avisos de duplicado por aprobar en lote en ${incidentId}` };
+  if (!canApprove(ACTION_POLICY.sms_duplicado, role)) return { ok: false, error: `Esta acción la aprueba un ${ACTION_POLICY.sms_duplicado}` };
+  const keys = new Set(batch.map((a) => a.key));
+  const next = actions.map((a): AgentAction => (keys.has(a.key) ? { ...a, status: "aprobada", approval: { by: role, at, batch: true } } : a));
+  return { ok: true, actions: next, approved: next.filter((a) => keys.has(a.key)) };
 }
 
 // ───────────────────────────── Especificación de cada herramienta ─────────────────────────────
@@ -874,7 +1048,10 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
       return callbackProposal(input, c, news, "ia_local");
     },
     target: (p) => (p.args.telefono ? `${p.args.llamada} (${p.args.telefono})` : p.args.llamada),
-    describe: (p) => `rellamada prioritaria en ${langName(p.args.idioma)} · información nueva de ${p.args.noticia}: ${riskLabel("sin_respuesta")}`,
+    describe: (p) =>
+      p.args.motivo === "llamada_perdida"
+        ? `rellamada prioritaria en ${langName(p.args.idioma)} · llamada perdida ${p.args.noticia} sin incidente conocido`
+        : `rellamada prioritaria en ${langName(p.args.idioma)} · información nueva de ${p.args.noticia}: ${riskLabel("sin_respuesta")}`,
     send: (p, at) => receipt("TEL", "Telefonía de sala (simulada)", p, at, `Rellamada prioritaria en cola para ${p.args.telefono ?? p.args.llamada} (${p.args.llamada})`),
   },
   proponer_es_alert: {
@@ -900,6 +1077,19 @@ const TOOLS: { [K in ActionTool]: ToolSpec<K> } = {
       return `centro ${z.centro.lat.toFixed(4)}, ${z.centro.lng.toFixed(4)}, radio ${z.radio_m} m (referencia: ${z.nombre}, a ${meters(z.referencia_m)}) · ${p.args.incidentes.join(", ")} · es: «${p.args.texto_es}» · en: «${p.args.texto_en}»`;
     },
     send: (p, at) => receipt("ESA", "ES-Alert (simulado)", p, at, `Difusión simulada en la zona de ${p.args.zona.nombre} (radio ${p.args.zona.radio_m} m), en castellano e inglés`),
+  },
+  sms_duplicado: {
+    service: "Pasarela SMS (simulada)",
+    description: "Aviso de duplicado al ciudadano. Lo propone solo el sistema cuando el incidente ya tiene recursos aprobados o enviados.",
+    parameters: () => ({ type: "object", properties: {} }),
+    modelArgs: [],
+    // Depende del registro de acciones: lo propone `planDuplicateSms`, no las reglas por incidente.
+    rules: () => [],
+    fromModel: () => "El aviso de duplicado lo propone solo el sistema cuando el incidente ya tiene recursos aprobados o enviados",
+    target: (p) => `${p.args.llamada} (${p.args.telefono})`,
+    describe: (p) =>
+      `${langName(p.args.idioma)}: «${p.args.texto}»${p.args.revisar.length ? ` · trajo información nueva: ${joinEs(p.args.revisar.map(riskLabel))} (fuera del lote)` : p.args.perdida === "posicion" ? " · llamada perdida asociada por la posición (fuera del lote)" : " · en el lote del incidente"}`,
+    send: (p, at) => receipt("DUP", "Pasarela SMS (simulada)", p, at, `SMS de duplicado en ${langName(p.args.idioma)} a ${p.args.telefono} (${p.args.llamada})`),
   },
 };
 
@@ -932,7 +1122,7 @@ export function planRules(input: PlanInput): Proposal[] {
 
 /** Definiciones de herramientas para el LLM (API compatible con OpenAI). */
 export function toolDefinitions(input: PlanInput) {
-  return ACTION_TOOLS.map((name) => ({
+  return ACTION_TOOLS.filter((name) => !SYSTEM_TOOLS.includes(name)).map((name) => ({
     type: "function" as const,
     function: { name, description: TOOLS[name].description, parameters: TOOLS[name].parameters(input) },
   }));
@@ -1116,7 +1306,8 @@ export interface TraceEntry {
   clave: string;
   /** Id del incidente, o de la zona (`ZONA-…`) en una acción de zona. */
   incidente: string;
-  ambito: "incidente" | "zona";
+  /** `llamada_perdida`: devolución de una llamada perdida sin incidente (X15). */
+  ambito: "incidente" | "zona" | "llamada_perdida";
   incidentes: string[];
   origen: ActionOrigin;
   propuestaEn: number;
@@ -1124,7 +1315,8 @@ export interface TraceEntry {
   razonamiento: string;
   herramienta: { nombre: ActionTool; servicio: string; destino: string; destinoTexto: string; detalle: string; argumentos: ToolArgs[ActionTool] };
   politica: ApprovalPolicy;
-  aprobacion: { por: Role | "automatica"; en: number } | null;
+  /** `lote`: aprobada con «Aprobar todos» (X14). */
+  aprobacion: { por: Role | "automatica"; en: number; lote?: true } | null;
   resultado: { estado: ActionStatus; acuse: Receipt | null; descarte: { por: Role | "sistema"; en: number; motivo: string } | null };
 }
 
@@ -1132,7 +1324,7 @@ export function traceOf(a: AgentAction): TraceEntry {
   return {
     clave: a.key,
     incidente: a.incidentId,
-    ambito: ZONE_TOOLS.includes(a.tool) ? "zona" : "incidente",
+    ambito: ZONE_TOOLS.includes(a.tool) ? "zona" : a.incidentId === LOST_CALLS_ID ? "llamada_perdida" : "incidente",
     incidentes: actionIncidents(a),
     origen: a.origin,
     propuestaEn: a.proposedAt,
@@ -1147,7 +1339,7 @@ export function traceOf(a: AgentAction): TraceEntry {
       argumentos: a.args,
     },
     politica: a.policy,
-    aprobacion: a.approval ? { por: a.approval.by, en: a.approval.at } : null,
+    aprobacion: a.approval ? { por: a.approval.by, en: a.approval.at, ...(a.approval.batch ? { lote: true as const } : {}) } : null,
     resultado: {
       estado: a.status,
       acuse: a.receipt,
