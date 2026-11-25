@@ -131,11 +131,13 @@ Con un registro `A` apuntando al VPS y los puertos 80/443 libres: en `server/rel
 | `LLM_BASE_URL` | — | URL base (compatible OpenAI) del LLM opcional del equipo. Vacío → solo reglas. |
 | `LLM_MODEL` | `qwen2.5:14b-instruct` | Nombre del modelo en `LLM_BASE_URL`. |
 | `LLM_API_KEY` | — | Clave del LLM (solo en `server/relay.env`, nunca en el repositorio). |
-| `LLM_TIMEOUT_MS` | `20000` | Tiempo máximo de espera del LLM antes de pasar a reglas (ms). |
+| `LLM_TIMEOUT_MS` | `20000` | Tiempo máximo de espera del LLM antes de pasar a reglas (ms); cuenta desde que la petición sale, no desde que espera hueco. |
+| `LLM_CONCURRENCY` | `2` | Peticiones simultáneas del relay al LLM (entero ≥ 1; otro valor → 2). Las demás esperan en el relay por orden, con prioridad para las llamadas cuyo «Enviar» ya está pulsado. Motivo: el STT y el LLM comparten gateway y este admite pocas conexiones simultáneas por IP (8 en el sobremesa); sin límite, una ráfaga de extracciones agota las conexiones y el STT recibe 429. |
 | `COMPOSE_PROFILES` | `local-stt` (en el ejemplo) | Perfil que levanta el Whisper local `stt`. Quítalo si usas el Whisper del sobremesa. |
 | `STT_BASE_URL` | `http://stt:8000/v1` | STT del relay (OpenAI-compatible). Con el sobremesa: la URL `…/v1` del gateway. |
 | `STT_API_KEY` | — | Clave del STT (`Authorization: Bearer`). Vacío → se reutiliza `LLM_API_KEY` **solo si** `STT_BASE_URL` tiene el mismo origen (esquema + host + puerto) que `LLM_BASE_URL`; a otro host no se envía ninguna clave. Sin clave, sin cabecera. |
-| `STT_TIMEOUT_MS` | `180000` | Tiempo máximo de cada petición al STT. |
+| `STT_TIMEOUT_MS` | `180000` | Tiempo máximo de cada petición al STT (incluye sus reintentos). |
+| `STT_RETRIES` | `3` | Reintentos del STT ante HTTP 429, 502, 503, 504 o error de red (esperas de 500 ms, 1 s y 2 s; respeta `Retry-After` en segundos, máximo 5 s). `0` los desactiva. Otros errores (400, 413, 500…) fallan al instante. Motivo: el gateway del sobremesa limita las conexiones simultáneas por IP y responde 429 al pasarse. |
 | `STT_LOCAL_MODEL` | `STT_MODEL` | Modelo del `stt` local si el relay usa otro `STT_MODEL` (p. ej. `whisper` del gateway). |
 | `STT_BEAM_SIZE` / `STT_CPU_THREADS` | 5 / 0 | Ajuste de velocidad de `scripts/stt_server.py` (local o sobremesa): beam 1 es más rápido y algo menos preciso; hilos 0 = valor de la biblioteca. |
 | `LLM_EXTRA_BODY` | — | Objeto JSON que se añade a la petición (no puede cambiar modelo, mensajes ni temperatura). Con modelos que razonan: `{"chat_template_kwargs":{"enable_thinking":false}}` (con `strata`, de ~65 s a ~5 s por llamada). |

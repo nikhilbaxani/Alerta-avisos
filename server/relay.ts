@@ -131,6 +131,30 @@ export function isLocalOrPrivate(ip: string): boolean {
   return /^(0*:)+0*1?$|^::1?$/.test(a) || (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
 }
 
+const DEFAULT_LLM_CONCURRENCY = 2;
+const DEFAULT_STT_RETRIES = 3;
+const STT_BACKOFF_MS = [500, 1000, 2000];
+const RETRY_AFTER_CAP_MS = 5000;
+const RETRY_STATUS = new Set([429, 502, 503, 504]);
+
+const parseInteger = (v: unknown): number | null => {
+  if (typeof v === "number") return Number.isInteger(v) ? v : null;
+  if (typeof v !== "string" || !/^\s*\d+\s*$/.test(v)) return null;
+  return Number(v);
+};
+
+/** LLM_CONCURRENCY: entero ≥ 1; cualquier otro valor (0, negativo, texto, decimal, vacío) → 2. */
+export function parseLlmConcurrency(v: unknown): number {
+  const n = parseInteger(v);
+  return n !== null && n >= 1 ? n : DEFAULT_LLM_CONCURRENCY;
+}
+
+/** STT_RETRIES: entero ≥ 0 (0 desactiva); cualquier otro valor → 3. */
+export function parseSttRetries(v: unknown): number {
+  const n = parseInteger(v);
+  return n !== null && n >= 0 ? n : DEFAULT_STT_RETRIES;
+}
+
 export interface RelayOptions {
   sttBaseUrl: string;
   sttModel?: string;
@@ -162,6 +186,12 @@ export interface RelayOptions {
   /** Extractor opcional por LLM (S11). Si falla o agota `llmTimeoutMs`, se usa `extract` (reglas). */
   llmExtract?: LlmExtractor;
   llmTimeoutMs?: number;
+  /** Peticiones simultáneas del relay al LLM (el gateway admite pocas conexiones por IP). Por defecto 2. */
+  llmConcurrency?: number;
+  /** Reintentos del STT ante 429/502/503/504 y errores de red (0 = sin reintentos). Por defecto 3. */
+  sttRetries?: number;
+  /** Espera entre reintentos del STT (inyectable en tests). */
+  sleep?: (ms: number) => Promise<void>;
   fetch?: typeof fetch;
   log?: (msg: string) => void;
 }
@@ -268,6 +298,9 @@ export function createRelay(opts: RelayOptions) {
   const replayN = opts.replay ?? 50;
   const heartbeatMs = opts.heartbeatMs ?? 15_000;
   const llmTimeoutMs = opts.llmTimeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
+  const llmConcurrency = parseLlmConcurrency(opts.llmConcurrency);
+  const sttRetries = parseSttRetries(opts.sttRetries);
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const doFetch = opts.fetch ?? fetch;
   const log = opts.log ?? ((m: string) => console.log(m));
   const sttUrl = `${opts.sttBaseUrl.replace(/\/$/, "")}/audio/transcriptions`;
@@ -325,7 +358,7 @@ export function createRelay(opts: RelayOptions) {
     for (const c of clients) c.write(frame);
   }
 
-  async function stt(file: Blob, task: "transcribe" | "translate") {
+  async function stt(file: Blob, task: "transcribe" | "translate", label = "") {
     const form = new FormData();
     form.set("file", file, "llamada");
     form.set("model", opts.sttModel ?? "");
@@ -333,8 +366,36 @@ export function createRelay(opts: RelayOptions) {
     // Un gateway puede devolver solo {text}; con verbose_json suele añadir language y duration.
     form.set("response_format", "verbose_json");
     const headers: Record<string, string> = opts.sttApiKey ? { Authorization: `Bearer ${opts.sttApiKey}` } : {};
-    const r = await doFetch(sttUrl, { method: "POST", body: form, headers, signal: AbortSignal.timeout(opts.sttTimeoutMs ?? 180_000) });
-    if (!r.ok) throw new SttError(`STT ${task} respondió ${r.status}`, r.status);
+    // Un solo presupuesto (STT_TIMEOUT_MS) para la petición y sus reintentos.
+    const budget = opts.sttTimeoutMs ?? 180_000;
+    const deadline = Date.now() + budget;
+    const signal = AbortSignal.timeout(budget);
+    let r: Response | undefined;
+    for (let attempt = 0; ; attempt++) {
+      let err: Error | undefined;
+      let retryAfterMs: number | null = null;
+      try {
+        r = await doFetch(sttUrl, { method: "POST", body: form, headers, signal });
+        if (r.ok) break;
+        if (!RETRY_STATUS.has(r.status)) throw new SttError(`STT ${task} respondió ${r.status}`, r.status);
+        const ra = /^\d+$/.test(r.headers.get("retry-after")?.trim() ?? "") ? Number(r.headers.get("retry-after")!.trim()) * 1000 : null;
+        retryAfterMs = ra === null ? null : Math.min(ra, RETRY_AFTER_CAP_MS);
+        void r.body?.cancel().catch(() => undefined);
+        err = new SttError(`STT ${task} respondió ${r.status}`, r.status);
+      } catch (e) {
+        if (e instanceof SttError && !RETRY_STATUS.has(e.status)) throw e;
+        if (signal.aborted || !(e instanceof Error)) throw e;
+        if (e instanceof SttError) err = e;
+        else if (e.name === "AbortError" || e.name === "TimeoutError") throw e;
+        else err = e; // error de red (fetch failed, conexión rota)
+      }
+      const delay = retryAfterMs ?? STT_BACKOFF_MS[Math.min(attempt, STT_BACKOFF_MS.length - 1)];
+      if (attempt >= sttRetries || Date.now() + delay >= deadline) throw err;
+      const why = err instanceof SttError ? String(err.status) : "red";
+      log(`[relay] ${label} STT ${task} reintento ${attempt + 1}/${sttRetries} (${why}) en ${delay} ms`);
+      await sleep(delay);
+    }
+    if (!r) throw new Error("STT sin respuesta");
     const j = (await r.json()) as { text?: unknown; language?: unknown; duration?: unknown };
     if (typeof j.text !== "string") throw new Error("STT sin texto");
     const dur = Number(j.duration ?? 0);
@@ -349,6 +410,7 @@ export function createRelay(opts: RelayOptions) {
 
   /** Libera todo lo pesado de una llamada (audio, texto, extracción). */
   function release(p: Pending) {
+    dropFromLlmWait(p);
     p.file = undefined;
     p.transcript = undefined;
     p.built = undefined;
@@ -368,6 +430,43 @@ export function createRelay(opts: RelayOptions) {
     r?.();
   }
 
+  /**
+   * Hueco para una petición al LLM (máximo `llmConcurrency` a la vez). Quien espera lo hace en una lista FIFO,
+   * salvo que su «Enviar» ya esté pendiente: esas pasan primero. Devuelve null si la llamada se descartó, caducó o
+   * falló mientras esperaba (nunca llega al LLM y no ocupa hueco).
+   */
+  let llmActive = 0;
+  const llmWaiting: { p: Pending; grant: (release: (() => void) | null) => void }[] = [];
+  function llmRelease() {
+    llmActive--;
+    llmNext();
+  }
+  function llmNext() {
+    while (llmActive < llmConcurrency && llmWaiting.length) {
+      let i = llmWaiting.findIndex((w) => w.p.sending);
+      if (i < 0) i = 0;
+      const [w] = llmWaiting.splice(i, 1);
+      if (w.p.status !== "ready") {
+        w.grant(null);
+        continue;
+      }
+      llmActive++;
+      w.grant(llmRelease);
+    }
+  }
+  function acquireLlm(p: Pending): Promise<(() => void) | null> {
+    return new Promise((grant) => {
+      llmWaiting.push({ p, grant });
+      llmNext();
+    });
+  }
+  /** Saca de la lista de espera del LLM a una llamada que ya no lo necesita. */
+  function dropFromLlmWait(p: Pending) {
+    for (let i = llmWaiting.length - 1; i >= 0; i--) {
+      if (llmWaiting[i].p === p) llmWaiting.splice(i, 1)[0].grant(null);
+    }
+  }
+
   /** Extracción en segundo plano: LLM (con respaldo a reglas) o reglas (+ pasada translate de Whisper). Nunca rechaza. */
   async function build(p: Pending): Promise<Built | null> {
     const id = p.label;
@@ -381,8 +480,16 @@ export function createRelay(opts: RelayOptions) {
       let extractor: "llm" | "rules" = "rules";
 
       if (opts.llmExtract) {
+        const slot = await acquireLlm(p);
+        if (!slot) return null; // descartada, caducada o fallida mientras esperaba hueco: no se llama al LLM
         try {
-          const raw = await withTimeout(opts.llmExtract(transcript, language), llmTimeoutMs);
+          let raw: Extraction;
+          try {
+            // El tiempo máximo cuenta desde que la petición sale de verdad, no desde que espera hueco.
+            raw = await withTimeout(opts.llmExtract(transcript, language), llmTimeoutMs);
+          } finally {
+            slot();
+          }
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("respuesta no válida");
           const sanitized = sanitizeExtraction(language ? { ...raw, language } : raw, language);
           if (!/^[a-z]{2}$/.test(sanitized.language)) throw new Error("idioma no detectado");
@@ -414,7 +521,7 @@ export function createRelay(opts: RelayOptions) {
           const file = p.file;
           // Si la traducción falla o tarda demasiado, la llamada sigue: las reglas usan la transcripción.
           try {
-            translation = (await inQueue(() => stt(file, "translate"))).text.slice(0, MAX_TRANSCRIPT_CHARS) || null;
+            translation = (await inQueue(() => stt(file, "translate", id))).text.slice(0, MAX_TRANSCRIPT_CHARS) || null;
           } catch (e) {
             log(`[relay] ${id} sin traducción: ${e instanceof Error ? e.message : "desconocido"}`);
           }
@@ -439,7 +546,7 @@ export function createRelay(opts: RelayOptions) {
     const id = p.label;
     try {
       const t0 = Date.now();
-      const first = await stt(p.file, "transcribe");
+      const first = await stt(p.file, "transcribe", id);
       const sttMs = Date.now() - t0;
       if (p.status !== "transcribing") return release(p); // descartada o caducada durante la transcripción
       if (!Number.isFinite(first.duration) || first.duration > maxCall + 5) {
@@ -779,6 +886,8 @@ export function start() {
     trustProxy: process.env.TRUST_PROXY === "1",
     llmExtract: llmEnabled(cfg) ? createLlmExtractor(cfg, llmTimeoutMs) : undefined,
     llmTimeoutMs,
+    llmConcurrency: parseLlmConcurrency(process.env.LLM_CONCURRENCY),
+    sttRetries: parseSttRetries(process.env.STT_RETRIES),
     pendingTtlMs: envInt("PENDING_TTL_SECONDS", 300) * 1000,
   });
   const port = envInt("PORT", 8080);

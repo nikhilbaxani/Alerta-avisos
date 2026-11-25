@@ -64,7 +64,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T11 | S9, S14, S7 | Correcciones tras la verificación final: TTL en compose, cola y cuota con llamadas sin enviar, bandeja tras recargar, documentación de privacidad, cola configurable y posición en la cola | b82f992 |
 | T12 | S15 | Unificar el nombre visible y el logo en «Agente 112» | 087cd8a |
 | T13 | S16, S14 | Rediseño de `/llamar` en el estilo de la consola nueva y retoques de texto del recibo | 2184c8f |
-| T14 | S17 | Relay: tope de peticiones simultáneas al LLM y reintento del STT ante 429/5xx | — |
+| T14 | S17 | Relay: tope de peticiones simultáneas al LLM y reintento del STT ante 429/5xx | (este commit) |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log

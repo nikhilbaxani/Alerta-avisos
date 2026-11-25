@@ -731,10 +731,10 @@ describe("relay /llamar + /events", () => {
       ["JSON sin text", () => Response.json({ foo: 1 })],
       ["red caída", () => Promise.reject(new TypeError("fetch failed")) as never],
     ] as const) {
-      it(`${name} → la llamada falla y no se publica (sin reintentos)`, async () => {
+      it(`${name} → la llamada falla y no se publica (sin reintentos: STT_RETRIES=0; con reintentos, ver relay-load.test.ts)`, async () => {
         const lines: string[] = [];
         const g = gw(r);
-        expect(await send(g, {}, lines)).toHaveLength(0);
+        expect(await send(g, { sttRetries: 0 }, lines)).toHaveLength(0);
         expect(g.seen).toHaveLength(1);
         expect(lines.some((l) => l.includes("[relay] P1 error"))).toBe(true);
       });

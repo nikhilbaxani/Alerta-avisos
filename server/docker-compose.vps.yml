@@ -35,6 +35,8 @@ services:
       # Clave del STT (vacía → la del LLM solo si STT_BASE_URL tiene el mismo origen que LLM_BASE_URL) y tiempo máximo (ms).
       STT_API_KEY: ${STT_API_KEY:-}
       STT_TIMEOUT_MS: ${STT_TIMEOUT_MS:-180000}
+      # Reintentos del STT ante 429/502/503/504 o red caída (0 = sin reintentos).
+      STT_RETRIES: ${STT_RETRIES:-3}
       STT_MODEL: ${STT_MODEL:-Systran/faster-whisper-small}
       MAX_CALL_SECONDS: ${MAX_CALL_SECONDS:-120}
       RELAY_TOKEN: ${RELAY_TOKEN:?define RELAY_TOKEN en server/relay.env}
@@ -57,6 +59,8 @@ services:
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-20000}
+      # Peticiones simultáneas del relay al LLM (el gateway admite pocas conexiones por IP).
+      LLM_CONCURRENCY: ${LLM_CONCURRENCY:-2}
       LLM_EXTRA_BODY: ${LLM_EXTRA_BODY:-}
     depends_on:
       stt:
