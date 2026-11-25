@@ -8,7 +8,7 @@ export interface PublicCallEvent {
   /** ISO 8601. */
   receivedAt: string;
   durationS: number;
-  /** ISO 639-1 detectado por Whisper. */
+  /** ISO 639-1 detectado, o «und» si no se reconoce el idioma. */
   language: string;
   /** Transcripción original (texto no confiable). */
   transcript: string;
@@ -70,7 +70,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent {
     isStr(x.id) && PUBLIC_CALL_ID.test(x.id) &&
     isStr(x.receivedAt) && !Number.isNaN(Date.parse(x.receivedAt)) &&
     isNum(x.durationS) && x.durationS >= 0 &&
-    isStr(x.language) && /^[a-z]{2}$/.test(x.language) &&
+    isStr(x.language) && (x.language === "und" || /^[a-z]{2}$/.test(x.language)) &&
     isStr(x.transcript) && x.transcript.length <= MAX_TRANSCRIPT_CHARS &&
     (x.translation_en === null || (isStr(x.translation_en) && x.translation_en.length <= MAX_TRANSCRIPT_CHARS)) &&
     isExtraction(x.extraction) &&

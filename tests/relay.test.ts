@@ -706,15 +706,17 @@ describe("relay /llamar + /events", () => {
       expect(ev.translation_en).toBeNull();
     });
 
-    it("solo {text}, el LLM falla → sin idioma la llamada no se publica", async () => {
+    it("solo {text}, el LLM falla → publica con reglas e idioma und", async () => {
       const g = gw(ok({ text: "حريق" }));
       const evs = await send(g, { llmExtract: async () => { throw new Error("LLM 503"); } });
-      expect(evs).toHaveLength(0);
+      expect(evs).toHaveLength(1);
+      expect(evs[0]).toMatchObject({ language: "und", extractor: "rules", extraction: { language: "und" } });
+      expect(isPublicCallEvent(evs[0])).toBe(true);
       expect(tasks(g)).toEqual(["transcribe"]);
     });
 
-    it("solo {text}, sin LLM → sin idioma la llamada no se publica (como hoy)", async () => {
-      expect(await send(gw(ok({ text: "hola" })))).toHaveLength(0);
+    it("solo {text}, sin LLM → publica con reglas e idioma und", async () => {
+      expect(await send(gw(ok({ text: "hola" })))).toEqual([expect.objectContaining({ language: "und", extractor: "rules" })]);
     });
 
     it("413 → rechazo, sin evento y sin reintento", async () => {
@@ -876,10 +878,9 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
     await relay.idle();
     const [a, b] = await Promise.all([enviar(base, id), enviar(base, id)]);
     const c = await enviar(base, id);
-    for (const r of [a, b, c]) {
-      expect(r.status).toBe(200);
-      expect((await r.json()).status).toBe("sent");
-    }
+    expect([a.status, b.status, c.status]).toEqual([200, 200, 200]);
+    expect(await Promise.all([a.json(), b.json()])).toContainEqual({ status: "publishing" });
+    expect(await c.json()).toEqual({ status: "sent" });
     expect(await readEvents(base, 5)).toHaveLength(1);
     expect(lines.filter((l) => l.includes("publicada"))).toHaveLength(1);
     expect(await status(base, id)).toEqual({ status: "sent" }); // sin texto una vez enviada
@@ -1004,7 +1005,7 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
     expect(started).toBe(1);
     expect(await readEvents(base, 1)).toHaveLength(0);
     const sent = await enviar(base, id);
-    expect([sent.status, await sent.json()]).toEqual([200, { status: "sent" }]);
+    expect([sent.status, await sent.json()]).toEqual([200, { status: "publishing" }]);
     expect(await status(base, id)).toEqual({ status: "sent" });
     await enviar(base, id);
     expect(started).toBe(1);
@@ -1013,7 +1014,8 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
   });
 
   describe("S18 · confirmación y publicación independientes", () => {
-    const receipt = { status: "sent" };
+    const receipt = { status: "publishing" };
+    const published = { status: "sent" };
     async function gatedPublication(over: Partial<RelayOptions> = {}) {
       const llm = Promise.withResolvers<Extraction>();
       const { relay, base } = await boot(fakeStt(), { llmExtract: () => llm.promise, ...over });
@@ -1059,7 +1061,8 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
         expect(await Promise.all([confirm(base, id), confirm(base, id)])).toEqual([[200, receipt], [200, receipt]]);
         llm.resolve(EXTRACTION);
         expect(await readEvents(base, 1)).toHaveLength(1);
-        expect(await confirm(base, id)).toEqual([200, receipt]);
+        expect(await status(base, id)).toEqual(published);
+        expect(await confirm(base, id)).toEqual([200, published]);
         expect(await readEvents(base, 2)).toHaveLength(1);
       } finally {
         llm.resolve(EXTRACTION);
@@ -1094,14 +1097,13 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
       try {
         expect(await confirm(base, id)).toEqual([200, receipt]);
         const discard = () => fetch(url(base, id), { method: "DELETE" });
-        const denied = [409, { ...receipt, error: "La llamada ya se envió al operador." }];
         const before = await discard();
-        expect([before.status, await before.json()]).toEqual(denied);
+        expect([before.status, await before.json()]).toEqual([409, { ...receipt, error: "La llamada ya está pendiente de publicación." }]);
         expect((await call(base)).status).toBe(429);
         llm.resolve(EXTRACTION);
         expect(await readEvents(base, 1)).toHaveLength(1);
         const after = await discard();
-        expect([after.status, await after.json()]).toEqual(denied);
+        expect([after.status, await after.json()]).toEqual([409, { ...published, error: "La llamada ya se envió al operador." }]);
       } finally {
         llm.resolve(EXTRACTION);
       }
@@ -1117,8 +1119,9 @@ describe("confirmación del llamante (S14): la llamada solo se publica con «Env
         expect(await confirm(base, id)).toEqual([200, receipt]);
         llm.reject(new Error("LLM 503"));
         expect(await readEvents(base, 1)).toEqual([]);
-        expect(await status(base, id)).toEqual({ status: "failed", error: "No se pudo procesar la llamada. Vuelve a grabar." });
-        expect(await confirm(base, id)).toEqual([200, receipt]);
+        const failure = { status: "failed", error: "No se pudo procesar la llamada. Vuelve a grabar." };
+        expect(await status(base, id)).toEqual(failure);
+        expect(await confirm(base, id)).toEqual([409, failure]);
         expect(lines.filter((line) => line.includes("error al publicar"))).toEqual(["[relay] P1 error al publicar: fallo de serialización"]);
       } finally {
         llm.resolve(EXTRACTION);

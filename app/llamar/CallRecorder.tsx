@@ -19,6 +19,8 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** 1 s al principio, luego más espaciado: el estado es barato, pero no hace falta insistir. */
 const pollDelay = (n: number) => (n < 6 ? 1000 : n < 16 ? 1500 : 2500);
 const GONE = "La llamada ya no está en el servidor (caducó o el servicio se reinició). Vuelve a grabar.";
+const DELIVERY_FAILED = "No hemos podido entregar tu llamada al operador. Vuelve a grabarla.";
+const RECEIPT_POLL_MS = 10 * 60_000;
 
 const clock = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
@@ -63,6 +65,7 @@ export default function CallRecorder() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [secs, setSecs] = useState(0);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [deliveryFailed, setDeliveryFailed] = useState(false);
   const rec = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -196,26 +199,47 @@ export default function CallRecorder() {
     setPhase("idle");
   };
 
+  /** Vigila el recibo sin cambiarlo por errores transitorios de conexión. */
+  const watchReceipt = async (id: string, token: number) => {
+    const deadline = Date.now() + RECEIPT_POLL_MS;
+    const active = () => run.current === token && Date.now() < deadline;
+    for (let n = 0; active(); n++) {
+      await sleep(Math.min(pollDelay(n), deadline - Date.now()));
+      if (!active()) return;
+      try {
+        const res = await fetch(`${RELAY}/llamar/${id}`, { cache: "no-store" });
+        if (!active()) return;
+        if (res.status === 404) return setDeliveryFailed(true);
+        if (!res.ok) continue;
+        const body = await res.json();
+        if (!active()) return;
+        if (body?.status === "sent") return;
+        if (body?.status === "failed" || body?.status === "expired") return setDeliveryFailed(true);
+      } catch { /* El recibo no cambia si falla la conexión. */ }
+    }
+  };
+
   /** «Enviar»: confirma la llamada; el relay la publica al terminar de procesarla. */
   const submit = async () => {
     if (!callId) return;
     setPhase("submitting");
     setMsg(null);
+    const token = ++run.current;
     try {
       const res = await fetch(`${RELAY}/llamar/${callId}/enviar`, { method: "POST" });
-      if (res.ok) {
+      const body = await res.json().catch(() => null);
+      if (run.current !== token) return;
+      if (res.ok && (body?.status === "publishing" || body?.status === "sent")) {
         setPhase("done");
+        if (body.status === "publishing") void watchReceipt(callId, token);
         return;
       }
       if (res.status === 404 || res.status === 410) return backToIdle(GONE);
-      let detail = "";
-      try {
-        const body = await res.json();
-        if (typeof body?.error === "string") detail = body.error;
-      } catch { /* sin cuerpo JSON */ }
+      const detail = typeof body?.error === "string" ? body.error : "";
       if (res.status === 409 || res.status === 502) return backToIdle(detail || "No se pudo procesar la llamada. Vuelve a grabar.");
       setMsg({ ok: false, text: detail || "No se pudo enviar. Inténtalo de nuevo." });
     } catch {
+      if (run.current !== token) return;
       setMsg({ ok: false, text: "No se pudo conectar con el servidor. Tu llamada sigue aquí: pulsa Enviar de nuevo." });
     }
     setPhase("review");
@@ -229,6 +253,8 @@ export default function CallRecorder() {
   };
 
   const start = async () => {
+    run.current++;
+    setDeliveryFailed(false);
     setMsg(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -262,7 +288,7 @@ export default function CallRecorder() {
     : phase === "transcribing" ? "Transcribiendo tu llamada…"
     : phase === "review" ? "Transcripción lista. Revísala y pulsa Enviar si es correcta."
     : phase === "submitting" ? "Enviando al operador…"
-    : phase === "done" ? "Enviado al operador." : "";
+    : phase === "done" && !deliveryFailed ? "Envío confirmado." : "";
 
   return (
     <Shell>
@@ -320,7 +346,7 @@ export default function CallRecorder() {
       {/* Región viva: anuncia cada cambio de fase sin repetir el contador de segundos. */}
       <p className={s.state} data-phase={phase} role="status" aria-live="polite" aria-atomic="true">
         {recording && <span className={s.dot} aria-hidden="true" />}
-        {phase === "done" && <Icon><circle cx="12" cy="12" r="10" /><path d="m7.5 12.5 3 3 6-7" /></Icon>}
+        {phase === "done" && !deliveryFailed && <Icon><circle cx="12" cy="12" r="10" /><path d="m7.5 12.5 3 3 6-7" /></Icon>}
         {status}
       </p>
 
@@ -355,9 +381,11 @@ export default function CallRecorder() {
         </section>
       )}
 
-      {phase === "done" && (
+      {phase === "done" && (deliveryFailed ? (
+        <p className={s.error} role="alert"><Alert /><span>{DELIVERY_FAILED}</span></p>
+      ) : (
         <p className={s.ok}>Tu llamada de prueba va a la bandeja del operador en unos instantes; quien la atienda decide qué hacer con ella. Gracias por probar el Agente 112.</p>
-      )}
+      ))}
 
 
       {phase === "done" && (

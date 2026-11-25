@@ -236,7 +236,7 @@ describe("S17 · STT_RETRIES", () => {
     expect(retries[0]).not.toContain("llamada 1");
   });
 
-  it("(e) 429 más allá de STT_RETRIES → failed como hoy (1 + 3 peticiones) y la cuota no se devuelve", async () => {
+  it("(e) 429 más allá de STT_RETRIES → failed como hoy (1 + 3 peticiones) y devuelve la cuota", async () => {
     const stt = numberedStt(() => stat(429));
     const s = sleeps();
     const { relay, base } = await boot(stt.fetch, { sleep: s.sleep, sttRetries: 3, rateLimit: { max: 1, windowMs: 60_000 } });
@@ -247,7 +247,66 @@ describe("S17 · STT_RETRIES", () => {
     expect(st.error).toBe("No se pudo transcribir el audio. Vuelve a grabar.");
     expect(stt.calls.length).toBe(4);
     expect(s.ms).toEqual([500, 1000, 2000]);
-    // Camino de fallo de hoy: la cuota queda gastada (la segunda subida es 429 del relay).
+    // El 429 del STT es un fallo del servicio; queda presupuesto de subidas.
+    expect((await upload(base)).code).toBe(202);
+  });
+
+  it.each(["red", "plazo"])("tres fallos de %s consecutivos vacían la espera y una subida nueva vuelve a probar el STT", async (mode) => {
+    const gate = Promise.withResolvers<void>();
+    let attempts = 0;
+    const script = numberedStt();
+    const { relay, base } = await boot(async (input, init) => {
+      const n = ++attempts;
+      if (n <= 3 || (n >= 5 && n <= 6)) {
+        await gate.promise;
+        if (mode === "red") throw new TypeError("fetch failed");
+        const signal = init!.signal!;
+        if (signal.aborted) throw signal.reason;
+        return new Promise<Response>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+      }
+      return script.fetch(input, init);
+    }, { sttRetries: 0, sttTimeoutMs: 60, rateLimit: { max: 5, windowMs: 60_000 } });
+    const ids = [];
+    for (let i = 0; i < 5; i++) {
+      const call = await upload(base);
+      expect(call.code).toBe(202);
+      ids.push(call.id);
+    }
+    gate.resolve();
+    await relay.idle();
+    expect(attempts).toBe(3);
+    for (const id of ids.slice(3)) {
+      expect(await statusOf(base, id)).toEqual({ status: "failed", error: "El servicio de transcripción no responde. Inténtalo de nuevo en unos minutos." });
+    }
+    for (const expected of ["ready", "failed", "failed", "ready"]) {
+      const call = await upload(base);
+      expect(call.code).toBe(202);
+      await relay.idle();
+      expect((await statusOf(base, call.id)).status).toBe(expected);
+    }
+  });
+
+  it.each([400, 413])("un rechazo STT %s por el contenido mantiene la cuota", async (code) => {
+    const stt = numberedStt(() => stat(code));
+    const { relay, base } = await boot(stt.fetch, { rateLimit: { max: 1, windowMs: 60_000 } });
+    const call = await upload(base);
+    expect(call.code).toBe(202);
+    await relay.idle();
+    expect(await statusOf(base, call.id)).toEqual({ status: "failed", error: code === 413 ? "La llamada es demasiado larga. Graba una más corta." : "No se pudo transcribir el audio. Vuelve a grabar." });
+    expect((await upload(base)).code).toBe(429);
+    expect(stt.calls).toEqual([1]);
+  });
+
+  it("tres fallos 503 devuelven cuota y huecos, pero no el presupuesto de subidas", async () => {
+    const stt = numberedStt((n) => n <= 3 ? stat(503) : null);
+    const { relay, base } = await boot(stt.fetch, { sttRetries: 0, uploadLimit: 4, rateLimit: { max: 3, windowMs: 60_000 } });
+    for (let i = 0; i < 3; i++) {
+      const { code, id } = await upload(base);
+      expect(code).toBe(202);
+      await relay.idle();
+      expect(await statusOf(base, id)).toEqual({ status: "failed", error: "No se pudo transcribir el audio. Vuelve a grabar." });
+    }
+    expect((await upload(base)).code).toBe(202);
     expect((await upload(base)).code).toBe(429);
   });
 
