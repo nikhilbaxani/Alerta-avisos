@@ -98,7 +98,7 @@ Verificación común (además de la propia de cada tarea): `npm run build`, `npm
   - Selector o valor de operadores disponibles (por defecto el de la franja de sala, como `npm run agente`). Rotulado «simulación con supuestos declarados».
   - E1 (dolor torácico, árabe) aparece como escalada si le toca esperar; nunca atiende una llamada que un operador libre podría coger (mismos tests de X06 en verde).
   - Verificación: test de la función que conecta `lib/waiting.ts` con el estado de la consola; `e2e.mjs` comprueba que la caja aparece, que hay al menos una llamada atendida por el asistente en la DANA y que E1 sale escalada cuando corresponde.
-- [ ] X12 Preguntas que faltan (idea #15) · agente: `backend-ia` (lógica) + `frontend-consola` (interfaz) · deps: —
+- [x] X12 Preguntas que faltan (idea #15) · agente: `backend-ia` (lógica) + `frontend-consola` (interfaz) · deps: —
   - `lib/missingInfo.ts` puro: por tipo de incidente, qué datos clave faltan según la extracción y los riesgos ya conocidos (p. ej. número de personas, planta o altura del agua, ¿respira?, ¿consciente?, dirección exacta si solo hay AML). Tabla en código con tests por tipo.
   - Cada dato que falta tiene su pregunta en castellano y **pretraducida** en en/de/fr/ar/it en `lib/phrases.ts` (sin tocar las frases existentes; las nuevas anotadas en DECISIONES). Funciona en modo simulado.
   - En el detalle del incidente: lista «Falta saber» con un clic que usa el mismo flujo de «Reproducir al llamante» en el idioma del llamante. Cuando una llamada posterior aporta el dato, desaparece de la lista.

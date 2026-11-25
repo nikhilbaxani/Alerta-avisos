@@ -26,6 +26,7 @@ import PriorityList from "./PriorityList";
 import TopBar from "./TopBar";
 import type { Theme } from "./TopBar";
 import TranslateBox from "./TranslateBox";
+import type { Ask } from "./ReplyPanel";
 import WaitingBox from "./WaitingBox";
 
 /** Lleva la vista a una caja (útil en pantallas pequeñas) y la resalta un instante. */
@@ -47,6 +48,8 @@ export default function Console() {
   const [theme, setTheme] = useState<Theme>("dark");
   const [actionsFilter, setActionsFilter] = useState<string | null>(null);
   const [archive, setArchive] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
+  // «Falta saber» (X12): pregunta que el operador ha pedido preparar en la caja de traducción (n cambia en cada clic).
+  const [ask, setAsk] = useState<Ask | null>(null);
   const openArchive = useCallback((focus: string | null = null) => setArchive({ open: true, focus }), []);
   const audio = useCallAudio(s);
 
@@ -79,6 +82,10 @@ export default function Console() {
     dispatch({ type: "select", incidentId: id });
     focusBox("detail");
   }, [dispatch]);
+  const prepareAsk = useCallback((incidentId: string, phraseId: string, foreign: boolean) => {
+    setAsk((a) => ({ incidentId, phraseId, n: (a?.n ?? 0) + 1 }));
+    if (foreign) focusBox("translate");
+  }, []);
   const resolve = useCallback((id: string) => dispatch({ type: "resolve", incidentId: id }), [dispatch]);
   const reopen = useCallback((id: string) => {
     dispatch({ type: "reopen", incidentId: id });
@@ -169,7 +176,7 @@ export default function Console() {
           </MapView>
           <div className="pair">
             <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onIncident={selectIncident} />
-            <TranslateBox s={s} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
+            <TranslateBox s={s} ask={ask} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
           </div>
         </div>
 
@@ -177,7 +184,7 @@ export default function Console() {
           <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
           <section className="box" id="box-detail" tabIndex={-1} aria-label="Ficha de la emergencia">
             <div className="box-body">
-              <IncidentDetail s={s} audio={audio} onResolve={resolve} onSplit={(callId) => dispatch({ type: "split", callId })} />
+              <IncidentDetail s={s} audio={audio} ask={ask} onAsk={prepareAsk} onResolve={resolve} onSplit={(callId) => dispatch({ type: "split", callId })} />
             </div>
           </section>
         </div>

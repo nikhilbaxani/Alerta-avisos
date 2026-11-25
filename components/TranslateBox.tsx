@@ -1,18 +1,19 @@
 import { TYPE_LABELS } from "@/lib/labels";
 import type { ConsoleState, Reply } from "@/lib/useConsole";
 import IncToken, { ranksOf } from "./IncToken";
-import ReplyPanel from "./ReplyPanel";
+import ReplyPanel, { type Ask } from "./ReplyPanel";
 import { langName, placeOf } from "./format";
 
 interface Props {
   s: ConsoleState;
+  ask?: Ask | null;
   localAI: boolean;
   onSelect: (id: string) => void;
   onReply: (r: Reply) => void;
 }
 
 /** Caja de traducción: responder en su idioma al llamante de la emergencia seleccionada. */
-export default function TranslateBox({ s, localAI, onSelect, onReply }: Props) {
+export default function TranslateBox({ s, ask, localAI, onSelect, onReply }: Props) {
   const langsOf = (callIds: string[]) => [...new Set(callIds.map((id) => s.calls[id]?.extraction.language ?? "es"))];
   const list = s.engine.incidents
     .map((i) => ({ inc: i, foreign: langsOf(i.callIds).filter((l) => l !== "es") }))
@@ -45,7 +46,7 @@ export default function TranslateBox({ s, localAI, onSelect, onReply }: Props) {
       )}
       <div className="box-body tr-body">
         {cur ? (
-          <ReplyPanel key={cur.inc.id} incidentId={cur.inc.id} langs={langsOf(cur.inc.callIds)} clock={s.clock} localAI={localAI} replies={s.replies} onReply={onReply} />
+          <ReplyPanel key={cur.inc.id} incidentId={cur.inc.id} langs={langsOf(cur.inc.callIds)} clock={s.clock} ask={ask?.incidentId === cur.inc.id ? ask : null} localAI={localAI} replies={s.replies} onReply={onReply} />
         ) : (
           <p className="note">
             {list.length === 0

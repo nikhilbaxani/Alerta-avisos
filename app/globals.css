@@ -790,3 +790,11 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- falta saber (X12) ---------- */
+.missing-list { display: grid; gap: 5px; }
+.missing-item { display: grid; gap: 1px; width: 100%; }
+.missing-item b { font-size: 13.5px; color: var(--ink); }
+.missing-item span { font-size: 13px; color: var(--ink-3); font-weight: 400; }
+.missing-said { margin: 0; }
+.said-es { font-size: 13px; color: var(--ink-3); }

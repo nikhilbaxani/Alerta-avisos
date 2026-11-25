@@ -53,3 +53,14 @@ Formato (añadir al final, no borrar; el destinatario marca `[leído]` o `[resue
 - `ConsoleState.heard` es nuevo: si añadís otra vía que aplique una llamada al motor, rellenadlo (si no, esa llamada no entra en la caja).
 - Caja `#box-waiting` en `.col-left` (debajo de `#box-calls`); en ≤1100 px va con `order: 2`. e2e usa `[data-wait=attended|grouped|escalated]` y `[data-call=ID][data-outcome=…]`.
 - El puerto 3112 lo tenía ocupado otro `next start` con un build antiguo: e2e y capturas se pasaron en 3113.
+
+## 2026-11-25 · de backend-ia para frontend-consola (X12) · «Falta saber» [resuelto]
+- `incidentMissing(incident, s.calls)` en `lib/missingInfo.ts` → `MissingItem[]` = `{ id, label, phraseId, phrase }` en orden (lo vital primero). `incident` es el `Incident` del motor (`s.engine.incidents`), `s.calls` es `ConsoleState.calls`. Se recalcula solo: cuando una llamada nueva aporta el dato, desaparece.
+- `label` es el rótulo corto en castellano («Si respira y está consciente», «Dirección exacta»…); `phrase` es una `Phrase` (`es` + `tr[lang]`) igual que las de `PHRASES`, así que el clic puede usar el mismo flujo de «Reproducir al llamante» (`ReplyPanel`: hoy busca solo en `PHRASES`; para las nuevas, usad `missingPhrase(id)` que busca en `PHRASES` y `MISSING_PHRASES`).
+- No metáis `MISSING_PHRASES` en la lista de botones de frases rápidas. Si todas las llamadas son en castellano, la pregunta se dice en castellano (`phrase.es`).
+- E1 (DANA, árabe) a t=102: `["respira", "direccion"]`; `respira` en árabe es `هل الشخص يتنفس؟ هل هو واعٍ؟` (frase existente `respira`). Para e2e: B a t=47 tiene `altura_agua`, que desaparece tras B3 (t=241).
+
+## 2026-11-25 · de frontend-consola para todos (X13–X17) · «Falta saber» en la consola (X12)
+- Bloque `section.missing` en `IncidentDetail` (antes de «Riesgos detectados»); botones `[data-missing=<id>]` con `aria-pressed` y nombre accesible «Preparar la pregunta en <idioma>: <rótulo>».
+- Clic → `Console.prepareAsk` guarda `ask = { incidentId, phraseId, n }` (tipo `Ask` en `components/ReplyPanel.tsx`) y lleva el foco a `#box-translate`; `ReplyPanel` selecciona la frase (busca con `missingPhrase`, así acepta `MISSING_PHRASES`) sin reproducirla. Si todo es castellano, la pregunta se muestra en el propio bloque para leerla.
+- `.said-box` lleva `data-phrase=<id>|libre` (lo usa e2e). Para preparar otra frase desde otro sitio, reutilizad `prepareAsk`.

@@ -147,3 +147,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Decisiones: ver DECISIONES (X11).
 - Pendiente menor (no de X11): el aviso pasajero «El agente ha enviado…» se pinta encima de una tarjeta durante su animación a mitad de escenario.
 - Siguiente: X12.
+
+## 2026-11-25T02:26:24+01:00 · X12 · hecha
+- Qué se hizo: `lib/missingInfo.ts` (tabla `MISSING_RULES` por tipo: respira, dirección, personas, altura del agua, planta, heridos; `incidentMissing(incident, calls)`), `MISSING_PHRASES` aparte en `lib/phrases.ts` (personas, altura_agua, planta en en/de/fr/ar/it; las existentes se reutilizan por id). Lista «Falta saber» en `IncidentDetail`: el clic prepara la pregunta en el idioma del llamante en la caja de Traducción, sin reproducirla; si todo es en castellano, se muestra en la ficha.
+- Verificación (qa-verificador APTO): lint OK, build OK, 368 tests (21 de `missingInfo`), eval 7/7 y eval:apagon 6/6 sin fusiones incorrectas, `e2e.mjs` OK (E1 muestra `respira` y el clic prepara «هل الشخص يتنفس؟» sin sonar), exportación de GitHub Pages OK, capturas `docs/capturas/X12-*` revisadas en oscuro y claro, sin errores de consola ni scroll horizontal en móvil.
+- Decisiones: ver DECISIONES («X12: Falta saber»).
+- Pendiente menor: el aviso flotante «El agente ha enviado…» tapa unos segundos la parte baja del detalle (ya anotado en X11).
+- Siguiente: X13.

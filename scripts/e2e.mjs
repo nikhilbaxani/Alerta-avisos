@@ -61,6 +61,18 @@ const prio = (name) => page.locator(".prio").getByRole("button", { name }).first
 
 // E1 en la cola de prioridad (la única emergencia médica, con dolor torácico): respuesta en árabe.
 await prio(/Emergencia médica[\s\S]*dolor torácico/).click();
+// «Falta saber» (X12): la guía pide si respira; el clic la prepara en árabe, sin reproducirla sola.
+const det = page.locator("#box-detail");
+const respira = det.locator('[data-missing="respira"]');
+await respira.waitFor({ timeout: 3000 }).catch(() => fail("E1 no muestra «Falta saber: si respira»"));
+if (!(await det.innerText()).includes("la IA no decide")) fail("«Falta saber» no se rotula como guía");
+const spoken = await page.evaluate(() => window.speechSynthesis?.speaking ?? false);
+await respira.click();
+const box = page.locator("#box-translate .said-box");
+if ((await box.getAttribute("data-phrase")) !== "respira") fail("el clic en «Falta saber» no prepara la frase respira");
+if (!(await box.locator(".said").innerText()).includes("هل الشخص يتنفس")) fail("la pregunta de respirar no sale en árabe");
+if ((await respira.getAttribute("aria-pressed")) !== "true") fail("«Falta saber» no marca la pregunta preparada");
+if (!spoken && (await page.evaluate(() => window.speechSynthesis?.speaking ?? false))) fail("«Falta saber» reproduce sin que lo pulse el operador");
 await page.getByRole("button", { name: "¿La persona respira? ¿Está consciente?" }).click();
 const said = await page.locator(".said").innerText();
 if (!/[؀-ۿ]/.test(said)) fail("la respuesta no está en árabe");
@@ -153,4 +165,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, acciones del agente, agente de espera, audio, Separar, sin errores de consola");
+console.log("E2E OK: 26 llamadas → 7 incidentes, F1 y B2 preguntadas, árabe, acciones del agente, agente de espera, falta saber, audio, Separar, sin errores de consola");
