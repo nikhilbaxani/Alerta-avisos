@@ -122,7 +122,7 @@ export default function Deck() {
 
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
-    touch.current = (e.target as HTMLElement).closest("[data-noswipe], .map, .frame-body") ? null : { x: t.clientX, y: t.clientY };
+    touch.current = (e.target as HTMLElement).closest("[data-noswipe], .map, .screen") ? null : { x: t.clientX, y: t.clientY };
   };
   const onTouchEnd = (e: React.TouchEvent) => {
     const s = touch.current;
@@ -142,10 +142,10 @@ export default function Deck() {
 
   return (
     <div className="deck" data-ready={k > 0 ? "1" : "0"} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      <div className={`deck-stage ${cur.theme === "light" ? "is-light" : ""}`} style={{ "--k": k || 1 } as React.CSSProperties}>
+      <div className="deck-stage" data-slide={cur.id} style={{ "--k": k || 1 } as React.CSSProperties}>
         {SLIDES.map((S, idx) => {
           const active = idx === i;
-          const cls = ["slide", S.theme, S.tone ?? "", S.className ?? "", active ? "is-active" : "", idx < i ? "is-before" : ""].filter(Boolean).join(" ");
+          const cls = ["slide", S.className ?? "", active ? "is-active" : "", idx < i ? "is-before" : ""].filter(Boolean).join(" ");
           return (
             <section key={S.id} className={cls} aria-roledescription="diapositiva" aria-label={`${idx + 1} de ${n}: ${S.title}`} aria-hidden={!active} inert={!active}>
               {mounted.has(idx) && <S.Body active={active} />}
@@ -159,12 +159,11 @@ export default function Deck() {
             <span>Agente <b>112</b></span>
           </a>
           <span className="section">{cur.section}</span>
-          <span className="count" aria-live="polite">{String(i + 1).padStart(2, "0")} / {String(n).padStart(2, "0")}</span>
+          <span className="count" aria-live="polite">{i + 1} de {n}</span>
           <a href={HOME} className="exit" aria-label="Salir a la consola" title="Salir a la consola" onClick={() => markDeckReturn(iRef.current + 1)}><Icon name="close" size={18} /></a>
         </header>
 
         <footer className="foot">
-          <span className="keys" aria-hidden="true"><kbd>←</kbd><kbd>→</kbd> avanzar · <kbd>F</kbd> pantalla completa · <kbd>N</kbd> notas</span>
           <nav className="prog" aria-label="Diapositivas">
             {SLIDES.map((S, idx) => (
               <button

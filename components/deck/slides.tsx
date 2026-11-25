@@ -2,12 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { getScenario } from "@/data/scenarios";
-import Icon from "@/components/Icon";
-import type { IconName } from "@/components/Icon";
+import { findCall, getScenario } from "@/data/scenarios";
+import { actionIncidents, RESOURCE_LABELS } from "@/lib/actions";
+import type { AgentAction, ResourceService } from "@/lib/actions";
+import { RISK_LABELS, SEVERITY_LABELS, TYPE_LABELS } from "@/lib/labels";
+import { replayTo } from "@/lib/replay";
+import { consoleProposals, reducer } from "@/lib/useConsole";
+import { langName, mmss } from "@/components/format";
 import LiveConsole from "./LiveConsole";
 import QrCode from "./QrCode";
-import { CountUp, Frame, LogoLockup, at } from "./bits";
+import { CountUp, LogoLockup, at } from "./bits";
 
 export interface SlideProps {
   active: boolean;
@@ -18,8 +22,6 @@ export interface SlideDef {
   /** Sección que se ve arriba a la derecha. */
   section: string;
   title: string;
-  theme: "dark" | "light";
-  tone?: "amber" | "green" | "blue";
   className?: string;
   notes: string;
   Body: (p: SlideProps) => ReactNode;
@@ -47,8 +49,9 @@ function useCallUrl() {
 }
 
 const shortUrl = (u: string) => u.replace(/^https?:\/\//, "").replace(/\/$/, "");
+const listEs = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} y ${xs[xs.length - 1]}`);
 
-// ═════════════════════════════ 1 · El problema: la DANA de Valencia
+// ═════════════════════════════ 1 · La DANA de Valencia
 
 function mulberry32(seed: number) {
   return () => {
@@ -104,7 +107,7 @@ function Swarm() {
           <circle className="group" cx={g.cx.toFixed(2)} cy={g.cy.toFixed(2)} r="15" style={{ "--gd": `${g.gd.toFixed(2)}s` } as CSSProperties} />
         </g>
       ))}
-      <text className="cap" x="300" y="552">cada punto, una llamada · cada círculo, una emergencia</text>
+      <text className="cap" x="300" y="552">Cada punto es una llamada; cada círculo, una emergencia.</text>
     </svg>
   );
 }
@@ -113,197 +116,233 @@ function Hook({ active }: SlideProps) {
   return (
     <>
       <div className="copy">
-        <p className="eyebrow rise" style={at(0)}><span className="bar" />29 de octubre de 2024 · DANA de Valencia</p>
+        <p className="kicker rise" style={at(0)}>Valencia, 29 de octubre de 2024. DANA.</p>
         <p className="big num rise" style={at(1)} aria-label="19.821"><CountUp to={19821} active={active} ms={1800} delay={300} /></p>
         <p className="big-label rise" style={at(2)}>llamadas al 112</p>
         <p className="vs rise" style={at(3)}>para <span className="num">4.770</span> incidentes.</p>
-        <span className="chip red ratio rise" style={at(4)}>≈ 4 llamadas por cada emergencia</span>
-        <p className="src fade" style={at(6)}>Fuente: <b>112 Comunitat Valenciana</b> / prensa</p>
+        <p className="ratio rise" style={at(4)}>Unas cuatro llamadas por cada emergencia.</p>
+        <p className="src fade" style={at(6)}>Fuente: 112 Comunitat Valenciana y prensa.</p>
       </div>
       <Swarm />
     </>
   );
 }
 
-// ═════════════════════════════ 2 · El problema: las líneas
+// ═════════════════════════════ 2 · Lo que se satura son las líneas
 
 const LINE_STATS: { num: string; label: string; what: string; who: string }[] = [
-  { num: "×4", label: "por cuatro", what: "llamadas al 112 en el apagón del 28 de abril de 2025", who: "112 autonómicos / prensa" },
-  { num: "+10.000", label: "más de 10.000", what: "llamadas perdidas ese día solo en Cataluña", who: "112 autonómicos / prensa" },
-  { num: "43.845", label: "43.845", what: "llamadas en idioma extranjero al 112 de Andalucía en 2024", who: "Junta de Andalucía" },
-  { num: "~30 s", label: "unos 30 segundos", what: "para conectar con un intérprete humano", who: "112 Catalunya" },
+  { num: "×4", label: "por cuatro", what: "llamadas al 112 durante el apagón del 28 de abril de 2025", who: "112 autonómicos y prensa" },
+  { num: "+10.000", label: "más de 10.000", what: "llamadas perdidas ese mismo día en Cataluña", who: "112 autonómicos y prensa" },
+  { num: "43.845", label: "43.845", what: "llamadas en otro idioma al 112 de Andalucía en 2024", who: "Junta de Andalucía" },
+  { num: "30 s", label: "unos 30 segundos", what: "aproximadamente para conectar con un intérprete", who: "112 Catalunya" },
 ];
 
 function Lines() {
   return (
     <>
-      <div className="head">
-        <p className="eyebrow rise" style={at(0)}><span className="bar" />Cuando todo falla, todo el mundo llama</p>
-        <h2 className="h2 rise" style={at(1)}>El cuello de botella no son los recursos. <em>Son las líneas.</em></h2>
-      </div>
-      <div className="s-lines">
+      <h2 className="h2 rise" style={at(0)}>En una catástrofe, lo que se satura <em>son las líneas.</em></h2>
+      <div className="figures">
         {LINE_STATS.map((x, i) => (
-          <div key={x.num} className="card stat rise" style={at(2 + i)}>
+          <div key={x.num} className="figure rise" style={at(1 + i)}>
             <p className="num" aria-label={x.label}>{x.num}</p>
             <p className="what">{x.what}</p>
             <p className="who">{x.who}</p>
           </div>
         ))}
       </div>
-      <div className="spacer" />
-      <p className="punch rise" style={at(7)}>
-        <span className="soft">Seis llamadas por el mismo coche ocupan seis líneas.</span> <u>La del infarto, en árabe, espera.</u>
+      <p className="closing rise" style={at(6)}>
+        Si seis personas llaman por el mismo coche, son seis líneas ocupadas. Mientras, <em>otra emergencia espera turno.</em>
       </p>
     </>
   );
 }
 
-// ═════════════════════════════ 3 · La solución
+// ═════════════════════════════ 3 · Cómo funciona, con un caso del escenario
 
-const PILLARS: { icon: IconName; title: string; text: string }[] = [
-  { icon: "merge", title: "Agrupa", text: "Seis llamadas, un incidente. Cuenta la dirección que se dice, no solo dónde está el móvil." },
-  { icon: "alert", title: "Prioriza", text: "Si una llamada repetida trae algo nuevo («hay un bebé dentro»), sube la prioridad." },
-  { icon: "translate", title: "Traduce", text: "El operador elige la frase en castellano y el llamante la oye en su idioma." },
-  { icon: "agent", title: "Actúa", text: "Avisa sola a la distribuidora y al ayuntamiento. SMS, unidades y ES-Alert los aprueba una persona." },
-];
+const APPROVAL: Record<AgentAction["policy"], string> = {
+  automatica: "Sale solo",
+  operador: "Lo aprueba el operador",
+  coordinador: "Lo aprueba un coordinador",
+};
 
-function Solution() {
+/** El coche atrapado del escenario de la DANA, tal como queda en la consola: sus avisos, la emergencia y lo que propone el agente. */
+function useCase() {
+  return useMemo(() => {
+    let s = replayTo(DANA, Infinity, { F1: false, B2: true });
+    s = reducer(s, { type: "plan", proposals: consoleProposals(s) });
+    const inc = s.engine.incidents.find((i) => i.callIds.includes("A1"))!;
+    const news = new Map(inc.alerts.map((a) => [a.callId, a.risks]));
+    const calls = inc.callIds.map((id) => {
+      const c = findCall(id)!;
+      const risks = news.get(id);
+      return { id, t: c.t, lang: c.channel === "ecall" ? "eCall" : langName(c.lang), text: c.mock.summary_es, news: risks?.length ? risks.map((r) => RISK_LABELS[r]).join(", ") : null };
+    });
+    const mine = s.actions.filter((a) => actionIncidents(a).includes(inc.id));
+    const arg = (a: AgentAction, k: string) => (a.args as unknown as Record<string, unknown>)[k];
+    const res = mine.filter((a) => a.tool === "proponer_recursos");
+    const sms = mine.filter((a) => a.tool === "sms_al_llamante");
+    const zone = mine.find((a) => a.tool === "proponer_es_alert");
+    const steps: { what: string; who: string }[] = [];
+    if (res.length) steps.push({ what: `${listEs(res.map((a) => RESOURCE_LABELS[arg(a, "servicio") as ResourceService]))} al lugar`, who: APPROVAL[res[0].policy] });
+    if (sms.length) steps.push({ what: `SMS en ${listEs([...new Set(sms.map((a) => langName(String(arg(a, "idioma"))).toLowerCase()))])} a quien llamó: que no se acerque al agua`, who: APPROVAL[sms[0].policy] });
+    if (zone) steps.push({ what: `ES-Alert para la zona de ${String((arg(zone, "zona") as { nombre?: string } | undefined)?.nombre ?? "")}`, who: APPROVAL[zone.policy] });
+    return { inc, calls, steps };
+  }, []);
+}
+
+function HowItWorks() {
+  const { inc, calls, steps } = useCase();
   return (
     <>
-      <div className="head">
-        <p className="eyebrow rise" style={at(0)}><span className="bar" />La solución · Agente 112</p>
-        <h2 className="h2 rise" style={at(1)}>Ordena la avalancha. <em>Decide el operador.</em></h2>
-        <p className="lead rise" style={at(2)}>Un agente de IA para la sala del 112: escucha cada llamada, la junta con las de la misma emergencia y prepara el siguiente paso.</p>
-      </div>
-      <div className="s-pillars">
-        {PILLARS.map((p, i) => (
-          <div key={p.title} className="card pillar rise" style={at(3 + i)}>
-            <span className="ic"><Icon name={p.icon} size={30} /></span>
-            <span className="k">{String(i + 1).padStart(2, "0")}</span>
-            <h3>{p.title}</h3>
-            <p>{p.text}</p>
+      <h2 className="h2 rise" style={at(0)}>{calls.length} avisos del mismo coche, <em>una sola emergencia.</em></h2>
+      <p className="intro rise" style={at(1)}>Así trata Agente 112 uno de los casos del escenario de la DANA en Málaga.</p>
+      <div className="flow">
+        <section className="step rise" style={at(2)}>
+          <h3><span>1</span>Escucha cada aviso</h3>
+          <ol className="feed">
+            {calls.map((c) => (
+              <li key={c.id} className={c.news ? "is-new" : ""}>
+                <span className="t">{mmss(c.t)}</span>
+                <span className="l">{c.lang}</span>
+                <span className="x">{c.text}</span>
+                {c.news && <span className="flag">Dato nuevo: {c.news.toLowerCase()}</span>}
+              </li>
+            ))}
+          </ol>
+        </section>
+        <section className="step rise" style={at(3)}>
+          <h3><span>2</span>Los junta en una emergencia</h3>
+          <div className="incident">
+            <span className="rank">1</span>
+            <div>
+              <p className="ttl">{TYPE_LABELS[inc.type]}</p>
+              <p className="where">{inc.locations[0]}</p>
+              <p className="meta"><span className="sev">{SEVERITY_LABELS[inc.severity]}</span>{calls.length} avisos · {inc.people} personas · {inc.risks.includes("menor") ? "hay un menor" : RISK_LABELS[inc.risks[0]].toLowerCase()}</p>
+            </div>
           </div>
-        ))}
+          <p className="note">Junta por lo que cuenta cada persona (el sitio, qué pasa, quién está en peligro), no solo por dónde está su móvil. Si no lo tiene claro, no junta nada: pregunta al operador.</p>
+        </section>
+        <section className="step rise" style={at(4)}>
+          <h3><span>3</span>Prepara lo siguiente</h3>
+          <ul className="todo">
+            {steps.map((x) => (
+              <li key={x.what}><b>{x.what}</b><span>{x.who}</span></li>
+            ))}
+          </ul>
+          <p className="note">Los avisos que solo informan, como el de la compañía eléctrica o el del ayuntamiento, salen solos. Todo lo demás lo decide una persona.</p>
+        </section>
       </div>
-      <div className="spacer" />
-      <div className="guarantees fade" style={at(7)}>
-        <span className="chip amber"><Icon name="alert" size={16} />Si duda, pregunta: nunca fusiona sola</span>
-        <span className="chip ok"><Icon name="check" size={16} />100 % local · sin nube</span>
-        <span className="chip"><Icon name="check" size={16} />Ley de IA: humano en el bucle y registro</span>
-      </div>
-      <p className="src fade" style={at(8)}>No hemos encontrado ningún 112 en España que agrupe automáticamente las llamadas duplicadas · <b>investigación propia, oct-2026</b></p>
+      <p className="foot-line fade" style={at(6)}>Funciona en un ordenador de la sala, sin nube. No hemos encontrado ningún 112 en España que agrupe ya las llamadas repetidas (investigación propia, oct. 2026).</p>
     </>
   );
 }
 
-// ═════════════════════════════ 4 · Llama tú (QR para el público)
-
-function CallIn() {
-  const url = useCallUrl();
-  return (
-    <>
-      <div className="copy">
-        <p className="eyebrow rise" style={at(0)}><span className="bar" />Participa en la demo</p>
-        <h2 className="h1 rise" style={at(1)}>Llama tú.</h2>
-        <p className="lead rise" style={at(2)}>Graba desde el móvil una emergencia inventada y mírala entrar en la sala mientras te la enseñamos.</p>
-        <ol className="steps3">
-          <li className="rise" style={at(3)}><span className="k">1</span><div><b>Escanea el código</b><span>Se abre la grabadora en el navegador.</span></div></li>
-          <li className="rise" style={at(4)}><span className="k">2</span><div><b>Cuenta qué pasa y dónde</b><span>En tu idioma, hasta 2 minutos.</span></div></li>
-          <li className="rise" style={at(5)}><span className="k">3</span><div><b>Llega a la consola</b><span>El operador la ve en su bandeja y decide.</span></div></li>
-        </ol>
-        <p className="warn fade" style={at(7)}><Icon name="alert" size={18} />Demo de hackathon: no es un servicio de emergencias. En una emergencia real, llama al 112.</p>
-      </div>
-      <div className="qr-card rise" style={at(2)}>
-        {url ? <QrCode text={url} label={`Código QR a ${url}`} /> : <div className="qr-skeleton" />}
-        <span className="url">{shortUrl(url)}</span>
-        <span className="tag"><Icon name="mic" size={16} />Graba tu llamada</span>
-      </div>
-    </>
-  );
-}
-
-// ═════════════════════════════ 5 · La consola en directo
+// ═════════════════════════════ 4 · La consola en directo
 
 function Live({ active }: SlideProps) {
-  const url = useCallUrl();
-  const incidents = new Set(scn.calls.map((c) => c.gold)).size;
   return (
     <>
-      <div className="s-live-head">
-        <div className="head">
-          <p className="eyebrow rise" style={at(0)}><span className="bar" />La consola, en directo</p>
-          <h2 className="h2 rise" style={at(1)}>{scn.calls.length} avisos. <em>{incidents} emergencias.</em></h2>
-        </div>
-        <div className="hint fade" style={at(3)}>
-          <span className="live-tag"><i />En directo · simulado</span>
-          <span>Si la IA duda, decides tú:</span>
-          <span><kbd>M</kbd> mismo · <kbd>D</kbd> distinto</span>
-        </div>
-        <div className="mini-qr fade" style={at(4)}>
-          {url ? <QrCode text={url} label={`Código QR para llamar: ${url}`} /> : <div className="qr-skeleton" />}
-          <span><b>Llama tú</b>escanea y graba</span>
-        </div>
+      <div className="live-head rise" style={at(0)}>
+        <h2 className="h3">Así lo ve el operador.</h2>
+        <p>{scn.calls.length} avisos del escenario de la DANA en Málaga, a velocidad real o acelerada.</p>
       </div>
-      <Frame title="Agente 112 · consola de sala" tag="la misma de la página principal" className="s-live rise" style={at(2)}>
+      <div className="screen rise" style={at(1)}>
         <LiveConsole active={active} />
-      </Frame>
+      </div>
     </>
   );
 }
 
-// ═════════════════════════════ 6 · Hoja de ruta (provisional)
+// ═════════════════════════════ 5 · Tecnología, negocio y hoja de ruta
 
-const ROADMAP: { when: string; title: string; text: string; done?: boolean }[] = [
-  { when: "Hoy · nov 2026", title: "MVP funcionando", text: "Consola en modo simulado, tres escenarios, IA local (Whisper + LLM) y la política del agente en código con tests.", done: true },
-  { when: "1.er semestre 2027", title: "Piloto con un contratista", text: "Llamadas reales anonimizadas. Métrica: líneas liberadas y tiempo hasta la llamada crítica." },
-  { when: "2.º semestre 2027", title: "Integración y Ley de IA", text: "Telefonía, AML y despacho. Listos para el alto riesgo antes de dic-2027: registro, explicaciones y humano en el bucle." },
-  { when: "2028", title: "Primeras salas", text: "A través de los concursos del 112: el pliego andaluz ya puntúa el software que ofrece el licitador." },
+const STACK: { name: string; text: string }[] = [
+  { name: "Whisper", text: "Pasa a texto cada llamada en el propio ordenador, en el idioma que sea." },
+  { name: "Qwen 2.5 con Ollama", text: "Modelo de lenguaje local: saca qué pasa, dónde y quién corre peligro. Ningún dato sale de la sala." },
+  { name: "Reglas en código", text: "Cuándo juntar llamadas y qué puede hacer el agente solo está programado y probado, no lo decide el modelo." },
+  { name: "Integración con la sala", text: "Hoy lee la posición AML y la eCall y propone ES-Alert. En el piloto, telefonía y sistema de despacho." },
 ];
 
-function Roadmap({ active }: SlideProps) {
+const ROADMAP: { when: string; what: string; done?: boolean }[] = [
+  { when: "Hoy", what: "Prototipo completo en modo simulado", done: true },
+  { when: "2027, primer semestre", what: "Piloto con llamadas reales anonimizadas" },
+  { when: "2027, segundo semestre", what: "Integración con la sala y Ley de IA" },
+  { when: "2028", what: "Primeras salas en producción" },
+];
+
+function Plan({ active }: SlideProps) {
   return (
     <>
-      <div className="head">
-        <p className="eyebrow rise" style={at(0)}><span className="bar" />Hoja de ruta</p>
-        <h2 className="h2 rise" style={at(1)}>De la demo a una sala real <em>del 112.</em></h2>
-      </div>
-      <ol className="road">
-        {ROADMAP.map((r, i) => (
-          <li key={r.when} className={`step rise ${r.done ? "done" : ""}`} style={at(2 + i)}>
-            <span className="dot" aria-hidden="true">{r.done && <Icon name="check" size={16} />}</span>
-            <span className="when">{r.when}</span>
-            <h3>{r.title}</h3>
-            <p>{r.text}</p>
-          </li>
-        ))}
-      </ol>
-      <div className="spacer" />
-      <div className="s-biz">
-        <div className="card rise" style={at(6)}>
-          <h3>Cliente</h3>
-          <p>El contratista que opera la sala del 112.</p>
+      <h2 className="h2 rise" style={at(0)}>Pensado para funcionar <em>dentro de la sala.</em></h2>
+
+      <section className="band rise" style={at(1)}>
+        <h3 className="band-h">Con qué está hecho</h3>
+        <div className="cols">
+          {STACK.map((x) => (
+            <div key={x.name} className="col">
+              <p className="name">{x.name}</p>
+              <p>{x.text}</p>
+            </div>
+          ))}
         </div>
-        <div className="card rise" style={at(7)}>
-          <h3>Modelo</h3>
-          <p>Licencia por puesto de operador.</p>
+      </section>
+
+      <section className="band rise" style={at(2)}>
+        <h3 className="band-h">Negocio</h3>
+        <div className="cols">
+          <div className="col">
+            <p className="name">Cliente</p>
+            <p>Las empresas que gestionan las salas del 112 por concurso público.</p>
+          </div>
+          <div className="col">
+            <p className="name">Modelo</p>
+            <p>Licencia anual por puesto de operador.</p>
+          </div>
+          <div className="col">
+            <p className="name">Mercado</p>
+            <p><span className="num"><CountUp to={894930} active={active} delay={700} /></span> emergencias gestionó solo el 112 de Andalucía en 2025.</p>
+            <p className="who">Junta de Andalucía</p>
+          </div>
+          <div className="col">
+            <p className="name">Escala</p>
+            <p>Un servidor por sala y el mismo software para cualquier 112 autonómico. Y el 112 es el número de emergencias de toda la UE.</p>
+          </div>
         </div>
-        <div className="card rise" style={at(8)}>
-          <h3>Mercado</h3>
-          <p><span className="num"><CountUp to={894930} active={active} delay={900} /></span> emergencias gestionó el 112 de Andalucía en 2025 <span className="who">· Junta de Andalucía</span></p>
-        </div>
-      </div>
+      </section>
+
+      <section className="band rise" style={at(3)}>
+        <h3 className="band-h">Hoja de ruta</h3>
+        <ol className="road">
+          {ROADMAP.map((r) => (
+            <li key={r.when} className={r.done ? "done" : ""}>
+              <span className="when">{r.when}</span>
+              <span className="what">{r.what}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
     </>
   );
 }
 
-// ═════════════════════════════ 7 · Cierre: logo y eslogan
+// ═════════════════════════════ 6 · Cierre: logo, eslogan y QR
 
 function Closing() {
+  const url = useCallUrl();
   return (
     <>
-      <LogoLockup />
-      <p className="slogan rise" style={at(6)}>Cuando todos llaman, <em>que nadie se pierda.</em></p>
-      <p className="motto fade" style={at(8)}>La IA propone · El operador decide</p>
+      <div className="brand-block">
+        <LogoLockup />
+        <p className="slogan rise" style={at(6)}>Para que nadie se quede esperando al otro lado.</p>
+      </div>
+      <aside className="call-qr rise" style={at(8)}>
+        {url ? <QrCode text={url} label={`Código QR para grabar una llamada: ${url}`} /> : <div className="qr-skeleton" />}
+        <div>
+          <p className="q-title">Llama tú</p>
+          <p>Graba un aviso inventado desde el móvil y míralo entrar en la consola.</p>
+          <p className="q-url">{shortUrl(url)}</p>
+          <p className="q-warn">Es una demo: en una emergencia real, llama al 112.</p>
+        </div>
+      </aside>
     </>
   );
 }
@@ -312,31 +351,27 @@ function Closing() {
 
 export const SLIDES: SlideDef[] = [
   {
-    id: "dana", section: "El problema", title: "19.821 llamadas, 4.770 incidentes", theme: "dark", className: "s-hook", Body: Hook,
-    notes: "(0:00–0:15) El 29 de octubre de 2024, la DANA de Valencia generó 19.821 llamadas al 112 para 4.770 incidentes: unas cuatro llamadas por cada emergencia. Cada punto es una llamada; cada círculo, una emergencia.",
+    id: "dana", section: "El problema", title: "19.821 llamadas, 4.770 incidentes", className: "s-hook", Body: Hook,
+    notes: "(0:00–0:15) El 29 de octubre de 2024, la DANA de Valencia generó 19.821 llamadas al 112 para 4.770 incidentes: unas cuatro llamadas por cada emergencia.",
   },
   {
-    id: "lineas", section: "El problema", title: "Son las líneas", theme: "dark", Body: Lines,
-    notes: "(0:15–0:35) En el apagón de 2025 las llamadas se multiplicaron por cuatro y en Cataluña se perdieron más de 10.000. Y no todos hablan castellano: 43.845 llamadas en otro idioma en Andalucía, y unos 30 segundos para conseguir un intérprete. Si seis personas llaman por el mismo coche, la del infarto, en árabe, espera.",
+    id: "lineas", section: "El problema", title: "Lo que se satura son las líneas", className: "s-lines", Body: Lines,
+    notes: "(0:15–0:35) En el apagón de 2025 las llamadas se multiplicaron por cuatro y en Cataluña se perdieron más de 10.000. Además, 43.845 llamadas en otro idioma solo en Andalucía, y unos 30 segundos para conseguir un intérprete. Si seis personas llaman por el mismo coche, son seis líneas ocupadas mientras otra emergencia espera.",
   },
   {
-    id: "solucion", section: "La solución", title: "Agente 112", theme: "dark", tone: "blue", Body: Solution,
-    notes: "(0:35–0:55) Agente 112 ordena esa avalancha. Agrupa las llamadas de la misma emergencia, también por la dirección que se dice; prioriza cuando una repetida trae algo nuevo; traduce la respuesta del operador; y actúa: los avisos informativos salen solos, lo demás lo aprueba una persona. Si duda, pregunta. Todo en local.",
+    id: "como-funciona", section: "La solución", title: "Cómo funciona", Body: HowItWorks,
+    notes: "(0:35–1:00) Agente 112 escucha cada aviso, junta los que hablan de lo mismo y prepara lo siguiente. En este caso, siete avisos del mismo coche (uno es una eCall, otros en inglés y alemán) acaban en una sola emergencia, y cuando alguien dice que hay un bebé dentro, sube la prioridad. El agente propone bomberos, SAMU, SMS en el idioma de cada llamante y un ES-Alert; lo aprueba una persona. Si duda, pregunta.",
   },
   {
-    id: "llama", section: "La demo", title: "Llama tú", theme: "light", className: "s-call", Body: CallIn,
-    notes: "(0:55–1:05) Sacad el móvil: escanead y grabad una emergencia inventada, diciendo qué pasa y dónde. Mientras, os enseño la consola. El QR sigue en la esquina de la siguiente diapositiva.",
+    id: "demo", section: "Demo", title: "Así lo ve el operador", className: "s-live", Body: Live,
+    notes: "(1:00–2:15) Arranca sola a ×4 con sonido: suben las líneas liberadas. A4 trae información nueva y sube la prioridad. F1 se pone en ámbar: pulsar D, es otro coche. B2: pulsar M, misma dirección. Los cables caídos avisan solos a la compañía eléctrica. Subir a ×10: llega E1 en árabe; en Traducción, elegir «¿La persona respira?» y reproducirla.",
   },
   {
-    id: "demo", section: "La demo", title: "La consola, en directo", theme: "dark", tone: "blue", Body: Live,
-    notes: "(1:05–2:20) Arranca sola a ×4 con sonido: suben las líneas liberadas. A4 trae información nueva (un bebé) y sube la prioridad. F1 se pone en ámbar: pulsar D, es otro coche. B2: pulsar M, misma dirección. Los cables caídos avisan solos a la distribuidora. Subir a ×10: llega E1 en árabe; en Traducción, elegir «¿La persona respira?» y reproducirla en árabe. Final: 27 avisos (26 llamadas y una eCall), 7 emergencias.",
+    id: "plan", section: "Tecnología y negocio", title: "Pensado para funcionar dentro de la sala", Body: Plan,
+    notes: "(2:15–2:45) Todo en local: Whisper y Qwen con Ollama en un ordenador de la sala, y las reglas en código. Vendemos a las empresas que gestionan las salas por concurso, con licencia por puesto. Escala a cualquier 112. Hoja de ruta provisional: piloto en 2027, integración y Ley de IA, y primeras salas en 2028.",
   },
   {
-    id: "hoja-de-ruta", section: "Siguiente paso", title: "Hoja de ruta", theme: "dark", tone: "green", Body: Roadmap,
-    notes: "(2:20–2:45) Hoja de ruta provisional. Hoy, el MVP. En 2027, piloto con un contratista con llamadas reales anonimizadas, integración y conformidad con la Ley de IA antes de diciembre de 2027. En 2028, las primeras salas a través de los concursos. Vendemos al contratista que opera la sala, con licencia por puesto.",
-  },
-  {
-    id: "agente-112", section: "Agente 112", title: "Cuando todos llaman, que nadie se pierda", theme: "light", className: "s-close", Body: Closing,
-    notes: "(2:45–3:00) Agente 112. Cuando todos llaman, que nadie se pierda. La IA propone; el operador decide. Gracias. (Al pasar de esta diapositiva se abre la consola.)",
+    id: "agente-112", section: "Agente 112", title: "Para que nadie se quede esperando al otro lado", className: "s-close", Body: Closing,
+    notes: "(2:45–3:00) Agente 112: para que nadie se quede esperando al otro lado. Si queréis, escanead el QR y grabad un aviso: lo veréis entrar en la consola. Gracias. (Al pasar de esta diapositiva se abre la consola.)",
   },
 ];

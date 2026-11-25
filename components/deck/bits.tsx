@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 
 /** Miles con punto, como en castellano escrito («4.770», no «4770»). */
 export const fmt = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -46,20 +46,6 @@ export function useElapsed(active: boolean) {
     return () => clearInterval(id);
   }, [active]);
   return s;
-}
-
-/** Ventana de la consola: piezas reales de la interfaz dentro de la presentación. */
-export function Frame({ title, tag, className = "", style, children }: { title: string; tag?: string; className?: string; style?: CSSProperties; children: ReactNode }) {
-  return (
-    <div className={`frame ${className}`} style={style}>
-      <div className="frame-bar" aria-hidden="true">
-        <span className="dots"><i /><i /><i /></span>
-        {title}
-        {tag && <span className="tag">{tag}</span>}
-      </div>
-      <div className="frame-body">{children}</div>
-    </div>
-  );
 }
 
 /** Símbolo de Agente 112 (tres llamadas que convergen; arco ámbar: decisión humana; centro rojo: la persona). */
