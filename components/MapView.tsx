@@ -404,7 +404,7 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
           <button className="popup-close" onClick={() => setClosed(selected.id)} aria-label="Cerrar ficha"><Icon name="close" size={16} /></button>
           <div className="popup-top">
             <h3>{TYPE_LABELS[selected.type]}</h3>
-            <span className={`pill ${tone === "critical" ? "red" : tone === "pending" ? "amber" : "accent"}`} title="Tiempo desde la primera llamada">{mmss(Math.max(0, s.clock - firstT))}</span>
+            <span className={`pill tone-${tone}`} title="Tiempo desde la primera llamada">{mmss(Math.max(0, s.clock - firstT))}</span>
           </div>
           <span className="popup-sub">{selected.id} · prioridad {n} · {plural(selected.callIds.length, "llamada", "llamadas")}{langs.length ? ` · ${langs.map(langName).join(", ")}` : ""}</span>
           {placeOf(selected) && <span className="popup-place">{placeOf(selected)}</span>}
@@ -642,8 +642,7 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
     </div>
     {popup}
     <div className="map-legend map-float" aria-hidden="true">
-      <span><i className="lg tone-critical" />Crítico</span>
-      <span><i className="lg tone-normal" />Incidente <em>(nº = prioridad)</em></span>
+      <span className="lg-group"><em>Emergencias (nº = prioridad):</em><i className="lg tone-critical" />Riesgo vital<i className="lg tone-serious" />Grave<i className="lg tone-normal" />Leve</span>
       <span><i className="lg tone-pending" />Necesita tu decisión</span>
       <span><i className="lg todo">2</i>Acciones por aprobar</span>
       <span><i className="lg call" />Llamada</span>

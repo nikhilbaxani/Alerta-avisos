@@ -201,3 +201,8 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 ## 2026-11-25 · Llamadas en una caja con pestañas · hecho
 - Qué se hizo: ver DECISIONES (misma fecha). Nuevo `components/CallsBox.tsx`. `CallQueue`, `WaitingBox` y `LostCallsBox` pasan a ser el contenido de cada pestaña. Pestañas con teclado (flechas, Inicio y Fin). `scripts/e2e.mjs` cambia de pestaña antes de comprobar En espera y Perdidas, y comprueba que hay tres pestañas y que solo se ve la activa.
 - Verificación: lint, build, 432 tests, `eval` y `eval:apagon` en verde; `node scripts/e2e.mjs` OK; capturas de las tres pestañas en escritorio (oscuro y claro) y móvil revisadas, sin errores de consola ni scroll horizontal; la franja «B1 escalada» aparece a mitad de escenario y lleva a En espera.
+
+## 2026-11-25 · Interfaz menos saturada (color por nivel) · hecho
+- Qué se hizo: ver DECISIONES (misma fecha). Tres niveles de color por emergencia (rojo riesgo vital, naranja grave, verde azulado leve), con el ámbar solo para las decisiones. Tinte en lugar de relleno en las etiquetas e insignias. Lista de prioridad más limpia. Información nueva en azul. Escaladas y peligros en naranja. Leyenda y ayuda actualizadas.
+- Verificación: lint, build, 432 tests, `eval` (7/0/2) y `eval:apagon` (6/0/1) en verde; `node scripts/e2e.mjs` OK; capturas revisadas en escritorio (oscuro y claro, con decisión y al final), móvil (sin scroll horizontal) y `/presentacion`, sin errores de consola.
+- Pendiente menor: la ficha emergente del mapa sigue tapando parte de la leyenda a 1440×900.

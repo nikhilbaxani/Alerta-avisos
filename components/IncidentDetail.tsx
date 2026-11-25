@@ -1,4 +1,4 @@
-import { RISK_LABELS, SEVERITY_LABELS, TYPE_LABELS } from "@/lib/labels";
+import { RISK_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { rankIncidents } from "@/lib/priority";
 import { callMeta } from "@/lib/useConsole";
 import { resolveBlocker } from "@/lib/engine";
@@ -11,7 +11,7 @@ import IncToken from "./IncToken";
 import ResolveButton from "./ResolveButton";
 import type { Ask } from "./ReplyPanel";
 import type { CallAudio } from "./useCallAudio";
-import { langName, mmss, placeOf, plural } from "./format";
+import { langName, mmss, placeOf, plural, toneLabel, toneOf } from "./format";
 
 interface Props {
   s: ConsoleState;
@@ -51,7 +51,7 @@ export default function IncidentDetail({ s, onSplit, audio, onResolve, ask, onAs
         {placeOf(inc) && <p className="detail-place">{placeOf(inc)}</p>}
         <p className="detail-summary">{inc.summary}</p>
         <ul className="facts">
-          <li className={`badge sev-${inc.severity}`}>Gravedad {inc.severity}/5 · {SEVERITY_LABELS[inc.severity]}</li>
+          <li className={`badge tone-${toneOf(inc)}`}>{inc.provisional ? "Pendiente de decidir" : toneLabel(inc)} · gravedad {inc.severity}/5</li>
           {inc.people > 0 && <li><Icon name="people" size={15} />{plural(inc.people, "persona", "personas")} en peligro</li>}
           <li><Icon name="phone" size={15} />{plural(inc.callIds.length, "llamada", "llamadas")}</li>
           {foreign.length > 0 && <li><Icon name="globe" size={15} />{foreign.map(langName).join(", ")}</li>}
