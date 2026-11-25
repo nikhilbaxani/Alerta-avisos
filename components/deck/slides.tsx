@@ -31,7 +31,7 @@ const DANA = "dana-malaga";
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 /**
- * Consola a la que salta la presentación al terminar (pasar de la última diapositiva o «Abrir la consola»): la
+ * Consola que abre el botón «Abrir la consola» de la última diapositiva (nunca de forma automática): la
  * del VPS, donde también entran las llamadas del público. NEXT_PUBLIC_DEMO_CONSOLE_URL la cambia.
  */
 export const DEMO_CONSOLE_URL = process.env.NEXT_PUBLIC_DEMO_CONSOLE_URL?.trim() || "https://oracle-exit.tail0093c8.ts.net/";
@@ -577,6 +577,6 @@ export const SLIDES: SlideDef[] = [
   },
   {
     id: "agente-112", section: "Agente 112", title: "Para que nadie se quede esperando al otro lado", className: "s-close", Body: Closing,
-    notes: "(2:50–3:00) Agente 112: para que nadie se quede esperando al otro lado. El QR lleva a una simulación de llamada al 112: grabad un aviso y lo veréis entrar en la consola. Gracias. (Al pasar de esta diapositiva se abre la consola del VPS.)",
+    notes: "(2:50–3:00) Agente 112: para que nadie se quede esperando al otro lado. El QR lleva a una simulación de llamada al 112: grabad un aviso y lo veréis entrar en la consola. Gracias. (La consola del VPS se abre solo con el botón «Abrir la consola».)",
   },
 ];
