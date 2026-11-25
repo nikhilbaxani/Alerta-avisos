@@ -130,7 +130,7 @@
 .deck .flip { transform: scaleX(-1); }
 .deck .nav-btn {
   display: inline-flex; align-items: center; gap: 8px; height: 40px; min-width: 40px; padding: 0 12px; justify-content: center;
-  border-radius: 999px; border: 1px solid var(--d-line2); background: var(--d-card); color: var(--d-ink); cursor: pointer; font: 600 14px/1 var(--font);
+  border-radius: 999px; border: 1px solid var(--d-line2); background: var(--d-card); color: var(--d-ink); cursor: pointer; font: 600 14px/1 var(--font); text-decoration: none;
 }
 .deck .nav-btn:hover { background: #fff; }
 .deck .nav-btn:disabled { opacity: .35; cursor: default; }
@@ -391,6 +391,7 @@
 }
 .call-qr img { display: block; width: 286px; height: auto; border-radius: 14px; border: 1px solid var(--d-line); }
 .call-qr p { font-size: 17px; line-height: 1.45; color: var(--d-ink2); }
+.call-qr .q-title { margin-top: 4px; margin-bottom: -6px; font-size: 26px; font-weight: 740; color: var(--d-ink); }
 
 @media (prefers-reduced-motion: reduce) {
   .deck .slide { transition: none; }

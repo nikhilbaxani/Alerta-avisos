@@ -13,8 +13,8 @@ const HOME = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`;
 
 /**
  * Presentación interactiva anexa a la consola (/presentacion). Flechas, espacio o los botones para avanzar;
- * F pantalla completa; N notas del orador. La dirección guarda la diapositiva (#3). Al pasar de la última
- * (logo y eslogan) se vuelve a la página principal.
+ * F pantalla completa; N notas del orador. La dirección guarda la diapositiva (#3). En la última, las teclas no
+ * salen de la presentación: la consola del VPS solo se abre con el botón «Abrir la consola».
  */
 export default function Deck() {
   const n = SLIDES.length;
@@ -27,12 +27,8 @@ export default function Deck() {
 
   const go = useCallback(
     (to: number) => {
-      // Al pasar de la última diapositiva se abre la consola del VPS (NEXT_PUBLIC_DEMO_CONSOLE_URL).
-      if (to >= n) {
-        markDeckReturn(n);
-        window.location.assign(DEMO_CONSOLE_URL);
-        return;
-      }
+      // Después de la última no hay nada: la consola del VPS solo se abre con el botón, para no salir por error.
+      if (to >= n) return;
       const t = Math.max(0, Math.min(n - 1, to));
       iRef.current = t;
       setI(t);
@@ -189,7 +185,7 @@ export default function Deck() {
               <Icon name="chevron" size={18} className="flip" />
             </button>
             {last ? (
-              <button type="button" className="nav-btn go" onClick={next}>Abrir la consola<Icon name="chevron" size={18} /></button>
+              <a className="nav-btn go" href={DEMO_CONSOLE_URL} onClick={() => markDeckReturn(n)}>Abrir la consola<Icon name="chevron" size={18} /></a>
             ) : (
               <button type="button" className="nav-btn" onClick={next} aria-label="Diapositiva siguiente"><Icon name="chevron" size={18} /></button>
             )}
