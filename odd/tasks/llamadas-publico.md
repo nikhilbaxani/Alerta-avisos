@@ -65,7 +65,7 @@ export function isPublicCallEvent(x: unknown): x is PublicCallEvent;
 | T12 | S15 | Unificar el nombre visible y el logo en «Agente 112» | 087cd8a |
 | T13 | S16, S14 | Rediseño de `/llamar` en el estilo de la consola nueva y retoques de texto del recibo | 2184c8f |
 | T14 | S17 | Relay: tope de peticiones simultáneas al LLM y reintento del STT ante 429/5xx | 10e8110 |
-| T15 | S17 | Relay: las transcripciones pendientes van antes que las extracciones de llamadas aún no enviadas | — |
+| T15 | S17 | Relay: las transcripciones pendientes van antes que las extracciones de llamadas aún no enviadas | (este commit) |
 | T5 | S3–S6, S8, S9 | Endurecimiento tras verificación y revisión | 3a0b4d7, a91d0ef, dc47872 |
 
 ## Log

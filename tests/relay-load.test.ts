@@ -326,3 +326,113 @@ describe("S17 · STT_RETRIES", () => {
     expect(stt.calls.length).toBe(1);
   });
 });
+
+/** T15 · S17: las transcripciones van antes que las extracciones de llamadas aún no enviadas. */
+describe("S17 · LLM_DEFER_MAX_MS (T15)", () => {
+  /** STT serie falso con retardo; `done` cuenta las transcripciones ya devueltas. */
+  function slowStt(ms: number) {
+    const inner = numberedStt();
+    const st = { done: 0 };
+    const fetchFn = (async (...a: Parameters<typeof fetch>) => {
+      await wait(ms);
+      const r = await inner.fetch(...a);
+      st.done++;
+      return r;
+    }) as typeof fetch;
+    return { fetch: fetchFn, st };
+  }
+  /** LLM falso que anota cuántas transcripciones estaban listas cuando recibió cada petición. */
+  function watchedLlm(stt: { st: { done: number } }, ms = 10) {
+    const llm = fakeLlm(ms);
+    const doneAtStart: number[] = [];
+    const fn = (t: string) => {
+      doneAtStart.push(stt.st.done);
+      return llm.fn(t);
+    };
+    return { llm, fn, doneAtStart };
+  }
+  const waitFor = async (cond: () => boolean, ms = 3000) => {
+    const t0 = Date.now();
+    while (!cond() && Date.now() - t0 < ms) await wait(5);
+    expect(cond()).toBe(true);
+  };
+  const waitReady = async (base: string, id: string) => {
+    for (let i = 0; i < 600 && (await statusOf(base, id)).status !== "ready"; i++) await wait(5);
+  };
+
+  it("(1) 10 llamadas sin enviar: el LLM no recibe nada hasta la 10.ª transcripción y luego las 10 se extraen con ≤ LLM_CONCURRENCY", async () => {
+    const stt = slowStt(30);
+    const w = watchedLlm(stt);
+    const { relay, base } = await boot(stt.fetch, { llmExtract: w.fn, llmConcurrency: 2, llmDeferMaxMs: 20_000 });
+    for (let i = 0; i < 10; i++) await upload(base);
+    await relay.idle();
+    await waitFor(() => w.llm.st.total === 10);
+    expect(w.doneAtStart).toEqual(Array(10).fill(10));
+    expect(w.llm.st.max).toBeLessThanOrEqual(2);
+    expect(w.llm.st.max).toBe(2);
+  });
+
+  it("(2) una llamada enviada mientras otras se transcriben arranca su extracción antes de que el STT quede libre", async () => {
+    const stt = slowStt(80);
+    const w = watchedLlm(stt);
+    const { relay, base } = await boot(stt.fetch, { llmExtract: w.fn, llmConcurrency: 2, llmDeferMaxMs: 20_000 });
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push((await upload(base)).id);
+    await waitReady(base, ids[0]);
+    const sent = send(base, ids[0]);
+    await waitFor(() => w.doneAtStart.length === 1);
+    expect(w.doneAtStart[0]).toBeLessThan(6);
+    expect((await sent).status).toBe(200);
+    await relay.idle();
+  });
+
+  it("(3) bajo carga continua del STT, una extracción diferida arranca pasado LLM_DEFER_MAX_MS", async () => {
+    const stt = slowStt(120);
+    const w = watchedLlm(stt);
+    const { relay, base } = await boot(stt.fetch, { llmExtract: w.fn, llmConcurrency: 2, llmDeferMaxMs: 150 });
+    for (let i = 0; i < 10; i++) await upload(base);
+    await waitFor(() => w.doneAtStart.length > 0);
+    expect(w.doneAtStart[0]).toBeLessThan(10);
+    expect(w.doneAtStart[0]).toBeGreaterThanOrEqual(2); // no antes de pasar el plazo (≥ 150 ms tras la 1.ª)
+    await relay.idle();
+    await waitFor(() => w.llm.st.total === 10);
+    expect(w.llm.st.max).toBeLessThanOrEqual(2);
+  });
+
+  it("(4) LLM_DEFER_MAX_MS=0 conserva el comportamiento anterior: la extracción arranca al tener la transcripción", async () => {
+    const stt = slowStt(60);
+    const w = watchedLlm(stt);
+    const { relay, base } = await boot(stt.fetch, { llmExtract: w.fn, llmConcurrency: 2, llmDeferMaxMs: 0 });
+    for (let i = 0; i < 5; i++) await upload(base);
+    await waitFor(() => w.doneAtStart.length > 0);
+    expect(w.doneAtStart[0]).toBe(1);
+    await relay.idle();
+    await waitFor(() => w.llm.st.total === 5);
+  });
+
+  it("(5) una llamada diferida y descartada nunca llega al LLM", async () => {
+    const stt = slowStt(80);
+    const w = watchedLlm(stt);
+    const { relay, base } = await boot(stt.fetch, { llmExtract: w.fn, llmConcurrency: 2, llmDeferMaxMs: 20_000 });
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) ids.push((await upload(base)).id);
+    await waitReady(base, ids[0]);
+    expect(w.llm.st.total).toBe(0); // diferida
+    expect((await fetch(`${base}/llamar/${ids[0]}`, { method: "DELETE" })).status).toBe(200);
+    await relay.idle();
+    await waitFor(() => w.llm.st.total === 3);
+    await wait(40);
+    expect(w.llm.started).not.toContain(1);
+    expect(w.llm.st.total).toBe(3);
+  });
+
+  it("(6) regresión: una sola llamada ordinaria recibe su extracción sin que nadie pulse «Enviar»", async () => {
+    const stt = slowStt(5);
+    const w = watchedLlm(stt);
+    const { relay, base } = await boot(stt.fetch, { llmExtract: w.fn });
+    await upload(base);
+    await relay.idle();
+    await waitFor(() => w.llm.st.total === 1);
+    expect(w.doneAtStart).toEqual([1]);
+  });
+});

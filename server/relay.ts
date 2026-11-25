@@ -133,6 +133,7 @@ export function isLocalOrPrivate(ip: string): boolean {
 
 const DEFAULT_LLM_CONCURRENCY = 2;
 const DEFAULT_STT_RETRIES = 3;
+const DEFAULT_LLM_DEFER_MAX_MS = 20_000;
 const STT_BACKOFF_MS = [500, 1000, 2000];
 const RETRY_AFTER_CAP_MS = 5000;
 const RETRY_STATUS = new Set([429, 502, 503, 504]);
@@ -153,6 +154,12 @@ export function parseLlmConcurrency(v: unknown): number {
 export function parseSttRetries(v: unknown): number {
   const n = parseInteger(v);
   return n !== null && n >= 0 ? n : DEFAULT_STT_RETRIES;
+}
+
+/** LLM_DEFER_MAX_MS: entero ≥ 0 (0 = sin aplazar); cualquier otro valor → 20000. */
+export function parseLlmDeferMaxMs(v: unknown): number {
+  const n = parseInteger(v);
+  return n !== null && n >= 0 ? n : DEFAULT_LLM_DEFER_MAX_MS;
 }
 
 export interface RelayOptions {
@@ -188,6 +195,11 @@ export interface RelayOptions {
   llmTimeoutMs?: number;
   /** Peticiones simultáneas del relay al LLM (el gateway admite pocas conexiones por IP). Por defecto 2. */
   llmConcurrency?: number;
+  /**
+   * Mientras el STT tenga trabajo, no arrancan las extracciones de llamadas sin «Enviar» (comparten GPU y la gente
+   * espera la transcripción). Plazo máximo de ese aplazamiento por llamada (ms); 0 = sin aplazar. Por defecto 20000.
+   */
+  llmDeferMaxMs?: number;
   /** Reintentos del STT ante 429/502/503/504 y errores de red (0 = sin reintentos). Por defecto 3. */
   sttRetries?: number;
   /** Espera entre reintentos del STT (inyectable en tests). */
@@ -300,6 +312,7 @@ export function createRelay(opts: RelayOptions) {
   const llmTimeoutMs = opts.llmTimeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
   const llmConcurrency = parseLlmConcurrency(opts.llmConcurrency);
   const sttRetries = parseSttRetries(opts.sttRetries);
+  const llmDeferMaxMs = parseLlmDeferMaxMs(opts.llmDeferMaxMs);
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const doFetch = opts.fetch ?? fetch;
   const log = opts.log ?? ((m: string) => console.log(m));
@@ -436,16 +449,22 @@ export function createRelay(opts: RelayOptions) {
    * falló mientras esperaba (nunca llega al LLM y no ocupa hueco).
    */
   let llmActive = 0;
-  const llmWaiting: { p: Pending; grant: (release: (() => void) | null) => void }[] = [];
+  const llmWaiting: { p: Pending; grant: (release: (() => void) | null) => void; overdue: boolean; timer?: ReturnType<typeof setTimeout> }[] = [];
+  const sttBusy = () => running || queue.length > 0;
   function llmRelease() {
     llmActive--;
     llmNext();
   }
   function llmNext() {
     while (llmActive < llmConcurrency && llmWaiting.length) {
-      let i = llmWaiting.findIndex((w) => w.p.sending);
-      if (i < 0) i = 0;
+      // Las que ya no sirven (descartadas, caducadas, falladas) se resuelven siempre, sin ocupar hueco.
+      let i = llmWaiting.findIndex((w) => w.p.status !== "ready");
+      // Después, las enviadas; y las demás solo con el STT libre o pasado su plazo de aplazamiento.
+      if (i < 0) i = llmWaiting.findIndex((w) => w.p.sending);
+      if (i < 0) i = llmWaiting.findIndex((w) => llmDeferMaxMs === 0 || w.overdue || !sttBusy());
+      if (i < 0) break;
       const [w] = llmWaiting.splice(i, 1);
+      if (w.timer) clearTimeout(w.timer);
       if (w.p.status !== "ready") {
         w.grant(null);
         continue;
@@ -456,14 +475,27 @@ export function createRelay(opts: RelayOptions) {
   }
   function acquireLlm(p: Pending): Promise<(() => void) | null> {
     return new Promise((grant) => {
-      llmWaiting.push({ p, grant });
+      const w: (typeof llmWaiting)[number] = { p, grant, overdue: false };
+      if (llmDeferMaxMs > 0) {
+        // Un solo temporizador por llamada diferida: acota el aplazamiento aunque el STT no se libere nunca.
+        w.timer = setTimeout(() => {
+          w.overdue = true;
+          llmNext();
+        }, llmDeferMaxMs);
+        w.timer.unref();
+      }
+      llmWaiting.push(w);
       llmNext();
     });
   }
   /** Saca de la lista de espera del LLM a una llamada que ya no lo necesita. */
   function dropFromLlmWait(p: Pending) {
     for (let i = llmWaiting.length - 1; i >= 0; i--) {
-      if (llmWaiting[i].p === p) llmWaiting.splice(i, 1)[0].grant(null);
+      if (llmWaiting[i].p === p) {
+        const [w] = llmWaiting.splice(i, 1);
+        if (w.timer) clearTimeout(w.timer);
+        w.grant(null);
+      }
     }
   }
 
@@ -666,6 +698,7 @@ export function createRelay(opts: RelayOptions) {
     running = true;
     while (queue.length) await queue.shift()!();
     running = false;
+    llmNext(); // el STT quedó libre: arrancan las extracciones aplazadas
     const w = idleWaiters;
     idleWaiters = [];
     for (const f of w) f();
@@ -787,6 +820,7 @@ export function createRelay(opts: RelayOptions) {
         log(`[relay] ${p.label} error al publicar: ${e instanceof Error ? e.message : "desconocido"}`);
         fail(p, "No se pudo procesar la llamada. Vuelve a grabar.");
       });
+      llmNext(); // «Enviar» pulsado: la extracción aplazada de esta llamada ya es elegible
       await p.sending;
     }
     const st = p.status as PendingStatus;
@@ -887,6 +921,7 @@ export function start() {
     llmExtract: llmEnabled(cfg) ? createLlmExtractor(cfg, llmTimeoutMs) : undefined,
     llmTimeoutMs,
     llmConcurrency: parseLlmConcurrency(process.env.LLM_CONCURRENCY),
+    llmDeferMaxMs: parseLlmDeferMaxMs(process.env.LLM_DEFER_MAX_MS),
     sttRetries: parseSttRetries(process.env.STT_RETRIES),
     pendingTtlMs: envInt("PENDING_TTL_SECONDS", 300) * 1000,
   });
