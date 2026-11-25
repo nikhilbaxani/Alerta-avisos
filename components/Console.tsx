@@ -117,8 +117,8 @@ export default function Console() {
   const proposals = useMemo(() => consoleProposals(s), [s.mode, s.engine, s.calls, s.arrived, s.live, s.scenarioId, s.actions, lostSeen]); // eslint-disable-line react-hooks/exhaustive-deps
   const lost = useMemo(() => consoleLostCalls(s), [s.mode, s.engine, s.calls, s.arrived, s.scenarioId, s.actions, lostSeen]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (isSim) dispatch({ type: "plan", proposals });
-  }, [isSim, proposals, dispatch]);
+    dispatch({ type: "plan", proposals });
+  }, [proposals, dispatch]);
   const approve = useCallback((key: string) => dispatch({ type: "actionApprove", key }), [dispatch]);
   const discard = useCallback((key: string) => dispatch({ type: "actionDiscard", key }), [dispatch]);
   const approveBatch = useCallback((incidentId: string) => dispatch({ type: "actionApproveBatch", incidentId }), [dispatch]);
@@ -201,7 +201,7 @@ export default function Console() {
           <div className="decision-slot" aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
           <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident} onResolve={resolve} units={isSim ? units : undefined} hazards={hazards} hazardWarnings={hazardWarnings}>
             {/* Avisos del agente en la esquina del mapa: no tapan tarjetas ni el detalle. */}
-            {isSim && <AgentFeed actions={s.actions} epoch={s.epoch} />}
+            <AgentFeed key={s.mode} actions={s.actions} epoch={s.epoch} />
             {notStarted && (
               <div className="welcome">
                 <h2>{scn.name}</h2>
@@ -222,7 +222,7 @@ export default function Console() {
           </MapView>
           {/* Sin caja de traducción: «Responder» vive en la ficha y solo sale con llamantes en otro idioma. */}
           <div className="pair">
-            {isSim && <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={goLost} unitOf={(a) => actionUnit(s, a)} hazardWarnings={hazardWarnings} />}
+            <ActionsBox key={s.mode} actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={goLost} unitOf={(a) => actionUnit(s, a)} hazardWarnings={hazardWarnings} />
           </div>
         </div>
 

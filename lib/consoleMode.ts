@@ -241,7 +241,8 @@ export function incidentPoint(s: ConsoleState, incidentId: string) {
 }
 
 function assignOnApproval(s: ConsoleState, action: AgentAction): { units: Unit[]; assignment: UnitAssignment; note: string } | null {
-  if (action.tool !== "proponer_recursos") return null;
+  // El reloj en directo se pausa al cambiar de pestaña y la flota no forma parte de su sesión.
+  if (s.mode !== "sim" || action.tool !== "proponer_recursos") return null;
   const service = unitServiceOf(action.args.servicio);
   const point = incidentPoint(s, action.incidentId);
   if (!point) return null;
@@ -495,7 +496,6 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
     case "fxDone":
       return { ...s, fx: s.fx.filter((f) => f.key !== a.key) };
     case "plan": {
-      if (s.mode !== "sim") return s;
       const base = discardOrphans(s.actions, s.engine.incidents.map((i) => i.id), s.clock);
       const { actions, added } = addProposals(base, a.proposals, s.clock);
       if (added.length === 0 && base.every((x, i) => x === s.actions[i])) return s;
@@ -505,7 +505,6 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
       return { ...s, actions, audit: audit.length ? [...s.audit, ...audit] : s.audit };
     }
     case "actionApprove": {
-      if (s.mode !== "sim") return s;
       const ok = approve(s.actions, a.key, "operador", s.clock);
       if (!ok.ok) return s;
       const sent = dispatch(ok.actions, a.key, s.clock);
@@ -520,7 +519,6 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
       };
     }
     case "actionApproveBatch": {
-      if (s.mode !== "sim") return s;
       const ok = approveBatch(s.actions, a.incidentId, "operador", s.clock);
       if (!ok.ok) return s;
       let actions = ok.actions;
@@ -539,7 +537,6 @@ export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState 
       return { ...s, actions, audit: [...s.audit, ...audit] };
     }
     case "actionDiscard": {
-      if (s.mode !== "sim") return s;
       const r = discard(s.actions, a.key, "operador", s.clock);
       if (!r.ok) return s;
       return {

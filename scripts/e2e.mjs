@@ -9,6 +9,7 @@ const browser = await chromium.launch({
   executablePath: process.env.E2E_CHROMIUM_PATH || undefined,
 });
 const captureDir = process.env.E2E_CAPTURE_DIR;
+const captureTabs = process.env.T8_CAPTURES === "1";
 const capture = (page, name) => captureDir && page.screenshot({ path: `${captureDir}/${name}.png` });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
@@ -275,7 +276,6 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 const simTab = (pg) => pg.getByRole("tab", { name: "Simulación", exact: true });
 const liveTab = (pg) => pg.getByRole("tab", { name: "En directo (QR)", exact: true });
-const captureTabs = process.env.T8_CAPTURES === "1";
 if (await liveTab(empty).isDisabled()) {
   if (captureTabs) fail("las capturas requieren NEXT_PUBLIC_RELAY_URL=/relay");
   await empty.getByText("En directo no disponible: falta configurar el relay del VPS.", { exact: true }).waitFor();
@@ -300,23 +300,29 @@ if (await liveTab(empty).isDisabled()) {
     location: { place: "Campanillas", known: true, aml: { lat: 36.716, lng: -4.548, acc: 150 } },
     timings: { sttMs: 1200, totalMs: 1400 },
   };
-  for (const [width, height, suffix] of [[1440, 900, ""], [390, 844, "-movil"]]) {
+  for (const [width, height] of [[1440, 900], [1370, 900], [390, 844]]) for (const theme of ["light", "dark"]) {
     const pg = await browser.newPage({ viewport: { width, height } });
+    await pg.addInitScript((theme) => localStorage.setItem("theme", theme), theme);
     watchErrors(pg);
     await pg.route("**/relay/events?*", (route) => route.fulfill({
       contentType: "text/event-stream",
       body: [sample, { ...sample, id: "P2" }].map((event) => `event: call\ndata: ${JSON.stringify(event)}\n\n`).join(""),
     }));
+    await pg.route("**/relay/events/ack", (route) => route.fulfill({ status: 200, json: { ok: true } }));
     const fixtureUrl = new URL(url);
     fixtureUrl.hash = "op=fixture";
     await pg.goto(fixtureUrl.href);
-    if (width === 1440 && !(await pg.locator(".topbar").evaluate((bar) => {
+    await pg.locator(`html[data-theme=${theme}]`).waitFor();
+    await pg.evaluate(() => document.fonts.ready.then(() => undefined));
+    if (width >= 1370 && !(await pg.locator(".topbar").evaluate((bar) => {
       const playback = bar.querySelector(".playback").getBoundingClientRect();
-      return Array.from(bar.children).every((el) => {
+      // Solo un logo ocupa espacio: la otra variante temática tiene display:none.
+      return Array.from(bar.children).filter((el) => el.getClientRects().length > 0).every((el) => {
         const r = el.getBoundingClientRect();
         return r.top < playback.bottom && playback.top < r.bottom;
       });
-    }))) fail("la barra superior ocupa más de una fila con relay");
+    }))) fail(`la barra superior ocupa más de una fila con relay (${width}px, ${theme})`);
+    await capture(pg, `simulacion-${width}-${theme}`);
     const scenario = pg.getByLabel("Escenario", { exact: true });
     await scenario.selectOption("apagon-malaga");
     await pg.getByRole("button", { name: "Velocidad por 10" }).click();
@@ -325,9 +331,15 @@ if (await liveTab(empty).isDisabled()) {
     await pg.getByRole("button", { name: "Pausar", exact: true }).click();
     const simCalls = await kpi(pg, "calls");
     const simTime = await pg.locator(".clock").innerText();
+    const simActions = () => pg.locator("#box-actions .act").evaluateAll((cards) => cards.map((card) => card.textContent));
+    await pg.locator("#box-actions .act").first().waitFor();
+    const simCards = await simActions();
+    const simSent = await kpi(pg, "actions");
     if (await pg.locator(".inbox").isVisible()) fail("bandeja visible en Simulación");
-    if (await pg.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail(`scroll horizontal en Simulación (${width}px)`);
-    if (captureTabs) await pg.screenshot({ path: `docs/capturas/pestanas-simulacion${suffix}.png` });
+    if (await pg.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail(`scroll horizontal en Simulación (${width}px, ${theme})`);
+    const legacyCapture = captureTabs && theme === "dark" && width !== 1370;
+    const suffix = width === 390 ? "-movil" : "";
+    if (legacyCapture) await pg.screenshot({ path: `docs/capturas/pestanas-simulacion${suffix}.png` });
 
     await simTab(pg).focus();
     await pg.keyboard.press("ArrowRight");
@@ -338,7 +350,11 @@ if (await liveTab(empty).isDisabled()) {
     const accept = pg.getByRole("button", { name: "Aceptar llamada P1" });
     await accept.waitFor();
     if (await scenario.count() || await pg.locator(".playback, .clock").count()) fail("controles de simulación visibles en En directo");
-    if (await pg.locator("#box-waiting, #box-lost, #box-actions, [data-kpi=actions], .agent-feed").count() || await pg.getByRole("button", { name: "Sonido de las llamadas" }).count()) fail("acciones o audio del escenario visibles en En directo");
+    if (await pg.locator("#box-waiting, #box-lost").count() || await pg.getByRole("button", { name: "Sonido de las llamadas" }).count()) fail("colas o audio del escenario visibles en En directo");
+    const actions = pg.locator("#box-actions");
+    await actions.getByText("Nada que confirmar ahora.", { exact: true }).waitFor();
+    await pg.locator(".map-legend").getByText(/Por aprobar/).waitFor();
+    if (await kpi(pg, "actions") !== 0) fail("acciones visibles antes de aceptar llamadas");
     if (await kpi(pg, "calls") || await kpi(pg, "incidents") || await pg.locator(".marker").count()) fail("llamadas sin aceptar en el mapa o en los contadores");
     await pg.getByRole("button", { name: "Descartar llamada P2" }).click();
     if (await kpi(pg, "calls") || await kpi(pg, "incidents")) fail("descartar modificó la cola o los incidentes");
@@ -348,15 +364,29 @@ if (await liveTab(empty).isDisabled()) {
     await accept.click();
     if (await kpi(pg, "calls") !== 1 || await kpi(pg, "incidents") !== 1 || await pg.locator(".marker").count() !== 1) fail("aceptar no creó la llamada y el incidente en En directo");
     if (await pg.getByRole("button", { name: "Descartar llamada P2" }).count()) fail("volvió la llamada descartada");
+    const proposal = actions.locator('[data-tool="proponer_recursos"][data-status="propuesta"]').first();
+    await proposal.waitFor();
+    if (!(await pg.locator('[data-kpi=actions]').getAttribute("title")).includes("por aprobar")) fail("el resumen no indica las acciones pendientes");
+    await pg.getByRole("button", { name: /^Aprobar \(\d+\)$/ }).click();
+    if (await proposal.locator(".act-unit").count()) fail("la tarjeta de recursos muestra una unidad simulada en directo");
+    await capture(pg, `directo-${width}-${theme}`);
+    await proposal.getByRole("button", { name: /Aprobar y enviar:/ }).click();
+    if (await kpi(pg, "actions") !== 1) fail("la aprobación en directo no incrementa el contador");
+    await pg.locator(".agent-feed").getByText(/Enviado con tu aprobación \(simulación\)/).waitFor();
+    await actions.getByRole("button", { name: /Enviadas/ }).click();
+    await actions.locator('[data-tool="proponer_recursos"][data-status="enviada"]').getByText(/Aprobado y enviado · acuse/).waitFor();
     await simTab(pg).click();
-    if (await kpi(pg, "calls") !== simCalls) fail("una llamada por QR contaminó Simulación");
+    if (await kpi(pg, "calls") !== simCalls || await kpi(pg, "actions") !== simSent || JSON.stringify(await simActions()) !== JSON.stringify(simCards)) fail("una llamada o acción por QR contaminó Simulación");
     await liveTab(pg).click();
     if (await kpi(pg, "calls") !== 1 || await kpi(pg, "incidents") !== 1) fail("no se conservó el estado de En directo");
-    if (await pg.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail(`scroll horizontal en En directo (${width}px)`);
-    if (captureTabs) await pg.screenshot({ path: `docs/capturas/pestanas-directo${suffix}.png` });
+    if (await pg.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail(`scroll horizontal en En directo (${width}px, ${theme})`);
+    if (legacyCapture) await pg.screenshot({ path: `docs/capturas/pestanas-directo${suffix}.png` });
+    await pg.reload();
+    await liveTab(pg).waitFor();
+    await pg.waitForFunction(() => document.querySelector('#tab-live[aria-selected="true"]') && document.querySelector('[data-kpi=actions][data-value="1"]'));
     await pg.close();
   }
-  console.log("T8 OK: QR con SSE simulado, moderación y estado aislado en escritorio y móvil");
+  console.log("T8/S33 OK: SSE simulado, moderación, acciones aisladas y recarga en escritorio y móvil (claro y oscuro)");
 }
 
 await browser.close();

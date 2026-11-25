@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scenario } from "@/data/scenario-dana-malaga";
 import { decide } from "@/lib/cluster";
-import { proposalsFor } from "@/lib/consoleActions";
+import { actionUnit, consoleHazards, consoleProposals, consoleUnits } from "@/lib/useConsole";
 import { consoleReducer, initialConsoleState } from "@/lib/consoleMode";
 import type { CallMeta, ConsoleState } from "@/lib/consoleMode";
 import type { ProcessResult } from "@/lib/types";
@@ -59,9 +59,9 @@ function advanceSimWithFirstCall(s: ConsoleState): ConsoleState {
 }
 
 describe("consoleMode", () => {
-  it("conserva el registro del agente en simulación sin planificar sobre llamadas QR", () => {
+  it("S33: aprueba y descarta en directo sin alterar el registro ni la flota de Simulación", () => {
     const sim = advanceSimWithFirstCall(initialConsoleState());
-    const proposals = proposalsFor(sim.engine.incidents, sim.calls, { [sampleCall.id]: sampleCall.phone });
+    const proposals = consoleProposals(sim);
     expect(proposals.length).toBeGreaterThan(0);
     const plan = { type: "plan", proposals } as const;
     const planned = consoleReducer(sim, plan);
@@ -75,14 +75,69 @@ describe("consoleMode", () => {
     const live = consoleReducer(sent, { type: "mode", mode: "live" });
     const accepted = consoleReducer(live, { type: "live", ...makeLiveCall() });
     expect(accepted.arrived).toEqual(["P1"]);
-    const livePlan = { type: "plan", proposals: proposalsFor(accepted.engine.incidents, accepted.calls, {}) } as const;
-    expect(consoleReducer(accepted, livePlan)).toBe(accepted);
-    expect(consoleReducer(accepted, approval)).toBe(accepted);
-    expect(accepted.actions).toEqual([]);
-    const restored = consoleReducer(accepted, { type: "mode", mode: "sim" });
+    const twoIncidents = consoleReducer(accepted, { type: "live", ...makeLiveCall("P2") });
+    const livePlanned = consoleReducer(twoIncidents, { type: "plan", proposals: consoleProposals(twoIncidents) });
+    const [first, second] = livePlanned.actions.filter((a) => a.tool === "proponer_recursos");
+    expect(first).toMatchObject({ status: "propuesta", evidence: { callIds: ["P1"] } });
+    expect(second).toBeDefined();
+    expect(actionUnit(livePlanned, first)).toBeNull();
+    const approved = consoleReducer(livePlanned, { type: "actionApprove", key: first.key });
+    const discarded = consoleReducer(approved, { type: "actionDiscard", key: second.key });
+    expect(discarded.actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: first.key, status: "enviada", receipt: expect.objectContaining({ simulated: true }) }),
+      expect.objectContaining({ key: second.key, status: "descartada", receipt: null }),
+    ]));
+    expect(discarded.audit.slice(-2).map((a) => a.kind)).toEqual(["accion_aprobada", "accion_descartada"]);
+    expect(consoleUnits(discarded)).toEqual([]);
+    expect(consoleHazards(discarded)).toEqual([]);
+    expect(discarded.unitAssignments).toEqual({});
+    expect(discarded.audit.at(-2)?.detail).not.toContain("unidad libre");
+    const restored = consoleReducer(discarded, { type: "mode", mode: "sim" });
+    expect(consoleReducer(restored, { type: "mode", mode: "live" }).actions).toEqual(discarded.actions);
+    const wiped = consoleReducer(restored, { type: "relayEpoch", epoch: "new" });
+    expect(wiped.actions).toEqual(sent.actions);
+    expect(consoleReducer(wiped, { type: "mode", mode: "live" }).actions).toEqual([]);
     expect(restored.actions).toEqual(sent.actions);
     expect(restored.audit).toEqual(sent.audit);
     expect(consoleReducer(restored, { type: "reset" }).actions).toEqual([]);
+  });
+
+  it("S33: no planifica sobre una pregunta ámbar; los avisos informativos siguen siendo automáticos", () => {
+    const live = consoleReducer(initialConsoleState(), { type: "mode", mode: "live" });
+    const first = makeLiveCall();
+    first.result.extraction.risks = [...first.result.extraction.risks, "cables_electricos"];
+    const accepted = consoleReducer(live, { type: "live", ...first });
+    const second = makeLiveCall("P2");
+    second.result.decision = { ...second.result.decision, action: "ask", incidentId: "INC-01" };
+    const withQuestion = consoleReducer(accepted, { type: "live", ...second });
+    expect(withQuestion.engine.incidents[1]?.provisional).toBe(true);
+    const proposals = consoleProposals(withQuestion);
+    expect(proposals).not.toEqual([]);
+    expect(proposals.flatMap((p) => p.evidence.callIds)).not.toContain("P2");
+    const planned = consoleReducer(withQuestion, { type: "plan", proposals });
+    expect(planned.actions.find((a) => a.tool === "avisar_distribuidora")).toMatchObject({ status: "enviada", approval: { by: "automatica" }, receipt: { simulated: true } });
+    expect(planned.audit.at(-1)?.kind).toBe("accion_auto");
+    expect(consoleReducer(planned, { type: "relayEpoch", epoch: "new" }).actions).toEqual([]);
+  });
+
+  it("S33: aprueba en lote los duplicados elegibles cuando existen teléfonos de prueba", () => {
+    let s = consoleReducer(initialConsoleState(), { type: "mode", mode: "live" });
+    s = consoleReducer(s, { type: "live", ...makeLiveCall() });
+    s = consoleReducer(s, { type: "plan", proposals: consoleProposals(s) });
+    const resources = s.actions.find((a) => a.tool === "proponer_recursos")!;
+    expect(resources).toBeDefined();
+    s = consoleReducer(s, { type: "actionApprove", key: resources.key });
+    const second = makeLiveCall("P2");
+    second.result.decision = { ...second.result.decision, action: "merge", incidentId: "INC-01" };
+    const withoutPhone = consoleReducer(s, { type: "live", ...second });
+    expect(consoleProposals(withoutPhone).some((a) => a.tool === "sms_duplicado")).toBe(false);
+    second.call.phone = "600***002";
+    s = consoleReducer(s, { type: "live", ...second });
+    s = consoleReducer(s, { type: "plan", proposals: consoleProposals(s) });
+    expect(s.actions.find((a) => a.tool === "sms_duplicado")).toMatchObject({ status: "propuesta", args: { revisar: [] } });
+    const batched = consoleReducer(s, { type: "actionApproveBatch", incidentId: "INC-01" });
+    expect(batched.actions.find((a) => a.tool === "sms_duplicado")).toMatchObject({ status: "enviada", approval: { by: "operador", batch: true }, receipt: { simulated: true } });
+    expect(batched.audit.at(-1)?.kind).toBe("accion_aprobada");
   });
 
   it("arranca en modo sim vacío y al cambiar a live muestra estado vacío", () => {

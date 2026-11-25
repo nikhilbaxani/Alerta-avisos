@@ -644,7 +644,7 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
     <div className="map-legend map-float" aria-hidden="true">
       <span className="lg-group" title="El número de cada emergencia es su puesto en la lista de prioridad"><i className="lg tone-critical" />Riesgo vital<i className="lg tone-serious" />Grave<i className="lg tone-normal" />Leve</span>
       <span><i className="lg tone-pending" />Decidir</span>
-      {s.mode === "sim" && <span><i className="lg todo">2</i>Por aprobar</span>}
+      <span><i className="lg todo">2</i>Por aprobar</span>
       <span><i className="lg call" />Llamada</span>
       {s.mode === "sim" && units && <span><i className="lg unit">B</i>Unidad</span>}
       {s.mode === "sim" && hazards && hazards.some((h) => !h.resolved) && <span><i className="lg hazard" />Peligro en la vía</span>}

@@ -6,6 +6,34 @@ import { snapshot } from "@/lib/engine";
 import type { ConsoleState } from "@/lib/consoleMode";
 
 import { restoreLiveSession, serializeLiveSession } from "@/lib/liveSession";
+import { consoleProposals } from "@/lib/useConsole";
+
+it("S33: conserva propuestas y acuses simulados en directo sin volver a enviar", () => {
+  let s = accept(accept(live(), "P1"), "P2");
+  s = consoleReducer(s, { type: "plan", proposals: consoleProposals(s) });
+  const pending = s.actions.filter((a) => a.status === "propuesta");
+  expect(pending.length).toBeGreaterThanOrEqual(2);
+  s = consoleReducer(s, { type: "actionApprove", key: pending[0].key });
+  const restored = restoreLiveSession(serializeLiveSession(s));
+  expect(restored.actions.map((a) => a.status)).toContain("enviada");
+  expect(restored.actions.map((a) => a.status)).toContain("propuesta");
+  expect(restored.actions).toEqual(s.actions);
+  expect(restored.audit).toEqual(s.audit);
+  expect(consoleReducer(restored, { type: "plan", proposals: consoleProposals(restored) })).toBe(restored);
+  const stored = JSON.parse(serializeLiveSession(s));
+  for (const actions of [
+    [...stored.actions, stored.actions[0]],
+    stored.actions.map((a: Record<string, unknown>) => a.receipt ? { ...a, receipt: { simulated: false } } : a),
+    stored.actions.map((a: Record<string, unknown>) => ({ ...a, policy: "automatica" })),
+  ]) {
+    expect(restoreLiveSession(JSON.stringify({ ...stored, actions }))).toEqual(initialConsoleState());
+  }
+});
+
+it.each([null, [{ tool: "desconocida" }], [{ tool: "proponer_recursos", args: null }]])("S33: rechaza acciones guardadas malformadas (%j)", (actions) => {
+  const stored = JSON.parse(serializeLiveSession(accept(live(), "P1")));
+  expect(restoreLiveSession(JSON.stringify({ ...stored, actions }))).toEqual(initialConsoleState());
+});
 
 it("S31: adopta y guarda la primera época aun sin llamadas", () => {
   const state = consoleReducer(live(), { type: "relayEpoch", epoch: "first" });

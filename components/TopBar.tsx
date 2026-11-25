@@ -110,10 +110,10 @@ export default function TopBar(p: Props) {
           <span className="kpi-val">{pending}</span>
           <span className="kpi-label">por decidir</span>
         </div>
-        {isSim && <div className="kpi" data-kpi="actions" data-value={actionsSent} title={`Acciones del agente enviadas a servicios${actionsToApprove ? ` · ${actionsToApprove} por aprobar` : ""}`}>
+        <div className="kpi" data-kpi="actions" data-value={actionsSent} title={`Acciones del agente enviadas a servicios${isSim ? "" : " simulados"}${actionsToApprove ? ` · ${actionsToApprove} por aprobar` : ""}`}>
           <span className="kpi-val">{actionsSent}</span>
           <span className="kpi-label">{actionsSent === 1 ? "enviada" : "enviadas"}</span>
-        </div>}
+        </div>
       </section>
 
       <div className="topbar-end">

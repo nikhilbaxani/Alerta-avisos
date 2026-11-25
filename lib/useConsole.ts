@@ -23,7 +23,8 @@ function arrivedMeta(s: ConsoleState) {
   const channels: Record<string, CallChannel | undefined> = {};
   for (const id of s.arrived) {
     const m = callMeta(s, id);
-    phones[id] = m?.phone ?? "";
+    // La etiqueta del canal QR no es un teléfono ni identifica a un llamante.
+    phones[id] = s.mode === "live" && m?.phone === "Público (QR)" ? "" : m?.phone ?? "";
     channels[id] = m?.channel;
   }
   return { phones, channels };
@@ -31,9 +32,9 @@ function arrivedMeta(s: ConsoleState) {
 
 /** Reglas por incidente y zona, avisos de duplicado y propuestas por llamadas perdidas. */
 export function consoleProposals(s: ConsoleState): Proposal[] {
-  if (s.mode !== "sim") return [];
   const { phones, channels } = arrivedMeta(s);
-  return [...proposalsFor(s.engine.incidents, s.calls, phones, { channels, actions: s.actions }), ...consoleLostCalls(s).proposals];
+  const rules = proposalsFor(s.engine.incidents, s.calls, phones, { channels, actions: s.actions });
+  return s.mode === "sim" ? [...rules, ...consoleLostCalls(s).proposals] : rules;
 }
 
 export function consoleLostCalls(s: ConsoleState): LostReport {
@@ -138,10 +139,10 @@ export function useConsole({ offline = false, persistLive = false }: { offline?:
   }, [relay]);
   const currentLive = s.mode === "live" ? s : s.saved.live;
   // No reserializamos las transcripciones en cada tic; pagehide guarda también el último reloj.
-  const { arrived, engine, archived, audit, selected, relayEpoch } = currentLive ?? {};
+  const { arrived, engine, archived, audit, actions, selected, relayEpoch } = currentLive ?? {};
   useEffect(() => {
     if (relay && restored) persist();
-  }, [relay, restored, persist, s.mode, arrived, engine, archived, audit, selected, relayEpoch]);
+  }, [relay, restored, persist, s.mode, arrived, engine, archived, audit, actions, selected, relayEpoch]);
   useEffect(() => {
     if (!relay || !restored) return;
     const flushClock = () => persist(true);
