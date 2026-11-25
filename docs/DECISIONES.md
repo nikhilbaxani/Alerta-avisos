@@ -2,6 +2,11 @@
 
 Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descartada.
 
+## 2026-11-25 · Presentación con menos texto: 7 diapositivas (petición de Nick)
+- Decisión: se mantienen la DANA, las líneas, la demo y el cierre. «Cómo funciona» pasa a ser un esquema sin párrafos: los 7 avisos del coche (hora, idioma o eCall, y «hay un bebé dentro» en rojo) unidos con curvas a la emergencia, y de ella a las tres acciones con quién las aprueba; sin la línea final. La de tecnología y negocio se divide en dos: «Todo ocurre dentro de la sala» (recorrido Llamada → Whisper → Qwen 2.5 · Ollama → Reglas → Operador, con el tramo local enmarcado) y «Cómo llega a las salas del 112» (cliente, modelo, escala y hoja de ruta provisional). Las cifras y los detalles que salen de las diapositivas (894.930 emergencias, GPU de 8 GB, pliego andaluz, Ley de IA, investigación propia) pasan a las notas del orador.
+- Motivo: Nick las veía saturadas; lo que se puede decir de palabra no tiene por qué estar escrito, y la presentación tiene que entrar por los ojos a cualquiera.
+- Descartado: reducir solo el tamaño de letra (seguiría saturada).
+
 ## 2026-11-25 · Presentación rediseñada: 6 diapositivas, todo oscuro y con un caso real (petición de Nick)
 - Decisión: sustituye a la versión de 7 diapositivas de abajo. Todo en el tema oscuro de la consola (mismo fondo `#0b0f15`), sin rejilla ni brillos, sin etiquetas en mayúsculas espaciadas ni píldoras, un solo acento rojo. (1) DANA; (2) «lo que se satura son las líneas», con un cierre neutro («…otra emergencia espera turno») en lugar de la llamada en árabe; (3) cómo funciona con el caso real del coche de la A-357 calculado del escenario (7 avisos, dato nuevo, emergencia y acciones con quién las aprueba); (4) la consola sin marco de ventana ni «en directo · simulado»; (5) tecnología (Whisper, Qwen 2.5 con Ollama, reglas en código, integración), negocio (cliente, modelo, mercado, escala) y hoja de ruta como una sección; (6) logo con el eslogan «Para que nadie se quede esperando al otro lado.» y el QR del público en una esquina. Desaparece la diapositiva «Llama tú».
 - Motivo: Nick la veía generada y poco atractiva para un jurado, las diapositivas claras molestaban junto a la consola oscura y la frase final de la segunda podía sonar despectiva.

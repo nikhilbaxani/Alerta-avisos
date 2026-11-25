@@ -8,6 +8,8 @@ import type { AgentAction, ResourceService } from "@/lib/actions";
 import { RISK_LABELS, SEVERITY_LABELS, TYPE_LABELS } from "@/lib/labels";
 import { replayTo } from "@/lib/replay";
 import { consoleProposals, reducer } from "@/lib/useConsole";
+import Icon from "@/components/Icon";
+import type { IconName } from "@/components/Icon";
 import { langName, mmss } from "@/components/format";
 import LiveConsole from "./LiveConsole";
 import QrCode from "./QrCode";
@@ -175,64 +177,77 @@ function useCase() {
     const calls = inc.callIds.map((id) => {
       const c = findCall(id)!;
       const risks = news.get(id);
-      return { id, t: c.t, lang: c.channel === "ecall" ? "eCall" : langName(c.lang), text: c.mock.summary_es, news: risks?.length ? risks.map((r) => RISK_LABELS[r]).join(", ") : null };
+      // Lo nuevo, con las palabras del llamante si la frase lo separa («…; hay un bebé dentro»); si no, el riesgo.
+      const said = c.mock.summary_es.includes(";") ? c.mock.summary_es.split(";").pop()!.trim().replace(/\.$/, "") : null;
+      return { id, t: c.t, ecall: c.channel === "ecall", lang: c.channel === "ecall" ? "eCall" : langName(c.lang), news: risks?.length ? said ?? RISK_LABELS[risks[0]].toLowerCase() : null };
     });
     const mine = s.actions.filter((a) => actionIncidents(a).includes(inc.id));
     const arg = (a: AgentAction, k: string) => (a.args as unknown as Record<string, unknown>)[k];
     const res = mine.filter((a) => a.tool === "proponer_recursos");
     const sms = mine.filter((a) => a.tool === "sms_al_llamante");
     const zone = mine.find((a) => a.tool === "proponer_es_alert");
-    const steps: { what: string; who: string }[] = [];
-    if (res.length) steps.push({ what: `${listEs(res.map((a) => RESOURCE_LABELS[arg(a, "servicio") as ResourceService]))} al lugar`, who: APPROVAL[res[0].policy] });
-    if (sms.length) steps.push({ what: `SMS en ${listEs([...new Set(sms.map((a) => langName(String(arg(a, "idioma"))).toLowerCase()))])} a quien llamó: que no se acerque al agua`, who: APPROVAL[sms[0].policy] });
-    if (zone) steps.push({ what: `ES-Alert para la zona de ${String((arg(zone, "zona") as { nombre?: string } | undefined)?.nombre ?? "")}`, who: APPROVAL[zone.policy] });
+    const steps: { icon: IconName; what: string; who: string }[] = [];
+    if (res.length) steps.push({ icon: "truck", what: listEs(res.map((a) => RESOURCE_LABELS[arg(a, "servicio") as ResourceService])), who: APPROVAL[res[0].policy] });
+    if (sms.length) steps.push({ icon: "message", what: `SMS en ${listEs([...new Set(sms.map((a) => langName(String(arg(a, "idioma"))).toLowerCase()))])}`, who: APPROVAL[sms[0].policy] });
+    if (zone) steps.push({ icon: "alert", what: `ES-Alert en ${String((arg(zone, "zona") as { nombre?: string } | undefined)?.nombre ?? "la zona")}`, who: APPROVAL[zone.policy] });
     return { inc, calls, steps };
   }, []);
 }
 
+// Geometría del esquema (px del lienzo): columnas de avisos, emergencia y acciones, unidas por curvas.
+const FLOW = { w: 1408, h: 500, callsEnd: 340, incStart: 500, incEnd: 880, acts: 990, callH: 52, callGap: 12, actH: 92, actGap: 20 };
+const curve = (x0: number, y0: number, x1: number, y1: number) => {
+  const mx = (x0 + x1) / 2;
+  return `M${x0} ${y0} C${mx} ${y0}, ${mx} ${y1}, ${x1} ${y1}`;
+};
+
 function HowItWorks() {
   const { inc, calls, steps } = useCase();
+  const mid = FLOW.h / 2;
+  const callY = (i: number) => (FLOW.h - (calls.length * FLOW.callH + (calls.length - 1) * FLOW.callGap)) / 2 + i * (FLOW.callH + FLOW.callGap) + FLOW.callH / 2;
+  const actY = (j: number) => (FLOW.h - (steps.length * FLOW.actH + (steps.length - 1) * FLOW.actGap)) / 2 + j * (FLOW.actH + FLOW.actGap) + FLOW.actH / 2;
   return (
     <>
       <h2 className="h2 rise" style={at(0)}>{calls.length} avisos del mismo coche, <em>una sola emergencia.</em></h2>
-      <p className="intro rise" style={at(1)}>Así trata Agente 112 uno de los casos del escenario de la DANA en Málaga.</p>
-      <div className="flow">
-        <section className="step rise" style={at(2)}>
-          <h3><span>1</span>Escucha cada aviso</h3>
-          <ol className="feed">
-            {calls.map((c) => (
-              <li key={c.id} className={c.news ? "is-new" : ""}>
-                <span className="t">{mmss(c.t)}</span>
-                <span className="l">{c.lang}</span>
-                <span className="x">{c.text}</span>
-                {c.news && <span className="flag">Dato nuevo: {c.news.toLowerCase()}</span>}
-              </li>
-            ))}
-          </ol>
-        </section>
-        <section className="step rise" style={at(3)}>
-          <h3><span>2</span>Los junta en una emergencia</h3>
-          <div className="incident">
-            <span className="rank">1</span>
-            <div>
-              <p className="ttl">{TYPE_LABELS[inc.type]}</p>
-              <p className="where">{inc.locations[0]}</p>
-              <p className="meta"><span className="sev">{SEVERITY_LABELS[inc.severity]}</span>{calls.length} avisos · {inc.people} personas · {inc.risks.includes("menor") ? "hay un menor" : RISK_LABELS[inc.risks[0]].toLowerCase()}</p>
-            </div>
-          </div>
-          <p className="note">Junta por lo que cuenta cada persona (el sitio, qué pasa, quién está en peligro), no solo por dónde está su móvil. Si no lo tiene claro, no junta nada: pregunta al operador.</p>
-        </section>
-        <section className="step rise" style={at(4)}>
-          <h3><span>3</span>Prepara lo siguiente</h3>
-          <ul className="todo">
-            {steps.map((x) => (
-              <li key={x.what}><b>{x.what}</b><span>{x.who}</span></li>
-            ))}
-          </ul>
-          <p className="note">Los avisos que solo informan, como el de la compañía eléctrica o el del ayuntamiento, salen solos. Todo lo demás lo decide una persona.</p>
-        </section>
+      <div className="flow-cap fade" style={at(1)}>
+        <span>Lo que entra</span>
+        <span>Lo que ve el operador</span>
+        <span>Lo que prepara el agente</span>
       </div>
-      <p className="foot-line fade" style={at(6)}>Funciona en un ordenador de la sala, sin nube. No hemos encontrado ningún 112 en España que agrupe ya las llamadas repetidas (investigación propia, oct. 2026).</p>
+      <div className="flow">
+        <svg className="links" viewBox={`0 0 ${FLOW.w} ${FLOW.h}`} aria-hidden="true">
+          {calls.map((c, i) => (
+            <path key={c.id} className={`ln ${c.news ? "hot" : ""}`} d={curve(FLOW.callsEnd, callY(i), FLOW.incStart, mid)} pathLength={1} style={at(5 + i)} />
+          ))}
+          {steps.map((x, j) => (
+            <path key={x.what} className="ln" d={curve(FLOW.incEnd, mid, FLOW.acts, actY(j))} pathLength={1} style={at(14 + j)} />
+          ))}
+        </svg>
+        <ol className="calls-col">
+          {calls.map((c, i) => (
+            <li key={c.id} className={`call-pill rise ${c.news ? "hot" : ""}`} style={at(1 + i)}>
+              <Icon name={c.ecall ? "car" : "phone"} size={17} />
+              <span className="t">{mmss(c.t)}</span>
+              <span className="l">{c.lang}</span>
+              {c.news && <span className="new">{c.news}</span>}
+            </li>
+          ))}
+        </ol>
+        <div className="incident rise" style={at(12)}>
+          <span className="rank">1</span>
+          <p className="ttl">{TYPE_LABELS[inc.type]}</p>
+          <p className="where">{inc.locations[0]}</p>
+          <p className="meta"><span className="sev">{SEVERITY_LABELS[inc.severity]}</span>{calls.length} avisos · {inc.people} personas</p>
+        </div>
+        <ul className="acts-col">
+          {steps.map((x, j) => (
+            <li key={x.what} className="act rise" style={at(15 + j)}>
+              <span className="ic"><Icon name={x.icon} size={20} /></span>
+              <div><b>{x.what}</b><span>{x.who}</span></div>
+            </li>
+          ))}
+        </ul>
+      </div>
     </>
   );
 }
@@ -253,78 +268,92 @@ function Live({ active }: SlideProps) {
   );
 }
 
-// ═════════════════════════════ 5 · Tecnología, negocio y hoja de ruta
+// ═════════════════════════════ 5 · Tecnología: todo dentro de la sala
 
-const STACK: { name: string; text: string }[] = [
-  { name: "Whisper", text: "Pasa a texto cada llamada en el propio ordenador, en el idioma que sea." },
-  { name: "Qwen 2.5 con Ollama", text: "Modelo de lenguaje local: saca qué pasa, dónde y quién corre peligro. Ningún dato sale de la sala." },
-  { name: "Reglas en código", text: "Cuándo juntar llamadas y qué puede hacer el agente solo está programado y probado, no lo decide el modelo." },
-  { name: "Integración con la sala", text: "Hoy lee la posición AML y la eCall y propone ES-Alert. En el piloto, telefonía y sistema de despacho." },
+const PIPE: { icon: IconName; name: string; role: string }[] = [
+  { icon: "phone", name: "Llamada", role: "voz, eCall y posición AML" },
+  { icon: "mic", name: "Whisper", role: "pasa la voz a texto" },
+  { icon: "agent", name: "Qwen 2.5 · Ollama", role: "entiende qué pasa y dónde" },
+  { icon: "merge", name: "Reglas propias", role: "agrupan y proponen" },
+  { icon: "people", name: "Operador", role: "decide y aprueba" },
 ];
 
-const ROADMAP: { when: string; what: string; done?: boolean }[] = [
-  { when: "Hoy", what: "Prototipo completo en modo simulado", done: true },
-  { when: "2027, primer semestre", what: "Piloto con llamadas reales anonimizadas" },
-  { when: "2027, segundo semestre", what: "Integración con la sala y Ley de IA" },
-  { when: "2028", what: "Primeras salas en producción" },
-];
+function PipeNode({ n, i }: { n: (typeof PIPE)[number]; i: number }) {
+  return (
+    <div className="node rise" style={at(i)}>
+      <span className="ic"><Icon name={n.icon} size={30} /></span>
+      <p className="nm">{n.name}</p>
+      <p className="rl">{n.role}</p>
+    </div>
+  );
+}
 
-function Plan({ active }: SlideProps) {
+function Tech() {
   return (
     <>
-      <h2 className="h2 rise" style={at(0)}>Pensado para funcionar <em>dentro de la sala.</em></h2>
-
-      <section className="band rise" style={at(1)}>
-        <h3 className="band-h">Con qué está hecho</h3>
-        <div className="cols">
-          {STACK.map((x) => (
-            <div key={x.name} className="col">
-              <p className="name">{x.name}</p>
-              <p>{x.text}</p>
-            </div>
-          ))}
+      <h2 className="h2 rise" style={at(0)}>Todo ocurre <em>dentro de la sala.</em></h2>
+      <div className="spacer" />
+      <div className="pipe">
+        <PipeNode n={PIPE[0]} i={1} />
+        <span className="arrow fade" style={at(2)} />
+        <div className="local fade" style={at(2)}>
+          <span className="local-label">En un ordenador de la sala, sin nube</span>
+          <PipeNode n={PIPE[1]} i={3} />
+          <span className="arrow" />
+          <PipeNode n={PIPE[2]} i={4} />
+          <span className="arrow" />
+          <PipeNode n={PIPE[3]} i={5} />
         </div>
-      </section>
-
-      <section className="band rise" style={at(2)}>
-        <h3 className="band-h">Negocio</h3>
-        <div className="cols">
-          <div className="col">
-            <p className="name">Cliente</p>
-            <p>Las empresas que gestionan las salas del 112 por concurso público.</p>
-          </div>
-          <div className="col">
-            <p className="name">Modelo</p>
-            <p>Licencia anual por puesto de operador.</p>
-          </div>
-          <div className="col">
-            <p className="name">Mercado</p>
-            <p><span className="num"><CountUp to={894930} active={active} delay={700} /></span> emergencias gestionó solo el 112 de Andalucía en 2025.</p>
-            <p className="who">Junta de Andalucía</p>
-          </div>
-          <div className="col">
-            <p className="name">Escala</p>
-            <p>Un servidor por sala y el mismo software para cualquier 112 autonómico. Y el 112 es el número de emergencias de toda la UE.</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="band rise" style={at(3)}>
-        <h3 className="band-h">Hoja de ruta</h3>
-        <ol className="road">
-          {ROADMAP.map((r) => (
-            <li key={r.when} className={r.done ? "done" : ""}>
-              <span className="when">{r.when}</span>
-              <span className="what">{r.what}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
+        <span className="arrow fade" style={at(6)} />
+        <PipeNode n={PIPE[4]} i={7} />
+      </div>
+      <div className="spacer" />
     </>
   );
 }
 
-// ═════════════════════════════ 6 · Cierre: logo, eslogan y QR
+// ═════════════════════════════ 6 · Negocio y hoja de ruta (provisional)
+
+const BIZ: { k: string; v: string }[] = [
+  { k: "Cliente", v: "Empresas que gestionan el 112" },
+  { k: "Modelo", v: "Licencia por puesto de operador" },
+  { k: "Escala", v: "Cualquier 112 de España, y después de Europa" },
+];
+
+const ROADMAP: { when: string; what: string; done?: boolean }[] = [
+  { when: "Hoy", what: "Prototipo funcionando", done: true },
+  { when: "Inicio 2027", what: "Piloto con un contratista" },
+  { when: "Fin 2027", what: "Integración y Ley de IA" },
+  { when: "2028", what: "Primeras salas" },
+];
+
+function Business() {
+  return (
+    <>
+      <h2 className="h2 rise" style={at(0)}>Cómo llega <em>a las salas del 112.</em></h2>
+      <div className="biz-wrap">
+      <div className="biz">
+        {BIZ.map((b, i) => (
+          <div key={b.k} className="rise" style={at(1 + i)}>
+            <p className="k">{b.k}</p>
+            <p className="v">{b.v}</p>
+          </div>
+        ))}
+      </div>
+      <ol className="road">
+        {ROADMAP.map((r, i) => (
+          <li key={r.when} className={`rise ${r.done ? "done" : ""}`} style={at(5 + i)}>
+            <span className="when">{r.when}</span>
+            <span className="what">{r.what}</span>
+          </li>
+        ))}
+      </ol>
+      </div>
+    </>
+  );
+}
+
+// ═════════════════════════════ 7 · Cierre: logo, eslogan y QR
 
 function Closing() {
   const url = useCallUrl();
@@ -360,15 +389,19 @@ export const SLIDES: SlideDef[] = [
   },
   {
     id: "como-funciona", section: "La solución", title: "Cómo funciona", Body: HowItWorks,
-    notes: "(0:35–1:00) Agente 112 escucha cada aviso, junta los que hablan de lo mismo y prepara lo siguiente. En este caso, siete avisos del mismo coche (uno es una eCall, otros en inglés y alemán) acaban en una sola emergencia, y cuando alguien dice que hay un bebé dentro, sube la prioridad. El agente propone bomberos, SAMU, SMS en el idioma de cada llamante y un ES-Alert; lo aprueba una persona. Si duda, pregunta.",
+    notes: "(0:35–0:55) Un caso del escenario: siete avisos del mismo coche (una eCall y llamadas en castellano, inglés y alemán) acaban en una sola emergencia. Cuando alguien dice que hay un bebé dentro, sube la prioridad. El agente prepara bomberos y SAMU, SMS en el idioma de cada llamante y un ES-Alert; lo aprueba una persona. Los avisos que solo informan, como el de la compañía eléctrica, salen solos. Si duda, no junta: pregunta. No hemos encontrado ningún 112 en España que ya agrupe las llamadas repetidas (investigación propia, oct. 2026).",
   },
   {
     id: "demo", section: "Demo", title: "Así lo ve el operador", className: "s-live", Body: Live,
-    notes: "(1:00–2:15) Arranca sola a ×4 con sonido: suben las líneas liberadas. A4 trae información nueva y sube la prioridad. F1 se pone en ámbar: pulsar D, es otro coche. B2: pulsar M, misma dirección. Los cables caídos avisan solos a la compañía eléctrica. Subir a ×10: llega E1 en árabe; en Traducción, elegir «¿La persona respira?» y reproducirla.",
+    notes: "(0:55–2:10) Arranca sola a ×4 con sonido: suben las líneas liberadas. A4 trae información nueva y sube la prioridad. F1 se pone en ámbar: pulsar D, es otro coche. B2: pulsar M, misma dirección. Los cables caídos avisan solos a la compañía eléctrica. Subir a ×10: llega E1 en árabe; en Traducción, elegir «¿La persona respira?» y reproducirla.",
   },
   {
-    id: "plan", section: "Tecnología y negocio", title: "Pensado para funcionar dentro de la sala", Body: Plan,
-    notes: "(2:15–2:45) Todo en local: Whisper y Qwen con Ollama en un ordenador de la sala, y las reglas en código. Vendemos a las empresas que gestionan las salas por concurso, con licencia por puesto. Escala a cualquier 112. Hoja de ruta provisional: piloto en 2027, integración y Ley de IA, y primeras salas en 2028.",
+    id: "tecnologia", section: "Tecnología", title: "Todo ocurre dentro de la sala", Body: Tech,
+    notes: "(2:10–2:25) Whisper pasa la voz a texto y Qwen 2.5 con Ollama entiende qué pasa y dónde, los dos en local: ningún dato de salud ni de localización sale de la sala. Funciona en un portátil con una GPU de 8 GB. La agrupación y lo que el agente puede hacer solo están en reglas programadas y probadas, no en el modelo. Lee la posición AML y la eCall y propone ES-Alert.",
+  },
+  {
+    id: "negocio", section: "Negocio", title: "Cómo llega a las salas del 112", Body: Business,
+    notes: "(2:25–2:45) Vendemos a las empresas que gestionan las salas del 112 por concurso: el pliego andaluz ya puntúa el software que ofrece el licitador. Licencia por puesto de operador. Solo el 112 de Andalucía gestionó 894.930 emergencias en 2025 (Junta de Andalucía). Hoja de ruta provisional: piloto en 2027 con llamadas reales anonimizadas, integración y Ley de IA (obligaciones desde diciembre de 2027) y primeras salas en 2028.",
   },
   {
     id: "agente-112", section: "Agente 112", title: "Para que nadie se quede esperando al otro lado", className: "s-close", Body: Closing,
