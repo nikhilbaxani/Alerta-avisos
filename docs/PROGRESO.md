@@ -190,3 +190,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Arreglados pendientes de X16: la ficha de INC-01 ya no tapa B-2 al asignar; en móvil el aviso del agente no tapa «Satélite».
 - Pendiente menor: a vista general el triángulo de INC-06 se monta sobre INC-01; la leyenda ocupa tres líneas a 1440×900; en móvil «Enviado con tu aprobación» tapa un momento la parte alta del mapa.
 - Siguiente: verificación final de la Fase 7.
+
+## 2026-11-25T08:00:45+01:00 · Fase 7 (X11–X17) · resumen para Nick
+- Hecho (todo `[x]`, una tarea por commit en `noche/ideas-pitch`): X11 caja «En espera» (agente de espera con selector de operadores); X12 «Falta saber» con preguntas pretraducidas; X13 eCall EC1 en la DANA; X14 SMS de duplicado con aprobación en lote; X15 llamadas perdidas (devolver primero, SMS a duplicados); X16 unidades simuladas en el mapa con la más cercana; X17 peligros en la vía y aviso cruzado a las unidades. Nada bloqueado en la Fase 7.
+- Verificación final (misma sesión, tras el commit de X17): lint OK, build OK, 432 tests en verde, eval 7 incidentes/0 fusiones incorrectas/2 preguntas, eval:apagon 6/0/1, `node scripts/e2e.mjs` OK (27 llamadas, eCall, árabe, lote, perdidas, unidades, peligros, espera, falta saber, audio, Separar, 0 errores de consola). Capturas `docs/capturas/X17-*` revisadas en escritorio y móvil.
+- Sin tocar (por encargo): X04b sigue `[!]` (necesita Ollama/Whisper) y X08 (README/PITCH) pendiente: ya puede contar lo de la Fase 7.
+- Pendientes menores conocidos: en móvil el aviso «Enviado con tu aprobación» tapa un momento la parte alta del mapa; a vista general el peligro de INC-06 se monta sobre INC-01; columna izquierda llena a 1440×900; si se aprueba recursos con el escenario terminado la unidad queda «asignada».
+- Cómo probarlo: `git switch noche/ideas-pitch && npm install && npm run dev` → http://localhost:3000, escenario DANA a ×10, aprobar «Enviar Bomberos» de INC-01 y mirar el mapa (B-2, triángulos) y la tarjeta en Acciones › Enviadas. Nada se ha subido: el push es tuyo.
