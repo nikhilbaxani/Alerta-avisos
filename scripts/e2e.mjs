@@ -130,6 +130,12 @@ await mapUnit.waitFor({ state: "attached", timeout: 3000 }).catch(() => fail(`la
 if ((await mapUnit.getAttribute("data-status")) === "libre") fail("la unidad asignada sigue libre en el mapa");
 if (!(await page.locator(`svg.map [data-unit-line="${unitId}"]`).count())) fail("falta la línea de la unidad al incidente");
 if ((await page.locator("svg.map g[data-unit][data-status=libre][data-incident]").count())) fail("una unidad libre lleva incidente");
+// Peligros en la vía (X17, simulación): marcas propias en el mapa y aviso cruzado en la tarjeta de la unidad
+// (B-2 hacia INC-01 pasaría por la vía inundada de otro incidente). Solo aviso: sin botones que cambien rutas.
+const hazardsN = await page.locator("svg.map g[data-hazard][data-kind][data-incident]").count();
+if (!hazardsN) fail("no hay peligros en la vía en el mapa de la DANA");
+if ((await page.locator('svg.map g[data-hazard][data-kind="agua_en_via"]').count()) < 2) fail("faltan los peligros de agua en la vía (paso inferior de A y vía inundada)");
+if (!(await page.locator(`svg.map g[data-unit="${unitId}"][data-hazard-warning]`).count())) fail("la unidad afectada no se marca en el mapa");
 const lote = acts.locator('[data-batch="INC-01"]');
 await lote.waitFor({ timeout: 5000 }).catch(() => fail("no aparece el lote de avisos de duplicado de INC-01"));
 const loteText = await lote.innerText();
@@ -146,6 +152,14 @@ if ((await sentDup.count()) !== 3) fail(`el lote no pasa a enviada (${await sent
 if (!(await sentDup.first().innerText()).match(/Aprobado en lote y enviado · acuse DUP-[0-9A-F]{6}/)) fail("el aviso enviado no dice que se aprobó en lote");
 const bomSent = acts.locator(`.act[data-tool="proponer_recursos"][data-incident="INC-01"][data-status="enviada"] [data-unit="${unitId}"]`);
 if (!(await bomSent.count()) || !(await bomSent.innerText()).includes(`Unidad asignada: ${unitId}`)) fail("la tarjeta enviada de bomberos no muestra la unidad asignada");
+const hzWarn = acts.locator('.act[data-tool="proponer_recursos"][data-incident="INC-01"] .act-unit [data-hazard-warning][data-hazard-incident]');
+await hzWarn.first().waitFor({ timeout: 3000 }).catch(() => fail("la tarjeta de bomberos de A no avisa del peligro en la vía"));
+const hzText = await hzWarn.first().innerText();
+if (!hzText.includes(`${unitId} pasaría por`) || !/de INC-\d+/.test(hzText) || !hzText.includes("simulación")) fail(`aviso de peligro inesperado: ${hzText}`);
+if (await hzWarn.locator("button").count()) fail("el aviso de peligro no debe llevar botones");
+const hzInc = await hzWarn.first().getAttribute("data-hazard-incident");
+if (hzInc === "INC-01") fail("el aviso cruzado es del propio incidente de destino");
+if (!(await page.locator(`svg.map g[data-hazard][data-incident="${hzInc}"][data-warned]`).count())) fail("el peligro afectado no se marca en el mapa");
 await acts.getByRole("button", { name: /Por aprobar/ }).click();
 
 // Llamadas perdidas (X15): las desconocidas (P3, P4) arriba con «devolver la llamada»; los probables
@@ -237,4 +251,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, lote de duplicados, llamadas perdidas, unidades simuladas, agente de espera, falta saber, audio, Separar, sin errores de consola");
+console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, lote de duplicados, llamadas perdidas, unidades simuladas, peligros en la vía, agente de espera, falta saber, audio, Separar, sin errores de consola");

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { actionUnit, callMeta, consoleLostCalls, consoleProposals, consoleUnits, useConsole } from "@/lib/useConsole";
+import { actionUnit, callMeta, consoleHazards, consoleHazardWarnings, consoleLostCalls, consoleProposals, consoleUnits, useConsole } from "@/lib/useConsole";
 import { actionIncidents, canApprove } from "@/lib/actions";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import { buildAuditLog } from "@/lib/audit";
@@ -104,6 +104,9 @@ export default function Console() {
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
   // Unidades simuladas (X16): posición y estado según el reloj del escenario.
   const units = useMemo(() => consoleUnits(s), [s.units, s.clock]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Peligros en la vía (X17): los peligros cambian con los incidentes; los avisos, con la posición de las unidades.
+  const hazards = useMemo(() => consoleHazards(s), [s.engine, s.calls, s.archived]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hazardWarnings = useMemo(() => consoleHazardWarnings(s), [s.units, s.clock, hazards]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Agente de acciones (X05): las reglas proponen a partir del estado de los incidentes; las automáticas se envían al añadirse.
   // Llamadas perdidas (X15): dependen del reloj; basta con recalcular cuando ocurre una nueva.
@@ -165,7 +168,7 @@ export default function Console() {
         <div className="col col-center">
           {/* La decisión ámbar va encima del mapa y nunca se resuelve sola. */}
           <div className="decision-slot" aria-live="polite"><DecisionBanner s={s} onDecide={decide} /></div>
-          <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident} onResolve={resolve} units={units}>
+          <MapView s={s} onSelect={select} onFxDone={fxDone} onFocus={onMapFocus} pendingActions={pendingByIncident} onResolve={resolve} units={units} hazards={hazards} hazardWarnings={hazardWarnings}>
             {/* Avisos del agente en la esquina del mapa: no tapan tarjetas ni el detalle. */}
             <AgentFeed actions={s.actions} epoch={s.epoch} />
             {notStarted && (
@@ -181,7 +184,7 @@ export default function Console() {
             )}
           </MapView>
           <div className="pair">
-            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={() => focusBox("lost")} unitOf={(a) => actionUnit(s, a)} />
+            <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={() => focusBox("lost")} unitOf={(a) => actionUnit(s, a)} hazardWarnings={hazardWarnings} />
             <TranslateBox s={s} ask={ask} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
           </div>
         </div>

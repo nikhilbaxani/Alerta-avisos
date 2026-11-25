@@ -182,3 +182,11 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Decisiones: ver DECISIONES («X16: unidades simuladas»).
 - Pendiente menor: si se aprueba con el escenario terminado (reloj parado en end+1) la unidad se queda «asignada» y no avanza; al aprobar se abre la ficha de INC-01 y en escritorio tapa B-2; en móvil el aviso «Enviado con tu aprobación» tapa el botón «Satélite».
 - Siguiente: X17.
+
+## 2026-11-25T07:58:48+01:00 · X17 · hecha
+- Qué se hizo: `lib/hazards.ts` puro (`hazardsFrom`, `unitHazardWarnings`, umbral 400 m): peligros en la vía a partir de `risks`/tipo/AML (vía cortada, árbol, cables; agua subiendo solo en vehículo atrapado por agua, rótulo fijo «paso inferior inundado»/«vía inundada»); el peligro del propio destino no avisa; resuelto = incidente solucionado. `consoleHazards`/`consoleHazardWarnings` en `lib/useConsole.ts`. Mapa: triángulos de señal por tipo, halo en el peligro afectado, marca en la unidad, leyenda «Peligros en la vía: simulación». Tarjeta: aviso informativo sin botones en `.act-unit`.
+- Verificación (qa-verificador APTO): lint OK, build OK, 432 tests (14 en `tests/hazards.test.ts`), eval 7/0/2 y eval:apagon 6/0/1, `e2e.mjs` OK (aviso cruzado «B-2 pasaría por la vía inundada de INC-06… (simulación)» en la tarjeta de bomberos de INC-01), GitHub Pages OK, capturas `docs/capturas/X17-*` revisadas (escritorio/móvil, oscuro/claro), 0 errores de consola, sin scroll horizontal.
+- Decisiones: ver DECISIONES (X17: lógica e interfaz).
+- Arreglados pendientes de X16: la ficha de INC-01 ya no tapa B-2 al asignar; en móvil el aviso del agente no tapa «Satélite».
+- Pendiente menor: a vista general el triángulo de INC-06 se monta sobre INC-01; la leyenda ocupa tres líneas a 1440×900; en móvil «Enviado con tu aprobación» tapa un momento la parte alta del mapa.
+- Siguiente: verificación final de la Fase 7.

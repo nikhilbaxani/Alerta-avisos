@@ -482,6 +482,20 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 .unit-line { stroke: var(--unit-route); fill: none; }
 .unit-line.st-en_el_lugar { display: none; }
 .map.sat .unit .unit-tag { fill: #fff; stroke: rgba(8,16,24,.8); }
+/* X17: peligros en la vía (simulación). Triángulo de señal de peligro (blanco con borde rojo); los
+   incidentes son círculos y las unidades, cuadrados. Sin animación: el aviso es estático. */
+.hazards { pointer-events: none; }
+.hazard { pointer-events: auto; }
+.hazard .hz-tri { fill: #fff; stroke: var(--red); stroke-linejoin: round; }
+.hazard .hz-water { fill: none; stroke: #2b6cb0; stroke-width: 1.6; stroke-linecap: round; }
+.hazard .hz-bang { fill: none; stroke: #15222e; stroke-width: 2.4; stroke-linecap: round; }
+.hazard .hz-bolt { fill: #15222e; stroke: none; }
+.hazard .hz-halo { fill: var(--red); opacity: .2; stroke: var(--red); stroke-width: 1.5; stroke-opacity: .9; stroke-dasharray: 3 3; }
+.hazard .hz-tag { text-anchor: middle; fill: var(--red-ink); stroke: var(--map-halo); font-weight: 800; paint-order: stroke; }
+.map.sat .hazard .hz-tag { fill: #fff; stroke: rgba(8,16,24,.85); }
+.unit .unit-warn { fill: #fff; stroke: var(--red); }
+.lg.hazard { width: 14px; height: 13px; border: 0; border-radius: 0; background: var(--red); clip-path: polygon(50% 0, 100% 100%, 0 100%); position: relative; }
+.lg.hazard::after { content: ""; position: absolute; inset: 4px 3.5px 2px; background: #fff; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .lg.unit { width: auto; height: 14px; padding: 0 4px; border-radius: 3px; border: 1.5px solid var(--unit-line); background: var(--unit); color: var(--unit-ink); font-size: 9.5px; font-weight: 800; font-style: normal; display: grid; place-items: center; }
 
 .map-presets, .map-zoom, .map-layers, .map-foot { position: absolute; z-index: 1; }
@@ -628,7 +642,12 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 .act-target { font-size: 13px; color: var(--ink-3); }
 .act-unit { display: inline-flex; align-items: flex-start; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--accent-ink); }
 .act-unit.k-sin_libre { color: var(--ink-2); }
+.act-unit { flex-wrap: wrap; }
 .act-unit svg { flex: none; margin-top: 2px; }
+.act-unit > span { flex: 1 1 0; min-width: 0; }
+.act-unit > .act-hazard { flex: 1 1 100%; display: flex; align-items: flex-start; gap: 6px; margin-top: 3px; padding: 6px 9px; border-radius: var(--radius); background: var(--red-bg); border: 1px solid var(--red-line); box-shadow: inset 4px 0 0 var(--red); color: var(--ink); font-weight: 500; }
+.act-hazard b { color: var(--red-ink); }
+.act-hazard svg { color: var(--red-ink); }
 .act-sms { display: grid; gap: 2px; margin: 4px 0 2px; padding: 7px 10px; background: var(--accent-bg); border-radius: var(--radius); font-size: 14px; }
 .act-sms small { font-size: 12px; color: var(--ink-3); }
 .act-batch { display: grid; gap: 1px; margin: 0 0 2px; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
@@ -865,4 +884,8 @@ button.inc-token[aria-pressed="true"] { border-color: var(--accent); background:
 @media (max-width: 1100px) {
   #box-lost { order: 2; max-height: 620px; }
   .map-wrap .agent-feed { top: 54px; bottom: auto; left: 12px; right: auto; }
+}
+/* X17: en móvil los botones Mapa/Satélite bajan a la segunda fila; el aviso del agente va debajo, a la izquierda del zoom */
+@media (max-width: 700px) {
+  .map-wrap .agent-feed { top: 96px; width: min(276px, calc(100% - 76px)); }
 }

@@ -2,6 +2,7 @@ import { CITY_LABELS, RESOURCE_LABELS, canApprove, joinEs, toolService, toolTarg
 import { RISK_LABELS } from "@/lib/labels";
 import type { ActionTool, AgentAction } from "@/lib/actions";
 import type { ActionUnit } from "@/lib/useConsole";
+import type { UnitHazardWarning } from "@/lib/hazards";
 import Icon from "./Icon";
 import type { IconName } from "./Icon";
 import { langName, mmss } from "./format";
@@ -51,12 +52,14 @@ interface CardProps {
   tokens?: React.ReactNode;
   /** Unidad simulada propuesta o asignada (X16), solo en `proponer_recursos`. */
   unit?: ActionUnit | null;
+  /** Avisos de peligro en la vía de esa unidad (X17): solo texto, no cambian nada. */
+  hazards?: UnitHazardWarning[];
   onApprove: (key: string) => void;
   onDiscard: (key: string) => void;
 }
 
 /** Tarjeta de una acción que prepara el agente: aprobar/descartar si le toca al operador, o su estado. */
-export function ActionCard({ a, tokens, unit, onApprove, onDiscard }: CardProps) {
+export function ActionCard({ a, tokens, unit, hazards, onApprove, onDiscard }: CardProps) {
   const state = a.status === "enviada" ? "sent" : a.status === "descartada" ? "discarded" : "pending";
   const mine = canApprove(a.policy, "operador");
   const title = actionTitle(a);
@@ -69,7 +72,12 @@ export function ActionCard({ a, tokens, unit, onApprove, onDiscard }: CardProps)
         <span className="act-target">{a.reason}</span>
         {unit && (
           <span className={`act-unit k-${unit.kind}`} {...(unit.unit ? { "data-unit": unit.unit.id, "data-status": unit.unit.status } : { "data-unit-none": "" })}>
-            <Icon name="truck" size={14} />{unit.text}
+            <Icon name="truck" size={14} /><span>{unit.text}</span>
+            {hazards?.map((w) => (
+              <span key={w.hazardId} className="act-hazard" role="note" aria-label={`Aviso de peligro en la vía: ${w.text}`} data-hazard-warning={w.hazardId} data-hazard-incident={w.hazardIncidentId}>
+                <Icon name="alert" size={14} /><span><b>Aviso.</b> {w.text}. Solo informa: la ruta la decides tú.</span>
+              </span>
+            ))}
           </span>
         )}
         {a.tool === "sms_al_llamante" && (

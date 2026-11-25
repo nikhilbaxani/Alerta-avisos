@@ -6,6 +6,7 @@ import { LOST_CALLS_ID, actionIncidents, canApprove, duplicateBatch } from "@/li
 import type { AgentAction } from "@/lib/actions";
 import type { Incident } from "@/lib/engine";
 import type { ActionUnit, ArchivedIncident } from "@/lib/useConsole";
+import type { UnitHazardWarning } from "@/lib/hazards";
 import Icon from "./Icon";
 import { ActionCard, TOOL_ICON } from "./AgentActions";
 import { langName } from "./format";
@@ -32,10 +33,12 @@ interface Props {
   onLost: () => void;
   /** Unidad simulada de una `proponer_recursos` (X16). */
   unitOf?: (a: AgentAction) => ActionUnit | null;
+  /** Avisos de peligro en la vía de la unidad asignada (X17). */
+  hazardWarnings?: UnitHazardWarning[];
 }
 
 /** Caja de acciones del agente: lo que espera tu confirmación y lo ya enviado, filtrable por emergencia. */
-export default function ActionsBox({ actions, archived, onArchived, selected, incidents, ranks, filter, onFilter, provisional, onApprove, onDiscard, onApproveBatch, onIncident, onLost, unitOf }: Props) {
+export default function ActionsBox({ actions, archived, onArchived, selected, incidents, ranks, filter, onFilter, provisional, onApprove, onDiscard, onApproveBatch, onIncident, onLost, unitOf, hazardWarnings }: Props) {
   const [show, setShow] = useState<"todo" | "done">("todo");
   const byId = new Map(incidents.map((i) => [i.id, i]));
   const inFilter = (a: AgentAction) => !filter || actionIncidents(a).includes(filter);
@@ -73,7 +76,12 @@ export default function ActionsBox({ actions, archived, onArchived, selected, in
     }
     return null;
   });
-  const card = (a: AgentAction) => <ActionCard key={a.key} a={a} tokens={tokens(a)} unit={unitOf?.(a)} onApprove={onApprove} onDiscard={onDiscard} />;
+  const card = (a: AgentAction) => {
+    const unit = unitOf?.(a);
+    const id = unit?.kind === "asignada" ? unit.unit?.id : undefined;
+    const warns = id ? hazardWarnings?.filter((w) => w.unitId === id && w.incidentId === a.incidentId) : undefined;
+    return <ActionCard key={a.key} a={a} tokens={tokens(a)} unit={unit} hazards={warns} onApprove={onApprove} onDiscard={onDiscard} />;
+  };
 
   // Lote de avisos de duplicado (X14): los que no traen información nueva van juntos con «Aprobar todos».
   // Con uno solo no hay lote: se aprueba con su tarjeta.

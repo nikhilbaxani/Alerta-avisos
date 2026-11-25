@@ -26,6 +26,8 @@ import { heardOf } from "@/lib/waitingConsole";
 import type { Heard } from "@/lib/waitingConsole";
 import { SIMULATION_LABEL, assignUnit, centerOf, formatDistance, initialUnits, nearestFree, releaseIncident, unitAt, unitServiceOf, unitsAt } from "@/lib/units";
 import type { Unit } from "@/lib/units";
+import { hazardsFrom, unitHazardWarnings } from "@/lib/hazards";
+import type { Hazard, UnitHazardWarning } from "@/lib/hazards";
 
 export type Speed = 1 | 4 | 10;
 const sortedCalls = (id: string) => [...getScenario(id).calls].sort((a, b) => a.t - b.t);
@@ -474,6 +476,23 @@ function assignOnApproval(s: ConsoleState, action: AgentAction): { units: Unit[]
 /** Unidades con su estado y posición en `s.clock` (asignada → en camino → en el lugar). Depende de `s.clock`. */
 export function consoleUnits(s: ConsoleState): Unit[] {
   return unitsAt(s.units, s.clock);
+}
+
+/**
+ * X17: peligros en la vía (simulación) de los incidentes abiertos y de los solucionados (`resolved`, ya no
+ * avisan). Solo cambian al procesar llamadas, decidir o solucionar: no dependen de `s.clock`.
+ */
+export function consoleHazards(s: ConsoleState): Hazard[] {
+  const open = s.engine.incidents.map((i) => ({ id: i.id, callIds: i.callIds }));
+  const solved = s.archived
+    .filter((a) => !s.engine.incidents.some((i) => i.id === a.incident.id))
+    .map((a) => ({ id: a.incident.id, callIds: a.incident.callIds, resolved: true }));
+  return hazardsFrom([...open, ...solved], s.calls);
+}
+
+/** X17: avisos «la unidad pasaría por un peligro de otro incidente». Depende de `s.clock` (posición de la unidad). */
+export function consoleHazardWarnings(s: ConsoleState): UnitHazardWarning[] {
+  return unitHazardWarnings(consoleUnits(s), consoleHazards(s));
 }
 
 /** Lo que la tarjeta de `proponer_recursos` muestra sobre la unidad. */

@@ -123,7 +123,7 @@ Verificación común (además de la propia de cada tarea): `npm run build`, `npm
   - Al aprobar `proponer_recursos`, la propuesta indica la unidad libre más cercana (haversine) y su distancia; si no hay libre, lo dice. La unidad cambia de estado y avanza hacia el incidente con el reloj del escenario; al solucionar el incidente vuelve a libre.
   - En el mapa: iconos de unidades con su estado y una línea hacia el incidente asignado; respeta `prefers-reduced-motion`. La caja de acciones muestra la unidad asignada.
   - Verificación: tests de asignación (más cercana, sin libres, liberación al solucionar); `e2e.mjs` comprueba que tras aprobar recursos en A aparece una unidad asignada en el mapa.
-- [ ] X17 Conocimiento cruzado entre incidentes (idea #18) · agente: `backend-ia` (lógica) + `frontend-consola` (mapa) · deps: X16
+- [x] X17 Conocimiento cruzado entre incidentes (idea #18) · agente: `backend-ia` (lógica) + `frontend-consola` (mapa) · deps: X16
   - `lib/hazards.ts` puro: las llamadas con `via_bloqueada`, `agua_subiendo` en paso inferior, `arbol_caido` o `cables_electricos` crean un **peligro en la vía** con posición y motivo (los datos estructurados, nunca el texto libre como instrucción).
   - Si la línea recta (o el tramo final) de una unidad de X16 hacia su incidente pasa a menos de un umbral de un peligro, aviso al operador: «La unidad B-2 pasaría por el paso inferior inundado de INC-01». Solo aviso: no cambia rutas ni decide.
   - En el mapa: marcas de peligro distintas de los incidentes; aviso en la tarjeta de la unidad afectada.
