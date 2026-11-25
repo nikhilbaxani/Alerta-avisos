@@ -196,7 +196,7 @@ export default function Inbox({ s, visible = true, onLive }: Props) {
                 {ev.extraction.risks.length > 0 && (
                   <p className="inbox-risks">{ev.extraction.risks.map((r) => RISK_LABELS[r]).join(" · ")}</p>
                 )}
-                <p className="inbox-text">{ev.transcript}</p>
+                <p className="inbox-text" dir="auto">{ev.transcript}</p>
                 {ev.extraction.translation_es && <p className="inbox-text note"><b>ES:</b> {ev.extraction.translation_es}</p>}
                 {ev.translation_en && <p className="inbox-text note"><b>EN:</b> {ev.translation_en}</p>}
                 <div className="inbox-actions">
