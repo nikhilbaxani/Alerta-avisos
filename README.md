@@ -11,13 +11,13 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-Pulsa **Iniciar** (velocidad ×4 o ×10). Verás 26 llamadas en 6 idiomas convertirse en 7 incidentes. Dos veces la consola se para en **ámbar** y pregunta: `M` = mismo incidente, `D` = incidente distinto. En el modo simulado la agrupación y la prioridad **se calculan igual** con el algoritmo real; solo la extracción de cada llamada viene del guion. La demo no hace ninguna petición externa: el mapa es una ortofoto del IGN incluida en la aplicación (sin teselas) y la fuente se instala con npm. El botón **Cómo funciona** lo explica todo en un minuto; el mapa se arrastra y se acerca con la rueda o con + y −.
+Pulsa **Iniciar** (velocidad ×4 o ×10). Verás 27 llamadas en 6 idiomas convertirse en 7 incidentes. Dos veces la consola se para en **ámbar** y pregunta: `M` = mismo incidente, `D` = incidente distinto. En el modo simulado la agrupación y la prioridad **se calculan igual** con el algoritmo real; solo la extracción de cada llamada viene del guion. La demo no hace ninguna petición externa: el mapa de calles y la ortofoto del IGN van incluidos en la aplicación (sin teselas) y la fuente se instala con npm. El botón **Cómo funciona** lo explica todo en un minuto; el mapa se arrastra y se acerca con la rueda o con + y −.
 
-En la pestaña **Simulación**, el selector cambia entre dos escenarios: **DANA en Málaga** (26 llamadas, 6 idiomas) y **Apagón en Málaga** (16 llamadas: ascensores, semáforos, oxígeno domiciliario y una residencia sin luz), para ver que el sistema generaliza.
+En la pestaña **Simulación**, el selector cambia entre dos escenarios: **DANA en Málaga** (27 llamadas, 6 idiomas) y **Apagón en Málaga** (16 llamadas: ascensores, semáforos, oxígeno domiciliario y una residencia sin luz), para ver que el sistema generaliza.
 
 ## Qué enseña la demo
 
-1. **Agrupar**: 26 llamadas → 7 incidentes. El contador de «repetidas» (líneas que quedan libres) sube; cada llamada lleva la etiqueta de su incidente (③ INC-03, el mismo número que en el mapa).
+1. **Agrupar**: 27 llamadas → 7 incidentes. El contador de «repetidas» (líneas que quedan libres) sube; cada llamada lleva la etiqueta de su incidente (③ INC-03, el mismo número que en el mapa).
 2. **Información nueva**: una llamada duplicada no se descarta; si dice «hay un bebé» o «no contesta», se avisa y sube la prioridad.
 3. **La ubicación del llamante no es la del incidente**: quien llama desde otro barrio se agrupa por la dirección que menciona.
 4. **Zona gris visible**: un segundo coche atrapado a ~460 m del primero no se fusiona solo; decide el operador.
@@ -82,7 +82,7 @@ Al final, el **parte de situación**, rotulado como simulación, recoge llamadas
 
 ### Dónde se ve en la consola
 
-En **Simulación**, el detalle del incidente muestra las tarjetas de «Acciones del agente», con **Aprobar y enviar** o **Descartar** cuando corresponde al operador. ES-Alert se muestra sin esos botones en los incidentes de la zona. Los envíos simulados aparecen sobre el mapa con su acuse; la cabecera cuenta las acciones enviadas, la cola marca las propuestas por aprobar y el registro JSON incluye la traza de acciones. **En directo (QR)** no genera acciones ni reproduce el audio del escenario.
+En **Simulación**, el detalle del incidente muestra las tarjetas de «Acciones del agente», con **Aprobar y enviar** o **Descartar** cuando corresponde al operador. ES-Alert se muestra sin esos botones en los incidentes de la zona. Los envíos simulados aparecen sobre el mapa con su acuse; la cabecera cuenta las acciones enviadas, la cola marca las propuestas por aprobar y el registro JSON incluye la traza de acciones. **En directo (QR)** muestra también la caja de Acciones para los incidentes de las llamadas aceptadas, separada de la de Simulación; no reproduce el audio del escenario ni usa las unidades simuladas.
 
 ### Ejecutar el agente en terminal
 
@@ -106,7 +106,7 @@ También se admiten los alias `--scenario`, `--operators`, `--coordinator` y `--
 
 ## Llamadas del público por QR (opcional)
 
-El público escanea el QR compartido, abre `/llamar` en el móvil y graba una llamada de prueba (sin mínimo, máximo 2 minutos). Dice qué pasa y **dónde** (calle o barrio de Málaga). El audio va a un relay en un VPS que lo transcribe con Whisper en CPU, extrae tipo, riesgos y lugar con un LLM si se configura, con reglas deterministas de respaldo (`lib/rules.ts`, `lib/gazetteer.ts`) y lo envía por SSE a la **bandeja «Llamadas del público»** de la consola. Nada entra en el mapa ni en la agrupación hasta que el operador pulsa **Aceptar**. Si no se reconoce el lugar, la llamada nunca se fusiona sola.
+El público escanea el QR compartido, abre `/llamar` en el móvil y graba una llamada de prueba (sin mínimo, máximo 2 minutos). Dice qué pasa y **dónde** (calle o barrio de Málaga). El audio va a un relay en un VPS que lo transcribe con Whisper (en la demo, en la GPU del ordenador del equipo), extrae tipo, riesgos y lugar con un LLM si se configura, con reglas deterministas de respaldo (`lib/rules.ts`, `lib/gazetteer.ts`) y lo envía por SSE a la **bandeja «Llamadas del público»** de la consola. Nada entra en el mapa ni en la agrupación hasta que el operador pulsa **Aceptar**. Si no se reconoce el lugar, la llamada nunca se fusiona sola.
 
 Para compartir el QR, abre `/qr-llamar.png` en la web desplegada o descarga el [PNG](public/qr-llamar.png), el [SVG](public/qr-llamar.svg) o la [tarjeta para presentaciones](public/qr-llamar-tarjeta.png). Si cambia la dirección pública, ejecuta desde la raíz `npx tsx scripts/qr-image.ts https://tu-dominio/llamar` con las dependencias del proyecto y Chromium de Playwright disponibles. Si Chromium está en otra ruta, indica el ejecutable con `CHROMIUM_EXECUTABLE_PATH`. El script regenera los tres archivos en `public/` sin consultar servicios externos.
 
@@ -135,13 +135,13 @@ navegador (consola) ── POST /api/process ──▶ servidor Next.js (sin est
 ## Comprobaciones
 
 ```bash
-npm run build && npm test && npm run eval     # compilación, 27 tests, evaluación sobre el escenario
+npm run build && npm test && npm run eval     # compilación, tests, evaluación sobre el escenario
 npm run eval:apagon                           # evaluación del escenario del apagón (6 incidentes, 1 pregunta)
 npm run eval -- --live                        # lo mismo con el LLM local (se salta si no hay LLM_BASE_URL)
 npm run start -- -p 3112 & node scripts/e2e.mjs   # prueba extremo a extremo con Playwright
 ```
 
-`npm run eval` agrupa las 26 llamadas y compara con la referencia: **7 incidentes, 0 fusiones incorrectas, 2 preguntas al operador**, y la llamada en árabe (infarto) entre las dos primeras de la cola.
+`npm run eval` agrupa las 27 llamadas y compara con la referencia: **7 incidentes, 0 fusiones incorrectas, 2 preguntas al operador**, y la llamada en árabe (infarto) entre las dos primeras de la cola.
 
 ## Privacidad y Ley de IA
 
