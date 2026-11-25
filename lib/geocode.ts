@@ -1,4 +1,6 @@
 import { locate } from "@/lib/gazetteer";
+import { matchStreet } from "@/lib/streets";
+import { haversine } from "@/lib/cluster";
 import { UNKNOWN_LOCATION_AML, type PublicLocation } from "@/lib/publicCall";
 import type { Aml } from "@/lib/types";
 
@@ -11,6 +13,7 @@ export interface GeocodeOptions {
 // Caja envolvente aproximada del municipio (no es su perímetro administrativo).
 const MALAGA = { west: -4.63, north: 36.94, east: -4.29, south: 36.65 };
 const CACHE_LIMIT = 256;
+const MAX_STREET_REFINEMENT_METERS = 1500;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const cache = new Map<string, Aml>();
 const QUEUE_LIMIT = 10;
@@ -126,13 +129,18 @@ export async function resolveLocation(locationText: string, opts: GeocodeOptions
   if (!place || locationText.length > 200) return unknown();
   const local = locate(place);
   if (local) return { place: local.place, known: true, aml: local.aml };
+  const street = matchStreet(place);
+  const fallback = street?.location ?? unknown();
   const base = opts.url?.trim();
-  if (!base) return unknown();
+  if (!base) return fallback;
 
+  const usable = (aml: Aml): boolean =>
+    !street || haversine(street.location.aml, aml) <= MAX_STREET_REFINEMENT_METERS;
+  const located = (aml: Aml): PublicLocation => ({ place: street ? street.location.place : place, known: true, aml: { ...aml } });
   try {
-    const url = searchUrl(base, place);
+    const url = searchUrl(base, street?.address ?? place);
     const cached = cache.get(url);
-    if (cached) return { place, known: true, aml: { ...cached } };
+    if (cached) return usable(cached) ? located(cached) : fallback;
     const aml = await queuedSearch(async (signal) => {
       const cached = cache.get(url);
       if (cached) return cached;
@@ -144,14 +152,14 @@ export async function resolveLocation(locationText: string, opts: GeocodeOptions
       });
       return response.ok ? readPoint(await readResponse(response, signal)) : undefined;
     }, opts.timeoutMs);
-    if (!aml) return unknown();
+    if (!aml || !usable(aml)) return fallback;
     cache.set(url, { ...aml });
     if (cache.size > CACHE_LIMIT) {
       const oldest = cache.keys().next();
       if (!oldest.done) cache.delete(oldest.value);
     }
-    return { place, known: true, aml: { ...aml } };
+    return located(aml);
   } catch {
-    return unknown();
+    return fallback;
   }
 }

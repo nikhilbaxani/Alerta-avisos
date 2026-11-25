@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UNKNOWN_LOCATION_AML } from "@/lib/publicCall";
+import { haversine } from "@/lib/cluster";
 import type { resolveLocation as ResolveLocation } from "@/lib/geocode";
 
 const url = "https://geocoder.invalid/nominatim/";
@@ -17,6 +18,78 @@ beforeEach(async () => {
 afterEach(() => vi.useRealTimers());
 
 describe("resolveLocation", () => {
+  const demostenes = "Calle de Móstenes número 29, Málaga";
+  const door = { lat: 36.71908, lon: -4.47193, type: "house" };
+  const refinedDoor = { known: true, place: "Calle Demóstenes, 29", aml: { lat: door.lat, lng: door.lon, acc: 100 } };
+
+  it.each([
+    demostenes,
+    "Estamos en calle de Móstenes número 29, Málaga, donde ha ocurrido un accidente.",
+  ])("refina %s enviando solo la dirección corregida, y reutiliza la caché", async (input) => {
+    const fetch = mockResponse([door]);
+    expect(await resolveLocation(input, { url, fetch })).toEqual(refinedDoor);
+    expect(await resolveLocation(input, { url, fetch })).toEqual(refinedDoor);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.objectContaining({ redirect: "error" }));
+    expect(decodeURIComponent(new URL(fetch.mock.calls[0][0] as string).search.slice(1).replace(/\+/g, " ")))
+      .toBe("format=jsonv2&limit=1&bounded=1&viewbox=-4.63,36.94,-4.29,36.65&countrycodes=es&q=Calle Demóstenes 29, Málaga");
+  });
+
+  it("también refina la calle sin portal y conserva el nombre canónico", async () => {
+    const fetch = mockResponse([{ ...door, type: "street" }]);
+    expect(await resolveLocation("Calle de Móstenes", { url, fetch })).toEqual({ ...refinedDoor, place: "Calle Demóstenes" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(new URL(fetch.mock.calls[0][0] as string).searchParams.get("q")).toBe("Calle Demóstenes, Málaga");
+  });
+
+  it("sitúa Demóstenes sin consultar el geocodificador si no tiene URL", async () => {
+    const fetch = mockResponse();
+    const location = await resolveLocation(demostenes, { fetch });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(location).toMatchObject({ known: true, place: "Calle Demóstenes, 29" });
+    expect(haversine(location.aml, { lat: 36.7184, lng: -4.4737 })).toBeLessThan(400);
+    expect(location.aml.acc).toBeGreaterThanOrEqual(250);
+  });
+
+  it.each([
+    ["punto lejano dentro de Málaga", () => Response.json([{ ...door, lon: -4.45 }])],
+    ["punto fuera de la caja", () => Response.json([{ ...door, lat: 37 }])],
+    ["sin resultados", () => Response.json([])],
+    ["error HTTP", () => new Response(null, { status: 503 })],
+    ["límite de peticiones", () => new Response(null, { status: 429 })],
+    ["redirección", () => Response.redirect("https://otro.invalid", 302)],
+    ["cuerpo demasiado grande", () => new Response(JSON.stringify([door]).padEnd(65_537))],
+    ["error de red", () => { throw new Error("network error"); }],
+  ] as const)("conserva el resultado local: %s", async (_label, makeResponse) => {
+    const local = await resolveLocation(demostenes);
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => makeResponse());
+    expect(await resolveLocation(demostenes, { url, fetch })).toEqual(local);
+    expect(local.known).toBe(true);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(expect.any(String), expect.objectContaining({ redirect: "error" }));
+  });
+
+  it("conserva el resultado local al vencer el plazo de red", async () => {
+    vi.useFakeTimers();
+    const local = await resolveLocation(demostenes);
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(new ReadableStream<Uint8Array>()));
+    const pending = resolveLocation(demostenes, { url, fetch });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const signal = fetch.mock.calls[0][1]?.signal;
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(await pending).toEqual(local);
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("conserva el resultado local con la cola llena", async () => {
+    vi.useFakeTimers();
+    const local = await resolveLocation(demostenes);
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(() => new Promise(() => {}));
+    const opts = { url, fetch };
+    const batch = Array.from({ length: 11 }, (_, i) => resolveLocation(`Calle Ajena ${i}`, opts));
+    expect(await resolveLocation(demostenes, opts)).toEqual(local);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await Promise.all(batch)).toEqual(Array(11).fill(unknown));
+  });
   it("prefiere el nomenclátor y solo usa la red cuando no hay coincidencia", async () => {
     const fetch = mockResponse();
     expect(await resolveLocation("Calle Larios 10", { url, fetch })).toEqual({ place: "Calle Larios", known: true, aml: { lat: 36.7197, lng: -4.4215, acc: 150 } });
