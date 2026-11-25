@@ -206,3 +206,7 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Qué se hizo: ver DECISIONES (misma fecha). Tres niveles de color por emergencia (rojo riesgo vital, naranja grave, verde azulado leve), con el ámbar solo para las decisiones. Tinte en lugar de relleno en las etiquetas e insignias. Lista de prioridad más limpia. Información nueva en azul. Escaladas y peligros en naranja. Leyenda y ayuda actualizadas.
 - Verificación: lint, build, 432 tests, `eval` (7/0/2) y `eval:apagon` (6/0/1) en verde; `node scripts/e2e.mjs` OK; capturas revisadas en escritorio (oscuro y claro, con decisión y al final), móvil (sin scroll horizontal) y `/presentacion`, sin errores de consola.
 - Pendiente menor: la ficha emergente del mapa sigue tapando parte de la leyenda a 1440×900.
+
+## 2026-11-25 · Traducción dentro de la ficha, Acciones más grande y fusión compacta · hecho
+- Qué se hizo: ver DECISIONES (misma fecha). Fuera la caja de Traducción: «Responder» sale en la ficha solo con llamantes extranjeros. Acciones a todo el ancho, en columnas. La fusión pasa a ser una barra con el detalle desplegable. La ficha del mapa va sin resumen y la leyenda es más corta. La ayuda está actualizada.
+- Verificación: lint, build, 432 tests, `eval` y `eval:apagon` en verde; `node scripts/e2e.mjs` OK (incluye «Falta saber» → respuesta en árabe dentro de la ficha); capturas de escritorio (oscuro y claro, con duda y al final) y de móvil con la barra desplegada, sin errores de consola ni scroll horizontal.

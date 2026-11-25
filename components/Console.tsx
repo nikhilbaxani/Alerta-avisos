@@ -25,7 +25,6 @@ import type { FocusBox } from "./MapView";
 import PriorityList from "./PriorityList";
 import TopBar from "./TopBar";
 import type { Theme } from "./TopBar";
-import TranslateBox from "./TranslateBox";
 import type { Ask } from "./ReplyPanel";
 
 /** Lleva la vista a una caja (útil en pantallas pequeñas) y la resalta un instante. */
@@ -203,9 +202,9 @@ export default function Console() {
               </div>
             )}
           </MapView>
+          {/* Sin caja de traducción: «Responder» vive en la ficha y solo sale con llamantes en otro idioma. */}
           <div className="pair">
             <ActionsBox actions={s.actions} archived={s.archived} onArchived={openArchive} selected={s.selected} incidents={s.engine.incidents} ranks={ranks} filter={actionsFilter} onFilter={setActionsFilter} provisional={pending} onApprove={approve} onDiscard={discard} onApproveBatch={approveBatch} onIncident={selectIncident} onLost={goLost} unitOf={(a) => actionUnit(s, a)} hazardWarnings={hazardWarnings} />
-            <TranslateBox s={s} ask={ask} localAI={status.mode === "local"} onSelect={select} onReply={(reply) => dispatch({ type: "reply", reply })} />
           </div>
         </div>
 
@@ -213,7 +212,7 @@ export default function Console() {
           <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />
           <section className="box" id="box-detail" tabIndex={-1} aria-label="Ficha de la emergencia">
             <div className="box-body">
-              <IncidentDetail s={s} audio={audio} ask={ask} onAsk={prepareAsk} onResolve={resolve} onSplit={(callId) => dispatch({ type: "split", callId })} />
+              <IncidentDetail s={s} audio={audio} ask={ask} onAsk={prepareAsk} localAI={status.mode === "local"} onReply={(reply) => dispatch({ type: "reply", reply })} onResolve={resolve} onSplit={(callId) => dispatch({ type: "split", callId })} />
             </div>
           </section>
         </div>

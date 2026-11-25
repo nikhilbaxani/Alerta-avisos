@@ -4,12 +4,12 @@ import { callMeta } from "@/lib/useConsole";
 import { resolveBlocker } from "@/lib/engine";
 import { incidentMissing } from "@/lib/missingInfo";
 import { ecallFields, isEcall } from "@/lib/ecall";
-import type { ConsoleState } from "@/lib/useConsole";
+import type { ConsoleState, Reply } from "@/lib/useConsole";
 import type { RiskTag } from "@/lib/types";
 import Icon from "./Icon";
 import IncToken from "./IncToken";
 import ResolveButton from "./ResolveButton";
-import type { Ask } from "./ReplyPanel";
+import ReplyPanel, { type Ask } from "./ReplyPanel";
 import type { CallAudio } from "./useCallAudio";
 import { langName, mmss, placeOf, plural, toneLabel, toneOf } from "./format";
 
@@ -19,13 +19,16 @@ interface Props {
   audio?: CallAudio;
   onResolve: (id: string) => void;
   ask?: Ask | null;
-  /** Prepara la pregunta en la caja de traducción (si hay llamante extranjero) o la muestra para leerla. */
+  /** Prepara la pregunta en «Responder» (si hay llamante extranjero) o la muestra para leerla. */
   onAsk?: (incidentId: string, phraseId: string, foreign: boolean) => void;
+  /** Con ellos, la ficha incluye «Responder en <idioma>» cuando la emergencia tiene llamantes extranjeros. */
+  localAI?: boolean;
+  onReply?: (r: Reply) => void;
 }
 
 const URGENT: RiskTag[] = ["vida", "inconsciente", "sin_respuesta", "dolor_pecho", "atrapados", "menor", "cables_electricos"];
 
-export default function IncidentDetail({ s, onSplit, audio, onResolve, ask, onAsk }: Props) {
+export default function IncidentDetail({ s, onSplit, audio, onResolve, ask, onAsk, localAI = false, onReply }: Props) {
   const inc = s.engine.incidents.find((i) => i.id === s.selected);
   if (!inc) {
     return (
@@ -96,9 +99,16 @@ export default function IncidentDetail({ s, onSplit, audio, onResolve, ask, onAs
             <p className="said-box said missing-said" role="status">{asked.phrase.es}</p>
           )}
           {asked && foreign.length > 0 && (
-            <p className="note" role="status">Preparada {inLang} en la caja de traducción. Pulsa «Reproducir al llamante» cuando quieras.</p>
+            <p className="note" role="status">Preparada {inLang} justo debajo, en «Responder». Pulsa «Reproducir al llamante» cuando quieras.</p>
           )}
         </section>
+      )}
+
+      {/* Traducción en contexto: solo aparece si alguien de esta emergencia llamó en otro idioma. */}
+      {foreign.length > 0 && onReply && (
+        <div className="reply-wrap" id="box-translate" tabIndex={-1}>
+          <ReplyPanel key={inc.id} incidentId={inc.id} langs={langs} clock={s.clock} ask={ask?.incidentId === inc.id ? ask : null} localAI={localAI} replies={s.replies} onReply={onReply} />
+        </div>
       )}
 
       {inc.risks.length > 0 && (
