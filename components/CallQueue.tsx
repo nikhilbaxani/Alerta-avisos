@@ -54,7 +54,7 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
     else if (rec.status === "error") status = { cls: "err", text: "No se pudo analizar", icon: "alert" };
     else if (solved) status = { cls: "done", text: `Solucionada · ${solved}`, icon: "solved" };
     else if (gray) status = { cls: "ask", text: `¿Misma emergencia que ${inc!.linkedTo}?`, icon: "alert" };
-    else if (first) status = { cls: inc && toneOf(inc) === "critical" ? "critical" : "new", text: "Emergencia nueva", icon: "phone" };
+    else if (first) status = { cls: inc ? `new tone-${toneOf(inc)}` : "new", text: "Emergencia nueva", icon: "phone" };
     else status = { cls: "dup", text: "Repetida", icon: "merge" };
     const ecall = isEcall(call);
     return { id, call, inc, solved, gray, text, identified, foreign, status, ecall };
@@ -84,7 +84,7 @@ export default function CallQueue({ s, ranks, playing, sttUp, localAI, onSelect,
             <span className="call-text">{text}</span>
             <span className="call-meta">
               {inc && !inGroup && <IncToken inc={inc} rank={rank} />}
-              <span className={`call-status ${status.cls === "critical" ? "new" : status.cls}`}>{status.text}</span>
+              <span className={`call-status ${status.cls.split(" ")[0]}`}>{status.text}</span>
               {foreign && <span className="lang foreign"><Icon name="globe" size={13} />{langName(call.lang)}</span>}
             </span>
           </span>

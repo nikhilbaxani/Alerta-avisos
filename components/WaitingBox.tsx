@@ -9,7 +9,7 @@ import { langName, mmss, plural } from "./format";
 const OPERATOR_CHOICES = [1, 2, 3, 4];
 
 const OUTCOME: Record<WaitingOutcome, { label: string; tone: string }> = {
-  escalada: { label: "Escalada a un operador", tone: "red" },
+  escalada: { label: "Escalada a un operador", tone: "warn" },
   agrupada: { label: "Agrupada sin operador", tone: "ok" },
   en_cola: { label: "En cola humana", tone: "" },
 };
@@ -55,7 +55,7 @@ export default function WaitingBox({ s, view, operators, onOperators, ranks, onS
       <dl className="wait-stats" aria-label="Asistente de espera: resumen">
         <div><dt>atendidas por el asistente</dt><dd data-wait="attended">{con.attendedByAgent}</dd></div>
         <div><dt>agrupadas sin operador</dt><dd data-wait="grouped">{con.resolvedWithoutOperator}</dd></div>
-        <div className={con.escalated ? "is-red" : ""}><dt>escaladas</dt><dd data-wait="escalated">{con.escalated}</dd></div>
+        <div className={con.escalated ? "is-warn" : ""}><dt>escaladas</dt><dd data-wait="escalated">{con.escalated}</dd></div>
       </dl>
       <div aria-live="polite">
         {view.escalatedWaiting.map((r) => (

@@ -56,7 +56,7 @@ export default function CallsBox(p: Props) {
 
   const label: Record<CallsTab, React.ReactNode> = {
     incoming: <>Entrantes <span className="pill">{s.arrived.length}</span></>,
-    waiting: <>En espera <span className={`pill ${escalated ? "red" : ""}`} title={escalated ? `${escalated} escalada${escalated > 1 ? "s" : ""}` : undefined}>{waitingCount}</span></>,
+    waiting: <>En espera <span className={`pill ${escalated ? "warn" : ""}`} title={escalated ? `${escalated} escalada${escalated > 1 ? "s" : ""}` : undefined}>{waitingCount}</span></>,
     lost: <>Perdidas <span className={`pill ${lostTodo ? "amber" : ""}`} title={lostTodo ? `${lostTodo} por aprobar` : undefined}>{lostTodo || lostTotal}</span></>,
   };
   const aria: Record<CallsTab, string> = {
@@ -91,7 +91,7 @@ export default function CallsBox(p: Props) {
             aria-controls={`box-${t}`}
             aria-label={aria[t]}
             tabIndex={tab === t ? 0 : -1}
-            className={t === "waiting" && escalated ? "is-red" : t === "lost" && lostTodo ? "is-amber" : ""}
+            className={t === "waiting" && escalated ? "is-warn" : t === "lost" && lostTodo ? "is-amber" : ""}
             onClick={() => onTab(t)}
           >
             {label[t]}

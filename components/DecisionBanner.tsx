@@ -36,39 +36,51 @@ export default function DecisionBanner({ s, onDecide }: Props) {
   const total = s.engine.incidents.filter((i) => i.provisional).length;
   const t = s.calls[lead]?.t;
 
+  // Barra compacta: la pregunta, qué se compara en una línea y los dos botones. El porqué, al desplegar.
   return (
-    <section className="decision" aria-labelledby="dec-title" aria-describedby="dec-why">
-      <div className="decision-top">
-        <h2 id="dec-title"><Icon name="alert" size={18} />¿La llamada {lead} es el mismo incidente que {prov.linkedTo}?</h2>
-        <span className="decision-kicker">La IA duda y te pregunta{total > 1 ? ` · ${total} pendientes` : ""}</span>
-      </div>
-
-      <div className="compare">
-        <div className="compare-item">
-          <span className="compare-label">Llamada nueva · {lead}{t !== undefined ? ` · ${mmss(t)}` : ""}</span>
-          <span className="compare-title">{TYPE_LABELS[prov.type]} · {placeOf(prov)}</span>
-          <span className="compare-text">{prov.summary}</span>
+    <section className="decision" aria-labelledby="dec-title" aria-describedby="dec-line">
+      <div className="decision-main">
+        <span className="decision-icon" aria-hidden="true"><Icon name="alert" size={18} /></span>
+        <div className="decision-q">
+          <h2 id="dec-title">¿La llamada {lead} es el mismo incidente que {prov.linkedTo}?</h2>
+          <p id="dec-line" className="decision-line">
+            <span><b>{lead}</b>{t !== undefined ? ` (${mmss(t)})` : ""} · {placeOf(prov) || TYPE_LABELS[prov.type]}</span>
+            <span className="decision-vs" aria-label="frente a">↔</span>
+            {target ? (
+              <span><b>{target.id}</b> · {placeOf(target) || TYPE_LABELS[target.type]} · {plural(target.callIds.length, "llamada", "llamadas")}</span>
+            ) : (
+              <span><b>{prov.linkedTo}</b></span>
+            )}
+          </p>
         </div>
-        {target && (
-          <div className="compare-item">
-            <span className="compare-label">Ya abierto · {target.id} · {plural(target.callIds.length, "llamada", "llamadas")}</span>
-            <span className="compare-title">{TYPE_LABELS[target.type]} · {placeOf(target)}</span>
-            <span className="compare-text">{target.summary}</span>
-          </div>
+        <div className="decision-actions">
+          <button className="btn btn-dark btn-sm" onClick={() => onDecide(prov.id, true)}>Mismo incidente <kbd>M</kbd></button>
+          <button className="btn btn-sm" onClick={() => onDecide(prov.id, false)}>Incidente distinto <kbd>D</kbd></button>
+        </div>
+      </div>
+      <details className="decision-more">
+        <summary>Por qué duda la IA{total > 1 ? ` · ${total} pendientes` : ""} <span>· siguen separadas hasta que decidas</span></summary>
+        <p className="decision-why">{decision?.reason ?? prov.summary}</p>
+        {judge && (
+          <p className="judge">
+            Opinión del modelo (no decide): {judge.same ? "parece el mismo" : "parece distinto"}, confianza {Math.round(judge.confidence * 100)} %. {judge.reason}
+          </p>
         )}
-      </div>
-
-      <p id="dec-why" className="decision-why"><b>Por qué duda:</b> {decision?.reason ?? prov.summary}</p>
-      {judge && (
-        <p className="judge">
-          Opinión del modelo (no decide): {judge.same ? "parece el mismo" : "parece distinto"}, confianza {Math.round(judge.confidence * 100)} %. {judge.reason}
-        </p>
-      )}
-      <div className="decision-actions">
-        <button className="btn btn-dark" onClick={() => onDecide(prov.id, true)}>Mismo incidente <kbd>M</kbd></button>
-        <button className="btn" onClick={() => onDecide(prov.id, false)}>Incidente distinto <kbd>D</kbd></button>
-        <span className="decision-note">Mientras no decidas, se mantienen separados.</span>
-      </div>
+        <div className="compare">
+          <div className="compare-item">
+            <span className="compare-label">Llamada nueva · {lead}</span>
+            <span className="compare-title">{TYPE_LABELS[prov.type]}</span>
+            <span className="compare-text">{prov.summary}</span>
+          </div>
+          {target && (
+            <div className="compare-item">
+              <span className="compare-label">Ya abierto · {target.id}</span>
+              <span className="compare-title">{TYPE_LABELS[target.type]}</span>
+              <span className="compare-text">{target.summary}</span>
+            </div>
+          )}
+        </div>
+      </details>
     </section>
   );
 }

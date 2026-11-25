@@ -404,16 +404,16 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
           <button className="popup-close" onClick={() => setClosed(selected.id)} aria-label="Cerrar ficha"><Icon name="close" size={16} /></button>
           <div className="popup-top">
             <h3>{TYPE_LABELS[selected.type]}</h3>
-            <span className={`pill ${tone === "critical" ? "red" : tone === "pending" ? "amber" : "accent"}`} title="Tiempo desde la primera llamada">{mmss(Math.max(0, s.clock - firstT))}</span>
+            <span className={`pill tone-${tone}`} title="Tiempo desde la primera llamada">{mmss(Math.max(0, s.clock - firstT))}</span>
           </div>
           <span className="popup-sub">{selected.id} · prioridad {n} · {plural(selected.callIds.length, "llamada", "llamadas")}{langs.length ? ` · ${langs.map(langName).join(", ")}` : ""}</span>
           {placeOf(selected) && <span className="popup-place">{placeOf(selected)}</span>}
-          <p className="popup-summary">{selected.summary}</p>
+          {/* El resumen está en la ficha de la derecha: aquí solo lo justo para no tapar el mapa. */}
           {selected.provisional && <p className="decision-note">Pendiente de tu decisión: ¿es {selected.linkedTo}?</p>}
           {onFocus && (
             <div className="popup-actions">
               <button className="btn btn-out btn-sm" onClick={() => onFocus("detail")}>Ficha</button>
-              {langs.length > 0 && <button className="btn btn-out btn-sm" onClick={() => onFocus("translate")}>Responder</button>}
+              {langs.length > 0 && <button className="btn btn-out btn-sm" onClick={() => onFocus("translate")} title="Abre «Responder» en la ficha">Responder</button>}
               {todo > 0 && <button className="btn btn-amber btn-sm" onClick={() => onFocus("actions")}>Aprobar ({todo})</button>}
             </div>
           )}
@@ -642,13 +642,13 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
     </div>
     {popup}
     <div className="map-legend map-float" aria-hidden="true">
-      <span><i className="lg tone-critical" />Crítico</span>
-      <span><i className="lg tone-normal" />Incidente <em>(nº = prioridad)</em></span>
-      <span><i className="lg tone-pending" />Necesita tu decisión</span>
-      {s.mode === "sim" && <span><i className="lg todo">2</i>Acciones por aprobar</span>}
+      <span className="lg-group" title="El número de cada emergencia es su puesto en la lista de prioridad"><i className="lg tone-critical" />Riesgo vital<i className="lg tone-serious" />Grave<i className="lg tone-normal" />Leve</span>
+      <span><i className="lg tone-pending" />Decidir</span>
+      {s.mode === "sim" && <span><i className="lg todo">2</i>Por aprobar</span>}
       <span><i className="lg call" />Llamada</span>
-      {s.mode === "sim" && units && <span><i className="lg unit">B</i>Unidades: simulación</span>}
-      {s.mode === "sim" && hazards?.some((h) => !h.resolved) && <span><i className="lg hazard" />Peligros en la vía: simulación</span>}
+      {s.mode === "sim" && units && <span><i className="lg unit">B</i>Unidad</span>}
+      {s.mode === "sim" && hazards && hazards.some((h) => !h.resolved) && <span><i className="lg hazard" />Peligro en la vía</span>}
+      {s.mode === "sim" && (units || hazards) && <em>Unidades y peligros: simulación</em>}
     </div>
     </div>
   );
