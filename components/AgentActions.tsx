@@ -1,6 +1,7 @@
 import { CITY_LABELS, RESOURCE_LABELS, canApprove, joinEs, toolService, toolTarget } from "@/lib/actions";
 import { RISK_LABELS } from "@/lib/labels";
 import type { ActionTool, AgentAction } from "@/lib/actions";
+import type { ActionUnit } from "@/lib/useConsole";
 import Icon from "./Icon";
 import type { IconName } from "./Icon";
 import { langName, mmss } from "./format";
@@ -48,12 +49,14 @@ interface CardProps {
   a: AgentAction;
   /** Etiquetas de la emergencia (o las de la zona) a la que pertenece. */
   tokens?: React.ReactNode;
+  /** Unidad simulada propuesta o asignada (X16), solo en `proponer_recursos`. */
+  unit?: ActionUnit | null;
   onApprove: (key: string) => void;
   onDiscard: (key: string) => void;
 }
 
 /** Tarjeta de una acción que prepara el agente: aprobar/descartar si le toca al operador, o su estado. */
-export function ActionCard({ a, tokens, onApprove, onDiscard }: CardProps) {
+export function ActionCard({ a, tokens, unit, onApprove, onDiscard }: CardProps) {
   const state = a.status === "enviada" ? "sent" : a.status === "descartada" ? "discarded" : "pending";
   const mine = canApprove(a.policy, "operador");
   const title = actionTitle(a);
@@ -64,6 +67,11 @@ export function ActionCard({ a, tokens, onApprove, onDiscard }: CardProps) {
         {tokens && <span className="act-incs">{tokens}</span>}
         <span className="act-title">{title}</span>
         <span className="act-target">{a.reason}</span>
+        {unit && (
+          <span className={`act-unit k-${unit.kind}`} {...(unit.unit ? { "data-unit": unit.unit.id, "data-status": unit.unit.status } : { "data-unit-none": "" })}>
+            <Icon name="truck" size={14} />{unit.text}
+          </span>
+        )}
         {a.tool === "sms_al_llamante" && (
           <p className="act-sms">
             <span lang={a.args.idioma} dir={a.args.idioma === "ar" ? "rtl" : "ltr"}>{a.args.texto}</span>

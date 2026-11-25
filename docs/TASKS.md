@@ -118,7 +118,7 @@ Verificación común (además de la propia de cada tarea): `npm run build`, `npm
   - `lib/lostCalls.ts` puro: cruza cada llamada perdida con los incidentes abiertos (mismo algoritmo de `lib/cluster.ts`, solo con lo que se sabe: AML y teléfono). Si es probable duplicado → propone el SMS de X14; si es desconocida → propone «devolver llamada» con prioridad por delante de los duplicados. Nada se envía sin el operador.
   - En la consola: caja o sección «Llamadas perdidas» con las dos listas y el motivo de cada una. Se puede citar el dato de §3 (más de 10.000 llamadas perdidas en Cataluña en el apagón) solo en texto de ayuda, con su fuente.
   - Verificación: tests de `lostCalls` (duplicado probable, desconocida y orden); `e2e.mjs` comprueba la caja y una propuesta de cada tipo.
-- [ ] X16 Recursos en el mapa con estado (idea #19) · agente: `backend-ia` (lógica) + `frontend-consola` (mapa) · deps: X05
+- [x] X16 Recursos en el mapa con estado (idea #19) · agente: `backend-ia` (lógica) + `frontend-consola` (mapa) · deps: X05
   - `lib/units.ts` puro: parque simulado de unidades (bomberos, SAMU 061, policía local, Policía Nacional) con base en Málaga y estado (libre, asignada, en camino, en el lugar). Bases con coordenadas plausibles **rotuladas como simulación**, sin presentarlas como reales.
   - Al aprobar `proponer_recursos`, la propuesta indica la unidad libre más cercana (haversine) y su distancia; si no hay libre, lo dice. La unidad cambia de estado y avanza hacia el incidente con el reloj del escenario; al solucionar el incidente vuelve a libre.
   - En el mapa: iconos de unidades con su estado y una línea hacia el incidente asignado; respeta `prefers-reduced-motion`. La caja de acciones muestra la unidad asignada.

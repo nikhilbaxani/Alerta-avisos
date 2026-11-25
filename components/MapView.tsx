@@ -8,6 +8,9 @@ import { rankIncidents } from "@/lib/priority";
 import { TYPE_LABELS } from "@/lib/labels";
 import type { Incident } from "@/lib/engine";
 import type { ConsoleState } from "@/lib/useConsole";
+import { SIMULATION_LABEL, UNIT_STATUS_LABELS } from "@/lib/units";
+import type { Unit, UnitService } from "@/lib/units";
+import { RESOURCE_LABELS } from "@/lib/actions";
 import Icon from "./Icon";
 import ResolveButton from "./ResolveButton";
 import { resolveBlocker } from "@/lib/engine";
@@ -50,9 +53,14 @@ interface Props {
   onFocus?: (box: FocusBox) => void;
   pendingActions: Record<string, number>;
   onResolve?: (id: string) => void;
+  /** Unidades simuladas con su estado en `s.clock` (X16); sin ellas no se pinta la capa. */
+  units?: Unit[];
   /** Capas encima del mapa (bienvenida). */
   children?: React.ReactNode;
 }
+
+/** Sigla del servicio dentro del icono de la unidad. */
+const UNIT_ABBR: Record<UnitService, string> = { bomberos: "B", samu_061: "S", policia_local: "PL", policia_nacional: "PN" };
 
 /** Zonas rápidas: recuadro [x, y, ancho, alto] en unidades del mapa. */
 const PRESETS = [
@@ -159,7 +167,7 @@ const BaseMap = memo(function BaseMap({ view, size, streets, sat, hiReady }: { v
   );
 });
 
-export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions, onResolve, children }: Props) {
+export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions, onResolve, units, children }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -435,6 +443,45 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
             return <circle key={id} cx={p.x} cy={p.y} r={(mine ? 4.5 : 3.5) * u} fill={mine ? "var(--accent)" : sat ? "#fff" : "var(--map-dot)"} stroke={sat ? "#0b1620" : "var(--map-dot-line)"} strokeWidth={1.2 * u} />;
           })}
 
+          {/* X16: unidades simuladas. Debajo de los incidentes para no taparlos; las libres, pequeñas y atenuadas. */}
+          {units && (
+            <g className="units" aria-label={`Unidades ${SIMULATION_LABEL}`}>
+              {units.filter((un) => un.incidentId && un.target).map((un) => {
+                const a = project(un.position.lat, un.position.lng);
+                const b = project(un.target!.lat, un.target!.lng);
+                return <line key={`ul-${un.id}`} data-unit-line={un.id} className={`unit-line st-${un.status}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={2 * u} strokeDasharray={`${6 * u} ${4 * u}`} />;
+              })}
+              {[...units].sort((a, b) => Number(a.status !== "libre") - Number(b.status !== "libre")).map((un) => {
+                const p = project(un.position.lat, un.position.lng);
+                const free = un.status === "libre";
+                const abbr = UNIT_ABBR[un.service];
+                const h = (free ? 11 : 17) * u;
+                const w = (free ? 11 : abbr.length > 1 ? 24 : 18) * u;
+                const status = UNIT_STATUS_LABELS[un.status].toLowerCase();
+                const desc = `${un.id}, ${RESOURCE_LABELS[un.service]}: ${status}${un.incidentId ? ` hacia ${un.incidentId}` : ""}. ${free ? un.base.name : `Base: ${un.base.name}`}`;
+                return (
+                  <g
+                    key={un.id}
+                    className={`unit st-${un.status} svc-${un.service}`}
+                    data-unit={un.id}
+                    data-status={un.status}
+                    data-incident={un.incidentId ?? undefined}
+                    style={{ transform: `translate(${p.x}px, ${p.y}px)` }}
+                    role="img"
+                    aria-label={desc}
+                  >
+                    <title>{desc}</title>
+                    <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={3 * u} strokeWidth={(free ? 1 : 1.6) * u} />
+                    {!free && <text className="unit-abbr" fontSize={10.5 * u} dy="0.36em">{abbr}</text>}
+                    {!free && (
+                      <text className="unit-tag" x={w / 2 + 4 * u} fontSize={11 * u} strokeWidth={3 * u} dy="0.35em">{`${un.id} · ${status}`}</text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
           {/* Los más prioritarios encima y el seleccionado arriba del todo, para que no los tape uno menos urgente */}
           {[...incidents].sort((a, b) => (a.id === s.selected ? 1 : 0) - (b.id === s.selected ? 1 : 0) || (rank.get(b.id) ?? 0) - (rank.get(a.id) ?? 0)).map((i) => {
             const c = centroid(i);
@@ -520,6 +567,7 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
       <span><i className="lg tone-pending" />Necesita tu decisión</span>
       <span><i className="lg todo">2</i>Acciones por aprobar</span>
       <span><i className="lg call" />Llamada</span>
+      {units && <span><i className="lg unit">B</i>Unidades: simulación</span>}
     </div>
     </div>
   );

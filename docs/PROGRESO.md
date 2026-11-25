@@ -175,3 +175,10 @@ Registro cronológico. Cada tarea cerrada o bloqueada añade una entrada al fina
 - Decisiones: ver DECISIONES («X15: llamadas perdidas»).
 - Pendiente menor: a 1440×900 la caja de perdidas es baja (solo se ve P3 sin desplazar); columna izquierda llena (X16/X17 no deberían añadir otra caja ahí); `/presentacion` no muestra la caja; una devolución propuesta no se retira si la perdida pasa a duplicado.
 - Siguiente: X16.
+
+## 2026-11-25T07:22:41+01:00 · X16 · hecha
+- Qué se hizo: `lib/units.ts` puro con parque simulado de 10 unidades (B-1..3, S-1..3, PL-1..2, PN-1..2; bases rotuladas «(simulación)»). Al aprobar `proponer_recursos` el reducer asigna la libre más cercana del servicio (haversine) o dice que no hay; estado y posición se derivan del reloj (`consoleUnits`: asignada → en camino → en el lugar) y `resolve` las libera. Mapa: cuadrados con sigla y rótulo de estado, línea discontinua al incidente, leyenda «Unidades: simulación», sin transición con `prefers-reduced-motion`. La tarjeta de Acciones muestra la unidad propuesta/asignada.
+- Verificación (qa-verificador APTO): lint OK, build OK, 418 tests (incluido `tests/units.test.ts`: más cercana, sin libres, avance, liberación), eval 7/0/2 y eval:apagon 6/0/1 sin fusiones incorrectas, `e2e.mjs` OK (B-2 asignada a INC-01 en el mapa con su línea y en la tarjeta), GitHub Pages OK, capturas `docs/capturas/X16-*` revisadas (escritorio/móvil, oscuro/claro), 0 errores de consola, sin scroll horizontal. `data/` sin cambios.
+- Decisiones: ver DECISIONES («X16: unidades simuladas»).
+- Pendiente menor: si se aprueba con el escenario terminado (reloj parado en end+1) la unidad se queda «asignada» y no avanza; al aprobar se abre la ficha de INC-01 y en escritorio tapa B-2; en móvil el aviso «Enviado con tu aprobación» tapa el botón «Satélite».
+- Siguiente: X17.

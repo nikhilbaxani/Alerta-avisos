@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { actionIncidents, canApprove } from "@/lib/actions";
 import { buildAuditLog } from "@/lib/audit";
 import { getScenario } from "@/data/scenarios";
-import { callMeta, consoleProposals, scenarioEnd, useConsole } from "@/lib/useConsole";
+import { callMeta, consoleProposals, consoleUnits, scenarioEnd, useConsole } from "@/lib/useConsole";
 import type { EngineStatus, Speed } from "@/lib/useConsole";
 import AgentFeed from "@/components/AgentFeed";
 import DecisionBanner from "@/components/DecisionBanner";
@@ -65,6 +65,7 @@ export default function LiveConsole({ active }: { active: boolean }) {
   }, [s]);
 
   const pending = s.engine.incidents.filter((i) => i.provisional).length;
+  const units = useMemo(() => consoleUnits(s), [s.units, s.clock]); // eslint-disable-line react-hooks/exhaustive-deps
   const toApprove = s.actions.filter((a) => a.status === "propuesta" && canApprove(a.policy, "operador"));
   const pendingByIncident: Record<string, number> = {};
   for (const a of toApprove) for (const id of actionIncidents(a)) pendingByIncident[id] = (pendingByIncident[id] ?? 0) + 1;
@@ -92,7 +93,7 @@ export default function LiveConsole({ active }: { active: boolean }) {
         <section className="center" aria-label="Mapa y decisiones">
           {/* Solo la diapositiva visible escucha las teclas M y D. */}
           <div className="decision-slot" aria-live="polite">{active && <DecisionBanner s={s} onDecide={decide} />}</div>
-          <MapView s={s} onSelect={select} onFxDone={fxDone} pendingActions={pendingByIncident} />
+          <MapView s={s} onSelect={select} onFxDone={fxDone} pendingActions={pendingByIncident} units={units} />
           <AgentFeed actions={s.actions} epoch={s.epoch} />
         </section>
         <PriorityList s={s} onSelect={select} pendingActions={pendingByIncident} />

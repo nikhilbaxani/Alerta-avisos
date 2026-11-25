@@ -119,7 +119,17 @@ if (!(await es.innerText()).includes("La aprueba un coordinador")) fail("el ES-A
 const acts = page.locator("#box-actions");
 await acts.getByRole("button", { name: "Todas", exact: true }).click().catch(() => {});
 const bomA = acts.locator('.act[data-tool="proponer_recursos"][data-incident="INC-01"]', { hasText: "Enviar Bomberos" });
+// Unidades simuladas (X16): antes de aprobar, la tarjeta propone la unidad libre más cercana.
+const bomUnit = bomA.locator("[data-unit]");
+if (!(await bomUnit.count()) || !(await bomUnit.innerText()).includes("Unidad libre más cercana")) fail("la tarjeta de bomberos de A no propone la unidad libre más cercana");
+const unitId = await bomUnit.getAttribute("data-unit");
 await bomA.getByRole("button", { name: /Aprobar y enviar/ }).click();
+// …y al aprobar, esa unidad sale en el mapa asignada a INC-01, con su línea hacia el incidente.
+const mapUnit = page.locator(`svg.map g[data-unit="${unitId}"][data-incident="INC-01"]`);
+await mapUnit.waitFor({ state: "attached", timeout: 3000 }).catch(() => fail(`la unidad ${unitId} no aparece asignada a INC-01 en el mapa`));
+if ((await mapUnit.getAttribute("data-status")) === "libre") fail("la unidad asignada sigue libre en el mapa");
+if (!(await page.locator(`svg.map [data-unit-line="${unitId}"]`).count())) fail("falta la línea de la unidad al incidente");
+if ((await page.locator("svg.map g[data-unit][data-status=libre][data-incident]").count())) fail("una unidad libre lleva incidente");
 const lote = acts.locator('[data-batch="INC-01"]');
 await lote.waitFor({ timeout: 5000 }).catch(() => fail("no aparece el lote de avisos de duplicado de INC-01"));
 const loteText = await lote.innerText();
@@ -134,6 +144,8 @@ await acts.getByRole("button", { name: /Enviadas/ }).click();
 const sentDup = acts.locator('.act[data-tool="sms_duplicado"][data-incident="INC-01"][data-status="enviada"]');
 if ((await sentDup.count()) !== 3) fail(`el lote no pasa a enviada (${await sentDup.count()} de 3)`);
 if (!(await sentDup.first().innerText()).match(/Aprobado en lote y enviado · acuse DUP-[0-9A-F]{6}/)) fail("el aviso enviado no dice que se aprobó en lote");
+const bomSent = acts.locator(`.act[data-tool="proponer_recursos"][data-incident="INC-01"][data-status="enviada"] [data-unit="${unitId}"]`);
+if (!(await bomSent.count()) || !(await bomSent.innerText()).includes(`Unidad asignada: ${unitId}`)) fail("la tarjeta enviada de bomberos no muestra la unidad asignada");
 await acts.getByRole("button", { name: /Por aprobar/ }).click();
 
 // Llamadas perdidas (X15): las desconocidas (P3, P4) arriba con «devolver la llamada»; los probables
@@ -225,4 +237,4 @@ if (over > 0) fail(`scroll horizontal en móvil: ${over}px`);
 
 await browser.close();
 if (errors.length) fail("errores de consola: " + errors.join(" | "));
-console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, lote de duplicados, llamadas perdidas, agente de espera, falta saber, audio, Separar, sin errores de consola");
+console.log("E2E OK: 27 llamadas (con la eCall EC1) → 7 incidentes, F1 y B2 preguntadas, eCall en A, árabe, acciones del agente, lote de duplicados, llamadas perdidas, unidades simuladas, agente de espera, falta saber, audio, Separar, sin errores de consola");

@@ -17,13 +17,15 @@ import {
 import type { EngineCall, EngineState, Incident } from "@/lib/engine";
 import type { Aml, CallChannel, Decision, ECallData, ProcessResult } from "@/lib/types";
 import { isEcall } from "@/lib/ecall";
-import { actionIncidents, addProposals, approve, approveBatch, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
+import { RESOURCE_LABELS, actionIncidents, addProposals, approve, approveBatch, discard, discardOrphans, dispatch, toolTarget } from "@/lib/actions";
 import { factsFrom, proposalsFor } from "@/lib/consoleActions";
 import { analyzeLostCalls } from "@/lib/lostCalls";
 import type { LostReport } from "@/lib/lostCalls";
 import type { AgentAction, Proposal } from "@/lib/actions";
 import { heardOf } from "@/lib/waitingConsole";
 import type { Heard } from "@/lib/waitingConsole";
+import { SIMULATION_LABEL, assignUnit, centerOf, formatDistance, initialUnits, nearestFree, releaseIncident, unitAt, unitServiceOf, unitsAt } from "@/lib/units";
+import type { Unit } from "@/lib/units";
 
 export type Speed = 1 | 4 | 10;
 const sortedCalls = (id: string) => [...getScenario(id).calls].sort((a, b) => a.t - b.t);
@@ -146,6 +148,19 @@ export interface ConsoleState {
   archived: ArchivedIncident[];
   /** Lo que el sistema sabía de cada llamada al entrar (para el agente de espera, X11). */
   heard: Record<string, Heard>;
+  /** Parque simulado de unidades (X16), con su asignación; la posición actual la da `consoleUnits(s)`. */
+  units: Unit[];
+  /** Resultado de asignar unidad al aprobar cada `proponer_recursos`, por clave de acción (X16). */
+  unitAssignments: Record<string, UnitAssignment>;
+}
+
+/** X16: qué unidad se asignó al aprobar unos recursos (`unitId` null = no había ninguna libre). */
+export interface UnitAssignment {
+  unitId: string | null;
+  incidentId: string;
+  service: Unit["service"];
+  distance: number | null;
+  at: number;
 }
 
 export interface ArchivedIncident {
@@ -176,6 +191,8 @@ export const init = (epoch = 0, scenarioId = DEFAULT_SCENARIO_ID): ConsoleState 
   actions: [],
   archived: [],
   heard: {},
+  units: initialUnits(),
+  unitAssignments: {},
 });
 
 export type ConsoleAction =
@@ -341,6 +358,8 @@ export function reducer(s: ConsoleState, a: ConsoleAction): ConsoleState {
         ...s,
         engine,
         actions,
+        // X16: sus unidades vuelven a libres y a su base.
+        units: releaseIncident(s.units, inc.id),
         archived: [...s.archived, { incident: inc, at: s.clock }],
         selected: s.selected === inc.id ? engine.incidents[0]?.id ?? null : s.selected,
         audit: [...s.audit, { t: s.clock, kind: "solucionada", incidentId: inc.id, detail: `El operador da por solucionado ${inc.id} y pasa al archivo.` }],
@@ -379,10 +398,13 @@ export function reducer(s: ConsoleState, a: ConsoleAction): ConsoleState {
       if (!ok.ok) return s;
       const sent = dispatch(ok.actions, a.key, s.clock);
       if (!sent.ok) return s;
+      const withUnit = sent.action.tool === "proponer_recursos" ? assignOnApproval(s, sent.action) : null;
+      const unitNote = withUnit ? ` ${withUnit.note}` : "";
       return {
         ...s,
+        ...(withUnit ? { units: withUnit.units, unitAssignments: { ...s.unitAssignments, [a.key]: withUnit.assignment } } : {}),
         actions: sent.actions,
-        audit: [...s.audit, { t: s.clock, kind: "accion_aprobada", incidentId: sent.action.incidentId, detail: `El operador aprueba y se envía a ${toolTarget(sent.action)} (acuse ${sent.action.receipt?.reference}). ${sent.action.reason}` }],
+        audit: [...s.audit, { t: s.clock, kind: "accion_aprobada", incidentId: sent.action.incidentId, detail: `El operador aprueba y se envía a ${toolTarget(sent.action)} (acuse ${sent.action.receipt?.reference}). ${sent.action.reason}${unitNote}` }],
       };
     }
     case "actionApproveBatch": {
@@ -420,6 +442,76 @@ export function reducer(s: ConsoleState, a: ConsoleAction): ConsoleState {
       };
   }
 }
+
+// ───────────────────────────── X16: unidades simuladas ─────────────────────────────
+
+/** Punto del incidente hacia el que iría una unidad (centro de sus posiciones). */
+function incidentPoint(s: ConsoleState, incidentId: string) {
+  return centerOf(s.engine.incidents.find((i) => i.id === incidentId)?.points ?? []);
+}
+
+/** Al aprobar el operador unos recursos: la unidad libre más cercana del servicio, o constancia de que no hay. */
+function assignOnApproval(s: ConsoleState, action: AgentAction): { units: Unit[]; assignment: UnitAssignment; note: string } | null {
+  if (action.tool !== "proponer_recursos") return null;
+  const service = unitServiceOf(action.args.servicio);
+  const point = incidentPoint(s, action.incidentId);
+  if (!point) return null;
+  const near = nearestFree(s.units, service, point);
+  if (!near) {
+    return {
+      units: s.units,
+      assignment: { unitId: null, incidentId: action.incidentId, service, distance: null, at: s.clock },
+      note: `No hay unidad libre de ${RESOURCE_LABELS[service]} ${SIMULATION_LABEL}.`,
+    };
+  }
+  return {
+    units: assignUnit(s.units, near.unit.id, action.incidentId, point, s.clock, action.key),
+    assignment: { unitId: near.unit.id, incidentId: action.incidentId, service, distance: near.distance, at: s.clock },
+    note: `Unidad asignada: ${near.unit.id} a ${formatDistance(near.distance)} ${SIMULATION_LABEL}.`,
+  };
+}
+
+/** Unidades con su estado y posición en `s.clock` (asignada → en camino → en el lugar). Depende de `s.clock`. */
+export function consoleUnits(s: ConsoleState): Unit[] {
+  return unitsAt(s.units, s.clock);
+}
+
+/** Lo que la tarjeta de `proponer_recursos` muestra sobre la unidad. */
+export interface ActionUnit {
+  /** `propuesta`: la que se asignaría al aprobar ahora; `asignada`: la asignada; `sin_libre`: no hay ninguna libre. */
+  kind: "propuesta" | "asignada" | "sin_libre";
+  unit: Unit | null;
+  distance: number | null;
+  /** Texto en castellano listo para pintar. */
+  text: string;
+}
+
+/**
+ * X16: unidad de una acción `proponer_recursos`. Antes de aprobar, la libre más cercana (o «sin unidades
+ * libres»); después, la asignada con su estado actual. Null si no es de recursos, si se descartó sin
+ * aprobar o si el incidente ya no tiene posición.
+ */
+export function actionUnit(s: ConsoleState, action: AgentAction | Proposal): ActionUnit | null {
+  if (action.tool !== "proponer_recursos") return null;
+  const label = RESOURCE_LABELS[action.args.servicio];
+  const done = s.unitAssignments[action.key];
+  if (done) {
+    if (!done.unitId) return { kind: "sin_libre", unit: null, distance: null, text: `No había unidad libre de ${label} al aprobar ${SIMULATION_LABEL}` };
+    const stored = s.units.find((u) => u.id === done.unitId && u.actionKey === action.key);
+    const unit = stored ? unitAt(stored, s.clock) : null;
+    const where = unit ? ` · ${unitStatusText(unit)}` : " · ya libre";
+    return { kind: "asignada", unit, distance: done.distance, text: `Unidad asignada: ${done.unitId} a ${formatDistance(done.distance ?? 0)}${where} ${SIMULATION_LABEL}` };
+  }
+  const st = "status" in action ? action.status : "propuesta";
+  if (st !== "propuesta") return null;
+  const point = incidentPoint(s, action.incidentId);
+  if (!point) return null;
+  const near = nearestFree(s.units, unitServiceOf(action.args.servicio), point);
+  if (!near) return { kind: "sin_libre", unit: null, distance: null, text: `Sin unidades libres de ${label} ${SIMULATION_LABEL}` };
+  return { kind: "propuesta", unit: near.unit, distance: near.distance, text: `Unidad libre más cercana: ${near.unit.id} a ${formatDistance(near.distance)} ${SIMULATION_LABEL}` };
+}
+
+const unitStatusText = (u: Unit) => ({ libre: "libre", asignada: "asignada", en_camino: "en camino", en_el_lugar: "en el lugar" })[u.status];
 
 export interface EngineStatus {
   mode: "simulated" | "local";
