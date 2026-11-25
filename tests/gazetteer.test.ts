@@ -69,6 +69,24 @@ describe("locate (nomenclátor de Málaga)", () => {
     }
   });
 
+  it("reconoce aeropuerto y cuarteles incluso sin el nombre completo", () => {
+    expect(locate("Estoy en el AEROPUERTO.")).toEqual({ place: "Aeropuerto de Málaga", location_text: "Aeropuerto de Málaga", aml: { lat: 36.676, lng: -4.492, acc: 150 } });
+    expect(locate("Cuárteles 14")).toEqual({ place: "El Perchel", location_text: "Calle Cuarteles 14", aml: { lat: 36.7155, lng: -4.429, acc: 150 } });
+  });
+
+  it("prefiere el campus concreto al distrito", () => {
+    const match = locate("Desde TEATINOS, en el Campus de Teatinos");
+    expect(match?.place).toBe("Campus de Teatinos");
+    expect(match?.aml.acc).toBe(150);
+    expect(locate("Teatinos")?.aml.acc).toBe(700);
+  });
+
+  it("no usa Centro a secas como si fuera un distrito", () => {
+    expect(locate("Estoy en el centro de salud")).toBeNull();
+    expect(locate("Estamos en el distrito Centro")?.place).toBe("Málaga centro");
+    expect(locate("Centro de salud en PEDREGALEJO")?.place).toBe("Pedregalejo");
+  });
+
   it("los alias específicos siguen funcionando", () => {
     expect(locate("en el puerto de Málaga")!.place).toBe("Alameda Principal");
     expect(locate("Malaga port is flooded")!.place).toBe("Alameda Principal");
