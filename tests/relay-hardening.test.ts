@@ -118,6 +118,51 @@ it("con la cola llena, una subida rechazada no pierde ninguna transcripción; un
   for (const id of [ids[1], next]) expect(await status(relay.base, id)).toEqual({ status: "ready", transcript, language: "es" });
 });
 
+it.each([
+  { sttStatus: 400, text: transcript, duration: 12, error: "No se pudo transcribir el audio. Vuelve a grabar." },
+  { sttStatus: 413, text: transcript, duration: 12, error: "La llamada es demasiado larga. Graba una más corta." },
+  { sttStatus: 200, text: transcript, duration: 130, error: "La llamada es demasiado larga. Graba una más corta." },
+  { sttStatus: 200, text: "  ", duration: 12, error: "No hemos podido entender voz en el audio. Vuelve a grabar y habla cerca del micrófono." },
+])("un fallo del audio (STT $sttStatus, duración $duration s, texto '$text') mantiene la cuota tras DELETE", async ({ sttStatus, text, duration, error }) => {
+  const relay = await boot({
+    rateLimit: { max: 1, windowMs: 60_000 }, uploadLimit: 5,
+    fetch: async () => Response.json({ text, language: "es", duration }, { status: sttStatus }),
+  });
+  const { base } = relay;
+  const id = await ready(relay);
+  expect(await status(base, id)).toEqual({ status: "failed", error });
+  const exhausted = [429, { error: "Demasiadas llamadas desde tu conexión. Espera unos minutos." }];
+  const before = await post(base, form());
+  expect([before.status, await before.json()]).toEqual(exhausted);
+
+  const discarded = await fetch(`${base}/llamar/${id}`, { method: "DELETE" });
+  expect([discarded.status, await discarded.json()]).toEqual([200, { ok: true }]);
+  const missing = await fetch(`${base}/llamar/${id}`);
+  expect([missing.status, await missing.json()]).toEqual([404, { error: "No encontramos esa llamada. Puede que haya caducado: vuelve a grabar." }]);
+  const after = await post(base, form());
+  expect([after.status, await after.json()]).toEqual(exhausted);
+});
+
+it("un fallo del servicio devuelve la cuota y su DELETE no libera otra unidad", async () => {
+  let attempts = 0;
+  const relay = await boot({
+    rateLimit: { max: 1, windowMs: 60_000 }, uploadLimit: 5, sttRetries: 0,
+    fetch: async () => ++attempts === 1
+      ? new Response(null, { status: 503 })
+      : Response.json({ text: transcript, language: "es", duration: 12 }),
+  });
+  const { base } = relay;
+  const failed = await ready(relay);
+  expect(await status(base, failed)).toEqual({ status: "failed", error: "No se pudo transcribir el audio. Vuelve a grabar." });
+  const replacement = await ready(relay);
+
+  const discarded = await fetch(`${base}/llamar/${failed}`, { method: "DELETE" });
+  expect([discarded.status, await discarded.json()]).toEqual([200, { ok: true }]);
+  const after = await post(base, form());
+  expect([after.status, await after.json()]).toEqual([429, { error: "Demasiadas llamadas desde tu conexión. Espera unos minutos." }]);
+  expect(await status(base, replacement)).toEqual({ status: "ready", transcript, language: "es" });
+});
+
 it("una excepción inesperada devuelve 500 JSON y el relay sigue atendiendo peticiones", async () => {
   const logs: string[] = [];
   const relay = await boot({ log(message) { if (message.includes("recibida")) throw new Error("fallo simulado"); logs.push(message); } });

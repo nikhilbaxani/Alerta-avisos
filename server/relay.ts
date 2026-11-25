@@ -463,6 +463,7 @@ export function createRelay(opts: RelayOptions) {
     p.error = error;
     release(p);
     if (serviceFailure) refundQuota(p);
+    else p.refund = undefined; // Un DELETE posterior no devuelve la cuota de un audio rechazado.
     arm(p);
   }
 
