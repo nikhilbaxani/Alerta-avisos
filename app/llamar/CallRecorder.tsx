@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { cancelOutcome } from "@/lib/callRecorderCancel";
 import { DEFAULT_MAX_CALL_SECONDS } from "@/lib/publicCall";
 import s from "./llamar.module.css";
 
@@ -65,6 +66,7 @@ export default function CallRecorder() {
   const consentInput = useRef<HTMLInputElement>(null);
   const [permissionPending, setPermissionPending] = useState(false);
   const [cancelled, setCancelled] = useState(false);
+  const [cancelPending, setCancelPending] = useState(false);
   const activeRequest = useRef<AbortController | null>(null);
   const deleteRequests = useRef(new Set<AbortController>());
   const [phase, setPhase] = useState<Phase>("idle");
@@ -238,6 +240,17 @@ export default function CallRecorder() {
     }
   };
 
+  const showReceipt = (id: string, token: number, published = false) => {
+    setPhase("done");
+    if (!published) void watchReceipt(id, token);
+  };
+
+  const deletePendingCall = (id: string) => request(`${RELAY}/llamar/${id}`, { method: "DELETE" }, 10_000,
+    async (res) => {
+      await res.body?.cancel();
+      return res.status;
+    }, true);
+
   /** «Enviar»: confirma la llamada; el relay la publica al terminar de procesarla. */
   const submit = async () => {
     if (!callId) return;
@@ -249,9 +262,7 @@ export default function CallRecorder() {
         async (res) => ({ res, body: await res.json().catch(() => null) }));
       if (run.current !== token) return;
       if (res.ok && (body?.status === "publishing" || body?.status === "sent")) {
-        setPhase("done");
-        if (body.status === "publishing") void watchReceipt(callId, token);
-        return;
+        return showReceipt(callId, token, body.status === "sent");
       }
       if (res.status === 404 || res.status === 410) return backToIdle(GONE);
       const detail = typeof body?.error === "string" ? body.error : "";
@@ -269,14 +280,32 @@ export default function CallRecorder() {
     const id = callId;
     backToIdle();
     activeRequest.current?.abort();
-    if (id) void request(`${RELAY}/llamar/${id}`, { method: "DELETE" }, 10_000,
-      async (res) => res.body?.cancel(), true).catch(() => undefined);
+    if (id) void deletePendingCall(id).catch(() => undefined);
   };
 
   const cancel = () => {
     discard();
     setPermissionPending(false);
     setCancelled(true);
+  };
+
+  const cancelSubmission = async () => {
+    if (!callId || cancelPending) return;
+    setCancelPending(true);
+    const token = ++run.current;
+    // Abortar la petición local no garantiza que «Enviar» no haya llegado al relay.
+    activeRequest.current?.abort();
+    const outcome = await deletePendingCall(callId).then(cancelOutcome, () => "unconfirmed" as const);
+    if (run.current !== token) return;
+    setCancelPending(false);
+    if (outcome === "receipt") return showReceipt(callId, token);
+    if (outcome === "cancelled") {
+      backToIdle();
+      setCancelled(true);
+      return;
+    }
+    setMsg({ ok: false, text: "No hemos podido confirmar la cancelación. Pulsa Enviar para comprobar el estado de tu llamada." });
+    setPhase("review");
   };
 
   const start = async () => {
@@ -332,7 +361,7 @@ export default function CallRecorder() {
     : phase === "uploading" ? "Enviando el audio para transcribirlo…"
     : phase === "transcribing" ? "Transcribiendo tu llamada…"
     : phase === "review" ? "Transcripción lista. Revísala y pulsa Enviar si es correcta."
-    : phase === "submitting" ? "Enviando al operador…"
+    : phase === "submitting" ? (cancelPending ? "Comprobando la cancelación…" : "Enviando al operador…")
     : phase === "done" && !deliveryFailed ? "Envío confirmado." : "";
 
   return (
@@ -426,7 +455,7 @@ export default function CallRecorder() {
           </p>
           <div className={s.actions}>
             <button className={`${s.btn} ${s.primary}`} onClick={submit} disabled={phase === "submitting"}>{phase === "submitting" ? "Enviando…" : "Enviar"}</button>
-            <button className={`${s.btn} ${s.secondary}`} onClick={phase === "submitting" ? cancel : discard}>{phase === "submitting" ? "Cancelar" : "Volver a grabar"}</button>
+            <button className={`${s.btn} ${s.secondary}`} onClick={phase === "submitting" ? cancelSubmission : discard} disabled={cancelPending}>{phase === "submitting" ? "Cancelar" : "Volver a grabar"}</button>
           </div>
         </section>
       )}
