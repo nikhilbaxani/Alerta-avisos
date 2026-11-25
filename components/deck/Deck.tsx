@@ -1,12 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { markDeckReturn } from "@/components/DeckReturn";
 import Icon from "@/components/Icon";
-import { STATIC_EXPORT } from "@/lib/config";
 import { Mark } from "./bits";
-import { SLIDES } from "./slides";
+import { DEMO_CONSOLE_URL, SLIDES } from "./slides";
 
 const W = 1600;
 const H = 900;
@@ -19,7 +17,6 @@ const HOME = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`;
  * (logo y eslogan) se vuelve a la página principal.
  */
 export default function Deck() {
-  const router = useRouter();
   const n = SLIDES.length;
   const [i, setI] = useState(0);
   const [k, setK] = useState(0);
@@ -30,17 +27,17 @@ export default function Deck() {
 
   const go = useCallback(
     (to: number) => {
+      // Al pasar de la última diapositiva se abre la consola del VPS (NEXT_PUBLIC_DEMO_CONSOLE_URL).
       if (to >= n) {
         markDeckReturn(n);
-        if (STATIC_EXPORT) window.location.assign(HOME);
-        else router.push("/");
+        window.location.assign(DEMO_CONSOLE_URL);
         return;
       }
       const t = Math.max(0, Math.min(n - 1, to));
       iRef.current = t;
       setI(t);
     },
-    [n, router],
+    [n],
   );
   const next = useCallback(() => go(iRef.current + 1), [go]);
   const prev = useCallback(() => go(iRef.current - 1), [go]);

@@ -327,6 +327,7 @@
 .deck .screen .compare-text { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .deck .screen .deck-link { display: none; }
 
+
 /* ═════════════ 7 · Clientes ═════════════ */
 .chain { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
 .chain li { position: relative; display: grid; place-items: center; min-height: 66px; padding: 10px; border-radius: 12px; background: var(--d-paper); border: 1px solid var(--d-line2); text-align: center; font-size: 14px; font-weight: 600; line-height: 1.25; }
@@ -363,7 +364,7 @@
 .numbers li b { min-width: 32px; font: 600 14px var(--d-mono); color: var(--d-ink); }
 
 /* ═════════════ 9 · Cierre ═════════════ */
-.s-close { display: grid !important; grid-template-columns: minmax(0, 1fr) 320px; gap: 56px; align-items: center; }
+.s-close { display: grid !important; grid-template-columns: minmax(0, 1fr) 330px; gap: 56px; align-items: center; }
 .brand-block { display: grid; gap: 40px; justify-items: start; }
 .lockup { display: inline-flex; align-items: center; gap: 34px; color: var(--d-ink); }
 .lockup-mark { width: 170px; height: 170px; overflow: visible; flex: none; }
@@ -388,9 +389,7 @@
   display: grid; gap: 12px; justify-items: center; text-align: center; padding: 22px 22px 24px; border-radius: 26px;
   background: var(--d-card); border: 1px solid var(--d-line2); box-shadow: 0 30px 60px -40px rgba(20, 20, 20, .4);
 }
-.call-qr svg, .call-qr .qr-skeleton { width: 260px; height: 260px; display: block; border-radius: 12px; }
-.call-qr .qr-skeleton { background: var(--d-paper2); }
-.call-qr .q-title { margin-top: 6px; font-size: 26px; font-weight: 740; }
+.call-qr img { display: block; width: 286px; height: auto; border-radius: 14px; border: 1px solid var(--d-line); }
 .call-qr p { font-size: 17px; line-height: 1.45; color: var(--d-ink2); }
 
 @media (prefers-reduced-motion: reduce) {

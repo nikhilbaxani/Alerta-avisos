@@ -9,7 +9,6 @@ import Icon from "@/components/Icon";
 import type { IconName } from "@/components/Icon";
 import { langName, mmss } from "@/components/format";
 import LiveConsole from "./LiveConsole";
-import QrCode from "./QrCode";
 import { CountUp, LogoLockup, Mark, at } from "./bits";
 
 export interface SlideProps {
@@ -28,23 +27,14 @@ export interface SlideDef {
 
 const DANA = "dana-malaga";
 
+/** Raíz de la web (subruta incluida, p. ej. en GitHub Pages). */
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 /**
- * Dirección de la grabadora del público (/llamar, rama feature/llamadas-publico). NEXT_PUBLIC_CALL_URL la fija;
- * si no, se forma con NEXT_PUBLIC_DEMO_URL (para presentar desde localhost) o con esta misma web.
+ * Consola a la que salta la presentación al terminar (pasar de la última diapositiva o «Abrir la consola»): la
+ * del VPS, donde también entran las llamadas del público. NEXT_PUBLIC_DEMO_CONSOLE_URL la cambia.
  */
-function useCallUrl() {
-  const [url, setUrl] = useState("");
-  useEffect(() => {
-    const fixed = process.env.NEXT_PUBLIC_CALL_URL?.trim();
-    if (fixed) {
-      setUrl(fixed);
-      return;
-    }
-    const site = process.env.NEXT_PUBLIC_DEMO_URL?.trim() || new URL(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/`, window.location.origin).href;
-    setUrl(new URL("llamar", site.endsWith("/") ? site : `${site}/`).href);
-  }, []);
-  return url;
-}
+export const DEMO_CONSOLE_URL = process.env.NEXT_PUBLIC_DEMO_CONSOLE_URL?.trim() || "https://oracle-exit.tail0093c8.ts.net/";
 
 const v = (o: Record<string, string | number>) => o as CSSProperties;
 
@@ -534,7 +524,6 @@ function Roadmap() {
 // ═════════════════════════════ 9 · Cierre: logo, eslogan y QR
 
 function Closing() {
-  const url = useCallUrl();
   return (
     <>
       <div className="brand-block">
@@ -542,8 +531,8 @@ function Closing() {
         <p className="slogan rise" style={at(6)}>Para que nadie se quede esperando al otro lado.</p>
       </div>
       <aside className="call-qr rise" style={at(8)}>
-        {url ? <QrCode text={url} label="Código QR a la simulación de llamada al 112" /> : <div className="qr-skeleton" />}
-        <p className="q-title">Llama tú</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`${BASE}/qr-llamar-tarjeta.png`} width={1080} height={1350} alt="Tarjeta con el código QR para grabar una llamada de prueba al 112" />
         <p>Este QR lleva a una simulación de llamada al 112.</p>
       </aside>
     </>
@@ -587,6 +576,6 @@ export const SLIDES: SlideDef[] = [
   },
   {
     id: "agente-112", section: "Agente 112", title: "Para que nadie se quede esperando al otro lado", className: "s-close", Body: Closing,
-    notes: "(2:50–3:00) Agente 112: para que nadie se quede esperando al otro lado. El QR lleva a una simulación de llamada al 112: grabad un aviso y lo veréis entrar en la consola. Gracias. (Al pasar de esta diapositiva se abre la consola.)",
+    notes: "(2:50–3:00) Agente 112: para que nadie se quede esperando al otro lado. El QR lleva a una simulación de llamada al 112: grabad un aviso y lo veréis entrar en la consola. Gracias. (Al pasar de esta diapositiva se abre la consola del VPS.)",
   },
 ];

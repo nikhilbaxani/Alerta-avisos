@@ -2,6 +2,12 @@
 
 Formato: `## AAAA-MM-DD · título` + Decisión · Motivo · Alternativa descartada.
 
+## 2026-11-25 · Presentación: al terminar salta a la consola del VPS y el cierre usa la tarjeta del QR (petición de Nick)
+- Decisión: al pasar de la última diapositiva (o pulsar «Abrir la consola» en el cierre), la presentación abre la consola del VPS (`https://oracle-exit.tail0093c8.ts.net/`, cambiable con `NEXT_PUBLIC_DEMO_CONSOLE_URL`) en lugar de la consola local. La diapositiva de la demo sigue con la consola incrustada (corrección de Nick: el salto es desde la 9, no desde la 5). El cierre muestra `public/qr-llamar-tarjeta.png` (QR de `/llamar`) con «Este QR lleva a una simulación de llamada al 112».
+- Token de operador: no se guarda en el código ni en el repositorio (la presentación es pública). La consola del VPS guarda el `#op=` en `localStorage` la primera vez que se abre con él, así que basta con abrir una vez el enlace de operador en el navegador con el que se presenta.
+- Excepción al modo simulado sin red: abrir la consola del VPS necesita conexión; la demo incrustada de la presentación sigue funcionando sin red.
+- Motivo: Nick quiere enseñar la terminal del VPS, donde también entran las llamadas del público.
+
 ## 2026-11-25 · Presentación: orden, «cómo lo hacemos», acciones en la demo y QR lateral (petición de Nick)
 - Decisión: el sistema actual va antes del logo. La diapositiva de la propuesta de valor pasa a «Cómo lo hacemos»: cuatro pasos del agente (escucha, entiende y agrupa, prioriza, propone acciones según el tipo: robo → Policía Nacional, incendio → Bomberos, herido → SAMU 061, el mapeo real de `lib/actions.ts`) con una franja técnica breve (Whisper, modelo de lenguaje local, reglas en código). En la demo, la caja de Traducción se cambia por la de Acciones de la consola (`ActionsBox`), que enseña lo que propone el agente para cada emergencia y se aprueba ahí mismo. «Clientes» se acorta: las empresas que ya operan el 112, la cadena de venta y el modelo SaaS por puesto. En el cierre, el QR va en vertical a un lado con «Este QR lleva a una simulación de llamada al 112», sin la dirección ni el aviso de demo (la propia página `/llamar` ya lleva su aviso).
 - Motivo: Nick pide un hilo más claro (objetivo → cómo lo conseguimos), la demo centrada en las acciones por tipo de incidente y un cierre más limpio.
