@@ -645,10 +645,10 @@ export default function MapView({ s, onSelect, onFxDone, onFocus, pendingActions
       <span><i className="lg tone-critical" />Crítico</span>
       <span><i className="lg tone-normal" />Incidente <em>(nº = prioridad)</em></span>
       <span><i className="lg tone-pending" />Necesita tu decisión</span>
-      <span><i className="lg todo">2</i>Acciones por aprobar</span>
+      {s.mode === "sim" && <span><i className="lg todo">2</i>Acciones por aprobar</span>}
       <span><i className="lg call" />Llamada</span>
-      {units && <span><i className="lg unit">B</i>Unidades: simulación</span>}
-      {hazards && hazards.some((h) => !h.resolved) && <span><i className="lg hazard" />Peligros en la vía: simulación</span>}
+      {s.mode === "sim" && units && <span><i className="lg unit">B</i>Unidades: simulación</span>}
+      {s.mode === "sim" && hazards?.some((h) => !h.resolved) && <span><i className="lg hazard" />Peligros en la vía: simulación</span>}
     </div>
     </div>
   );

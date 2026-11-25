@@ -118,6 +118,7 @@ export interface ConsoleState extends ConsoleModeSnapshot {
 }
 
 export type ConsoleAction =
+  | { type: "restoreLiveSession"; state: ConsoleState }
   | { type: "mode"; mode: ConsoleMode }
   | { type: "tick"; dt: number }
   | { type: "liveTick"; dt: number }
@@ -259,6 +260,8 @@ function assignOnApproval(s: ConsoleState, action: AgentAction): { units: Unit[]
 
 export function consoleReducer(s: ConsoleState, a: ConsoleAction): ConsoleState {
   switch (a.type) {
+    case "restoreLiveSession":
+      return a.state;
     case "mode": {
       if (a.mode === s.mode) return s;
       // El reloj solo avanza con Simulación visible; se conserva si estaba reproduciendo.

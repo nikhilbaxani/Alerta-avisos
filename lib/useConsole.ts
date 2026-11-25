@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { getScenario } from "@/data/scenarios";
 import { RESOURCE_LABELS, type AgentAction, type Proposal } from "@/lib/actions";
 import { decide } from "@/lib/cluster";
 import { STATIC_EXPORT } from "@/lib/config";
 import { factsFrom, proposalsFor } from "@/lib/consoleActions";
-import { callMeta, consoleReducer, incidentPoint, initialConsoleState, sortedCalls, type ConsoleState } from "@/lib/consoleMode";
+import { callMeta, consoleReducer, incidentPoint, initialConsoleState, PUBLIC_RELAY_URL, sortedCalls, type ConsoleState } from "@/lib/consoleMode";
+import { liveSessionKey, loadLiveSession, saveLiveSession } from "@/lib/liveSession";
 import { snapshot } from "@/lib/engine";
 import { hazardsFrom, unitHazardWarnings, type Hazard, type UnitHazardWarning } from "@/lib/hazards";
 import { analyzeLostCalls, type LostReport } from "@/lib/lostCalls";
@@ -111,10 +112,42 @@ export function simulatedResult(scenarioId: string, id: string, incidents: Retur
 }
 
 /** `offline`: no consulta /api/process; la presentación siempre funciona así. */
-export function useConsole({ offline = false }: { offline?: boolean } = {}) {
+export function useConsole({ offline = false, persistLive = false }: { offline?: boolean; persistLive?: boolean } = {}) {
   const [s, dispatch] = useReducer(consoleReducer, 0, initialConsoleState);
   const ref = useRef(s);
   ref.current = s;
+  const relay = persistLive ? PUBLIC_RELAY_URL : "";
+  const [restored, setRestored] = useState(false);
+  const storageReport = useRef({ warned: false, warn: (message: string) => console.warn(message) });
+  const lastSaved = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!relay) return;
+    try { dispatch({ type: "restoreLiveSession", state: loadLiveSession(window.localStorage, relay) }); }
+    catch { /* el acceso a localStorage puede estar desactivado */ }
+    setRestored(true);
+  }, [relay]);
+
+  const persist = useCallback((onlyIfUnchanged = false) => {
+    try {
+      const store = window.localStorage;
+      // No sobrescribir una sesión borrada, modificada desde otra pestaña o corrupta al salir.
+      if (onlyIfUnchanged && (lastSaved.current === undefined || store.getItem(liveSessionKey(relay)) !== lastSaved.current)) return;
+      lastSaved.current = saveLiveSession(store, relay, ref.current, storageReport.current);
+    } catch { /* el acceso a localStorage puede estar desactivado */ }
+  }, [relay]);
+  const currentLive = s.mode === "live" ? s : s.saved.live;
+  // No reserializamos las transcripciones en cada tic; pagehide guarda también el último reloj.
+  const { arrived, engine, archived, audit, selected } = currentLive ?? {};
+  useEffect(() => {
+    if (relay && restored) persist();
+  }, [relay, restored, persist, s.mode, arrived, engine, archived, audit, selected]);
+  useEffect(() => {
+    if (!relay || !restored) return;
+    const flushClock = () => persist(true);
+    window.addEventListener("pagehide", flushClock);
+    return () => window.removeEventListener("pagehide", flushClock);
+  }, [relay, restored, persist]);
 
   useEffect(() => {
     if (s.mode !== "sim" || !s.running) return;

@@ -41,7 +41,7 @@ function focusBox(box: FocusBox | "calls") {
 }
 
 export default function Console() {
-  const { s, dispatch, fxDone } = useConsole();
+  const { s, dispatch, fxDone } = useConsole({ persistLive: true });
   const [status, setStatus] = useState<EngineStatus>({ mode: "simulated", label: "Modo simulado" });
   const [sttUp, setSttUp] = useState(false);
   const [help, setHelp] = useState(false);
