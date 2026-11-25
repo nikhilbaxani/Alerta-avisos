@@ -533,7 +533,8 @@ function Closing() {
       <aside className="call-qr rise" style={at(8)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`${BASE}/qr-llamar-tarjeta.png`} width={1080} height={1350} alt="Tarjeta con el código QR para grabar una llamada de prueba al 112" />
-        <p>Este QR lleva a una simulación de llamada al 112.</p>
+        <p className="q-title">Llama tú</p>
+        <p>Simulación de una llamada al 112.</p>
       </aside>
     </>
   );
